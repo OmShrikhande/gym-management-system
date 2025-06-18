@@ -11,7 +11,7 @@ import UserManagement from "./pages/UserManagement.jsx";
 import BillingPlans from "./pages/BillingPlans.jsx";
 import Reports from "./pages/Reports.jsx";
 import SystemSettings from "./pages/SystemSettings.jsx";
-import Members from "./pages/NewMembers.jsx";
+import Members from "./pages/Members.jsx";
 import Trainers from "./pages/Trainers.jsx";
 import Workouts from "./pages/Workouts.jsx";
 import WorkoutPage from "./pages/WorkoutPage.jsx";
