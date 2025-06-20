@@ -7,10 +7,12 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import subscriptionPlanRoutes from './routes/subscriptionPlanRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import workoutRoutes from './routes/workoutRoutes.js';
 import dietPlanRoutes from './routes/dietPlanRoutes.js';
+import messageRoutes from './routes/messageRoutes.js';
 import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 
@@ -29,10 +31,12 @@ app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/subscription-plans', subscriptionPlanRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/diet-plans', dietPlanRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Default route
 app.get('/', (req, res) => {

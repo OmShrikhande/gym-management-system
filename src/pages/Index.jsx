@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2 } from "lucide-react";
+import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext.jsx";
@@ -37,6 +37,11 @@ const Index = () => {
   const [dietPlansCount, setDietPlansCount] = useState(0);
   const [messagesSentCount, setMessagesSentCount] = useState(0);
   const [isTrainerStatsLoading, setIsTrainerStatsLoading] = useState(true);
+  const [trainerGymName, setTrainerGymName] = useState('');
+  const [trainerWorkoutPlans, setTrainerWorkoutPlans] = useState([]);
+  const [trainerDietPlans, setTrainerDietPlans] = useState([]);
+  
+  // We don't need these state variables anymore as we're using dedicated pages
 
   // Fetch total revenue for super admin
   const fetchTotalRevenue = async () => {
@@ -46,15 +51,13 @@ const Index = () => {
     }
     
     try {
-      const API_URL = 'http://localhost:8081/api';
-      const response = await authFetch(`${API_URL}/subscriptions/revenue/total`);
+      const response = await authFetch(`/subscriptions/revenue/total`);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch revenue data');
+      if (response.success || response.status === 'success') {
+        setTotalRevenue(response.data.totalRevenue);
+      } else {
+        throw new Error(response.message || 'Failed to fetch revenue data');
       }
-      
-      const data = await response.json();
-      setTotalRevenue(data.data.totalRevenue);
     } catch (error) {
       console.error('Error fetching revenue:', error);
       // Don't show toast to avoid UI disruption
@@ -73,16 +76,14 @@ const Index = () => {
     }
     
     try {
-      const API_URL = 'http://localhost:8081/api';
-      const response = await authFetch(`${API_URL}/users/stats/new-gym-owners`);
+      const response = await authFetch(`/users/stats/new-gym-owners`);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch new gym owners data');
+      if (response.success || response.status === 'success') {
+        setNewGymOwnersCount(response.data.newGymOwnersCount);
+        setGrowthPercentage(response.data.growthPercentage);
+      } else {
+        throw new Error(response.message || 'Failed to fetch new gym owners data');
       }
-      
-      const data = await response.json();
-      setNewGymOwnersCount(data.data.newGymOwnersCount);
-      setGrowthPercentage(data.data.growthPercentage);
     } catch (error) {
       console.error('Error fetching new gym owners count:', error);
       // Set default values
@@ -93,12 +94,8 @@ const Index = () => {
     }
   };
 
-  useEffect(() => {
-    // Fetch users when component mounts
-    if (user) {
-      fetchUsers();
-    }
-  }, [fetchUsers, user]);
+  // We'll only fetch users when needed in specific components
+  // Removing this effect to prevent unnecessary API calls that might result in 403 errors
   
   // Check subscription status for gym owners
   useEffect(() => {
@@ -113,159 +110,395 @@ const Index = () => {
     setIsActivitiesLoading(true);
     
     try {
-      // In a real application, you would fetch this from an API
-      // For now, we'll generate some mock data based on the user role
-      
+      let activities = [];
       const currentDate = new Date();
       
-      // Generate activities based on user role
-      let activities = [];
+      // Calculate date 30 days ago for filtering recent items
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
+      // Different API calls based on user role
       if (userRole === 'super-admin') {
-        activities = [
-          {
-            id: 1,
-            type: 'new_gym_owner',
-            icon: <Users className="h-4 w-4 text-white" />,
-            iconBg: 'bg-green-500',
-            message: 'New gym owner registered: FitZone Gym',
-            timestamp: new Date(currentDate.getTime() - 2 * 60 * 60 * 1000) // 2 hours ago
-          },
-          {
-            id: 2,
-            type: 'payment',
-            icon: <CreditCard className="h-4 w-4 text-white" />,
-            iconBg: 'bg-blue-500',
-            message: 'Subscription payment received: $199 from PowerFit Gym',
-            timestamp: new Date(currentDate.getTime() - 5 * 60 * 60 * 1000) // 5 hours ago
-          },
-          {
-            id: 3,
-            type: 'system',
-            icon: <Settings className="h-4 w-4 text-white" />,
-            iconBg: 'bg-yellow-500',
-            message: 'System update completed: v2.3.1',
-            timestamp: new Date(currentDate.getTime() - 1 * 24 * 60 * 60 * 1000) // 1 day ago
-          },
-          {
-            id: 4,
-            type: 'report',
-            icon: <BarChart3 className="h-4 w-4 text-white" />,
-            iconBg: 'bg-purple-500',
-            message: 'Monthly revenue report generated',
-            timestamp: new Date(currentDate.getTime() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
+        // 1. Get all users and filter for recent gym owners
+        const usersResponse = await authFetch('/users');
+        if (usersResponse.success || usersResponse.status === 'success') {
+          const allUsers = usersResponse.data?.users || [];
+          
+          // Filter for gym owners created in the last 30 days
+          const recentGymOwners = allUsers
+            .filter(user => 
+              user.role === 'gym-owner' && 
+              new Date(user.createdAt) > thirtyDaysAgo
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 5);
+          
+          // Add each gym owner as an activity
+          recentGymOwners.forEach((gymOwner) => {
+            activities.push({
+              id: `gym-owner-${gymOwner._id}`,
+              type: 'new_gym_owner',
+              icon: <Users className="h-4 w-4 text-white" />,
+              iconBg: 'bg-green-500',
+              message: `New gym owner registered: ${gymOwner.gymName || gymOwner.name}`,
+              timestamp: new Date(gymOwner.createdAt)
+            });
+          });
+        }
+        
+        // 2. Get all subscriptions and filter for recent ones
+        const subscriptionsResponse = await authFetch('/subscriptions');
+        if (subscriptionsResponse.success || subscriptionsResponse.status === 'success') {
+          const allSubscriptions = subscriptionsResponse.data?.subscriptions || [];
+          
+          // Filter for subscriptions with recent payments
+          const recentSubscriptions = allSubscriptions
+            .filter(sub => {
+              if (!sub.paymentHistory || sub.paymentHistory.length === 0) return false;
+              const latestPayment = sub.paymentHistory[sub.paymentHistory.length - 1];
+              return new Date(latestPayment.date) > thirtyDaysAgo;
+            })
+            .sort((a, b) => {
+              const aLatestPayment = a.paymentHistory[a.paymentHistory.length - 1];
+              const bLatestPayment = b.paymentHistory[b.paymentHistory.length - 1];
+              return new Date(bLatestPayment.date) - new Date(aLatestPayment.date);
+            })
+            .slice(0, 5);
+          
+          // Add each subscription payment as an activity
+          for (const sub of recentSubscriptions) {
+            const latestPayment = sub.paymentHistory[sub.paymentHistory.length - 1];
+            
+            // Get gym owner details
+            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            const gymOwnerName = gymOwnerResponse.success ? 
+              (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
+              'a gym owner';
+            
+            activities.push({
+              id: `payment-${sub._id}-${latestPayment.date}`,
+              type: 'payment',
+              icon: <CreditCard className="h-4 w-4 text-white" />,
+              iconBg: 'bg-blue-500',
+              message: `Subscription payment received: ₹${latestPayment.amount} from ${gymOwnerName}`,
+              timestamp: new Date(latestPayment.date)
+            });
           }
-        ];
+        }
+        
+        // 3. Get expiring subscriptions
+        const allSubscriptionsResponse = await authFetch('/subscriptions');
+        if (allSubscriptionsResponse.success || allSubscriptionsResponse.status === 'success') {
+          const allSubscriptions = allSubscriptionsResponse.data?.subscriptions || [];
+          
+          // Filter for subscriptions expiring in the next 7 days
+          const expiringSubscriptions = allSubscriptions
+            .filter(sub => {
+              const endDate = new Date(sub.endDate);
+              const daysRemaining = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24));
+              return daysRemaining <= 7 && daysRemaining > 0 && sub.isActive;
+            })
+            .sort((a, b) => new Date(a.endDate) - new Date(b.endDate))
+            .slice(0, 3);
+          
+          // Add each expiring subscription as an activity
+          for (const sub of expiringSubscriptions) {
+            const endDate = new Date(sub.endDate);
+            const daysRemaining = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24));
+            
+            // Get gym owner details
+            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            const gymOwnerName = gymOwnerResponse.success ? 
+              (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
+              'A gym';
+            
+            activities.push({
+              id: `expiring-${sub._id}`,
+              type: 'subscription',
+              icon: <AlertCircle className="h-4 w-4 text-white" />,
+              iconBg: 'bg-yellow-500',
+              message: `${gymOwnerName}'s subscription expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`,
+              timestamp: endDate
+            });
+          }
+        }
+        
       } else if (userRole === 'gym-owner') {
-        activities = [
-          {
-            id: 1,
-            type: 'new_member',
-            icon: <Users className="h-4 w-4 text-white" />,
-            iconBg: 'bg-green-500',
-            message: 'New member joined: Sarah Johnson',
-            timestamp: new Date(currentDate.getTime() - 2 * 60 * 60 * 1000) // 2 hours ago
-          },
-          {
-            id: 2,
-            type: 'workout',
-            icon: <Dumbbell className="h-4 w-4 text-white" />,
-            iconBg: 'bg-blue-500',
-            message: 'Workout plan created for John Doe',
-            timestamp: new Date(currentDate.getTime() - 4 * 60 * 60 * 1000) // 4 hours ago
-          },
-          {
-            id: 3,
-            type: 'message',
-            icon: <MessageSquare className="h-4 w-4 text-white" />,
-            iconBg: 'bg-purple-500',
-            message: 'Birthday message sent to 5 members',
-            timestamp: new Date(currentDate.getTime() - 1 * 24 * 60 * 60 * 1000) // 1 day ago
-          },
-          {
-            id: 4,
-            type: 'diet',
-            icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
-            iconBg: 'bg-orange-500',
-            message: 'New diet plan assigned to 3 members',
-            timestamp: new Date(currentDate.getTime() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
+        // 1. Get all members for this gym owner
+        const membersResponse = await authFetch(`/users/gym-owner/${user._id}/members`);
+        if (membersResponse.success || membersResponse.status === 'success') {
+          const allMembers = membersResponse.data?.users || [];
+          
+          // Filter for members created in the last 30 days
+          const recentMembers = allMembers
+            .filter(member => new Date(member.createdAt) > thirtyDaysAgo)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 5);
+          
+          // Add each member as an activity
+          recentMembers.forEach((member) => {
+            activities.push({
+              id: `member-${member._id}`,
+              type: 'new_member',
+              icon: <Users className="h-4 w-4 text-white" />,
+              iconBg: 'bg-green-500',
+              message: `New member joined: ${member.name}`,
+              timestamp: new Date(member.createdAt)
+            });
+          });
+        }
+        
+        // 2. Get all workout plans for this gym
+        const workoutsResponse = await authFetch(`/workouts`);
+        if (workoutsResponse.success || workoutsResponse.status === 'success') {
+          const allWorkouts = workoutsResponse.data?.workouts || [];
+          
+          // Filter for workouts created in the last 30 days for this gym
+          const recentWorkouts = allWorkouts
+            .filter(workout => 
+              workout.gym === user._id && 
+              new Date(workout.createdAt) > thirtyDaysAgo
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          // Add each workout as an activity
+          recentWorkouts.forEach((workout) => {
+            activities.push({
+              id: `workout-${workout._id}`,
+              type: 'workout',
+              icon: <Dumbbell className="h-4 w-4 text-white" />,
+              iconBg: 'bg-blue-500',
+              message: `New workout plan created: ${workout.title}`,
+              timestamp: new Date(workout.createdAt)
+            });
+          });
+        }
+        
+        // 3. Get subscription status
+        if (subscription) {
+          const endDate = new Date(subscription.endDate);
+          const daysRemaining = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24));
+          
+          if (daysRemaining <= 7 && daysRemaining > 0) {
+            activities.push({
+              id: 'subscription-expiring',
+              type: 'subscription',
+              icon: <AlertCircle className="h-4 w-4 text-white" />,
+              iconBg: 'bg-yellow-500',
+              message: `Your subscription expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}`,
+              timestamp: endDate
+            });
+          } else if (daysRemaining <= 0) {
+            activities.push({
+              id: 'subscription-expired',
+              type: 'subscription',
+              icon: <AlertCircle className="h-4 w-4 text-white" />,
+              iconBg: 'bg-red-500',
+              message: 'Your subscription has expired',
+              timestamp: endDate
+            });
           }
-        ];
+        }
+        
       } else if (userRole === 'trainer') {
-        activities = [
-          {
-            id: 1,
-            type: 'workout',
-            icon: <Dumbbell className="h-4 w-4 text-white" />,
-            iconBg: 'bg-blue-500',
-            message: 'Workout plan created for John Doe',
-            timestamp: new Date(currentDate.getTime() - 2 * 60 * 60 * 1000) // 2 hours ago
-          },
-          {
-            id: 2,
-            type: 'diet',
-            icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
-            iconBg: 'bg-orange-500',
-            message: 'Diet plan updated for Emily Parker',
-            timestamp: new Date(currentDate.getTime() - 5 * 60 * 60 * 1000) // 5 hours ago
-          },
-          {
-            id: 3,
-            type: 'schedule',
-            icon: <Calendar className="h-4 w-4 text-white" />,
-            iconBg: 'bg-green-500',
-            message: 'New training session scheduled with Mike Wilson',
-            timestamp: new Date(currentDate.getTime() - 1 * 24 * 60 * 60 * 1000) // 1 day ago
-          },
-          {
-            id: 4,
-            type: 'goal',
-            icon: <Target className="h-4 w-4 text-white" />,
-            iconBg: 'bg-purple-500',
-            message: 'Fitness goal achieved by Lisa Thompson',
-            timestamp: new Date(currentDate.getTime() - 3 * 24 * 60 * 60 * 1000) // 3 days ago
-          }
-        ];
+        // 1. Get assigned members
+        const assignedMembersResponse = await authFetch(`/users/trainer/${user._id}/members`);
+        if (assignedMembersResponse.success || assignedMembersResponse.status === 'success') {
+          const assignedMembers = assignedMembersResponse.data?.members || [];
+          
+          // Filter for members created in the last 30 days
+          const recentAssignedMembers = assignedMembers
+            .filter(member => new Date(member.createdAt) > thirtyDaysAgo)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          recentAssignedMembers.forEach((member) => {
+            activities.push({
+              id: `assigned-member-${member._id}`,
+              type: 'new_member',
+              icon: <Users className="h-4 w-4 text-white" />,
+              iconBg: 'bg-green-500',
+              message: `New member assigned to you: ${member.name}`,
+              timestamp: new Date(member.createdAt)
+            });
+          });
+        }
+        
+        // 2. Get workout plans created by this trainer
+        const workoutsResponse = await authFetch(`/workouts`);
+        if (workoutsResponse.success || workoutsResponse.status === 'success') {
+          const allWorkouts = workoutsResponse.data?.workouts || [];
+          
+          // Filter for workouts created by this trainer in the last 30 days
+          const recentWorkouts = allWorkouts
+            .filter(workout => 
+              workout.trainer === user._id && 
+              new Date(workout.createdAt) > thirtyDaysAgo
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          recentWorkouts.forEach((workout) => {
+            activities.push({
+              id: `workout-${workout._id}`,
+              type: 'workout',
+              icon: <Dumbbell className="h-4 w-4 text-white" />,
+              iconBg: 'bg-blue-500',
+              message: `You created workout plan: ${workout.title}`,
+              timestamp: new Date(workout.createdAt)
+            });
+          });
+        }
+        
+        // 3. Get diet plans created by this trainer
+        const dietPlansResponse = await authFetch(`/diet-plans`);
+        if (dietPlansResponse.success || dietPlansResponse.status === 'success') {
+          const allDietPlans = dietPlansResponse.data?.dietPlans || [];
+          
+          // Filter for diet plans created by this trainer in the last 30 days
+          const recentDietPlans = allDietPlans
+            .filter(plan => 
+              plan.trainer === user._id && 
+              new Date(plan.createdAt) > thirtyDaysAgo
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          recentDietPlans.forEach((plan) => {
+            activities.push({
+              id: `diet-${plan._id}`,
+              type: 'diet',
+              icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
+              iconBg: 'bg-orange-500',
+              message: `You created diet plan: ${plan.title}`,
+              timestamp: new Date(plan.createdAt)
+            });
+          });
+        }
+        
       } else if (userRole === 'member') {
-        activities = [
-          {
-            id: 1,
-            type: 'workout',
-            icon: <Dumbbell className="h-4 w-4 text-white" />,
-            iconBg: 'bg-blue-500',
-            message: 'New workout plan assigned to you',
-            timestamp: new Date(currentDate.getTime() - 3 * 60 * 60 * 1000) // 3 hours ago
-          },
-          {
-            id: 2,
-            type: 'diet',
-            icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
-            iconBg: 'bg-orange-500',
-            message: 'Diet plan updated by your trainer',
-            timestamp: new Date(currentDate.getTime() - 1 * 24 * 60 * 60 * 1000) // 1 day ago
-          },
-          {
-            id: 3,
-            type: 'schedule',
-            icon: <Calendar className="h-4 w-4 text-white" />,
-            iconBg: 'bg-green-500',
-            message: 'Training session scheduled for tomorrow at 10:00 AM',
-            timestamp: new Date(currentDate.getTime() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
-          },
-          {
-            id: 4,
-            type: 'progress',
-            icon: <TrendingUp className="h-4 w-4 text-white" />,
-            iconBg: 'bg-purple-500',
-            message: 'Weight loss goal: 2kg progress recorded',
-            timestamp: new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000) // 7 days ago
-          }
-        ];
+        // 1. Get workout plans assigned to this member
+        const workoutsResponse = await authFetch(`/workouts`);
+        if (workoutsResponse.success || workoutsResponse.status === 'success') {
+          const allWorkouts = workoutsResponse.data?.workouts || [];
+          
+          // Filter for workouts assigned to this member
+          const assignedWorkouts = allWorkouts
+            .filter(workout => 
+              workout.members && 
+              workout.members.includes(user._id)
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          assignedWorkouts.forEach((workout) => {
+            activities.push({
+              id: `workout-${workout._id}`,
+              type: 'workout',
+              icon: <Dumbbell className="h-4 w-4 text-white" />,
+              iconBg: 'bg-blue-500',
+              message: `Workout plan assigned to you: ${workout.title}`,
+              timestamp: new Date(workout.createdAt)
+            });
+          });
+        }
+        
+        // 2. Get diet plans assigned to this member
+        const dietPlansResponse = await authFetch(`/diet-plans`);
+        if (dietPlansResponse.success || dietPlansResponse.status === 'success') {
+          const allDietPlans = dietPlansResponse.data?.dietPlans || [];
+          
+          // Filter for diet plans assigned to this member
+          const assignedDietPlans = allDietPlans
+            .filter(plan => 
+              plan.members && 
+              plan.members.includes(user._id)
+            )
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          assignedDietPlans.forEach((plan) => {
+            activities.push({
+              id: `diet-${plan._id}`,
+              type: 'diet',
+              icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
+              iconBg: 'bg-orange-500',
+              message: `Diet plan assigned to you: ${plan.title}`,
+              timestamp: new Date(plan.createdAt)
+            });
+          });
+        }
+        
+        // 3. Get notifications for this member
+        const notificationsResponse = await authFetch(`/notifications/user/${user._id}`);
+        if (notificationsResponse.success || notificationsResponse.status === 'success') {
+          const notifications = notificationsResponse.data?.notifications || [];
+          
+          // Get recent notifications
+          const recentNotifications = notifications
+            .filter(notification => new Date(notification.createdAt) > thirtyDaysAgo)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .slice(0, 3);
+          
+          recentNotifications.forEach((notification) => {
+            activities.push({
+              id: `notification-${notification._id}`,
+              type: 'notification',
+              icon: <MessageSquare className="h-4 w-4 text-white" />,
+              iconBg: 'bg-purple-500',
+              message: notification.message,
+              timestamp: new Date(notification.createdAt)
+            });
+          });
+        }
       }
+      
+      // Add user's own creation as an activity
+      if (user && user.createdAt) {
+        activities.push({
+          id: `user-created-${user._id}`,
+          type: 'account',
+          icon: <User className="h-4 w-4 text-white" />,
+          iconBg: 'bg-blue-500',
+          message: `Your account was created`,
+          timestamp: new Date(user.createdAt)
+        });
+      }
+      
+      // If no activities were found from API calls, add a fallback activity
+      if (activities.length === 0) {
+        activities.push({
+          id: 'welcome',
+          type: 'system',
+          icon: <Settings className="h-4 w-4 text-white" />,
+          iconBg: 'bg-blue-500',
+          message: `Welcome to your dashboard, ${user.name}!`,
+          timestamp: new Date()
+        });
+      }
+      
+      // Sort activities by timestamp (most recent first)
+      activities.sort((a, b) => b.timestamp - a.timestamp);
+      
+      // Limit to 5 activities
+      activities = activities.slice(0, 5);
       
       setRecentActivities(activities);
     } catch (error) {
-      console.error('Error generating recent activities:', error);
+      console.error('Error fetching recent activities:', error);
+      
+      // Fallback to a welcome message if there's an error
+      const fallbackActivity = [{
+        id: 'welcome',
+        type: 'system',
+        icon: <Settings className="h-4 w-4 text-white" />,
+        iconBg: 'bg-blue-500',
+        message: `Welcome to your dashboard, ${user?.name || 'User'}!`,
+        timestamp: new Date()
+      }];
+      
+      setRecentActivities(fallbackActivity);
     } finally {
       setIsActivitiesLoading(false);
     }
@@ -281,26 +514,44 @@ const Index = () => {
     setIsTrainerStatsLoading(true);
     
     try {
+      // Fetch trainer details to get gym name
+      const trainerResponse = await authFetch(`/users/${user._id}`);
+      if (trainerResponse.success || trainerResponse.status === 'success') {
+        const trainerData = trainerResponse.data?.user;
+        if (trainerData && trainerData.assignedGym) {
+          // Fetch gym details to get the gym name
+          const gymResponse = await authFetch(`/gyms/${trainerData.assignedGym}`);
+          if (gymResponse.success || gymResponse.status === 'success') {
+            setTrainerGymName(gymResponse.data?.gym?.name || 'Your Gym');
+            // Removed console.log to reduce console clutter
+          }
+        }
+      }
+      
       // Fetch assigned members count
       const membersResponse = await authFetch(`/users/trainer/${user._id}/members`);
       if (membersResponse.success || membersResponse.status === 'success') {
         setAssignedMembersCount(membersResponse.data?.members?.length || 0);
       }
       
-      // Fetch workout plans count
+      // Fetch workout plans count and data
       const workoutsResponse = await authFetch(`/workouts/trainer/${user._id}`);
       if (workoutsResponse.success || workoutsResponse.status === 'success') {
-        setWorkoutPlansCount(workoutsResponse.data?.workouts?.length || 0);
+        const workouts = workoutsResponse.data?.workouts || [];
+        setWorkoutPlansCount(workouts.length);
+        setTrainerWorkoutPlans(workouts);
+        
+        // We've removed the excessive console logging to reduce console clutter
       }
       
-      // Fetch diet plans count
+      // Fetch diet plans count and data
       const dietPlansResponse = await authFetch(`/diet-plans/trainer/${user._id}`);
-      console.log('Diet plans response in dashboard:', dietPlansResponse);
-      
       if (dietPlansResponse.success || dietPlansResponse.status === 'success') {
-        const count = dietPlansResponse.data?.dietPlans?.length || 0;
-        console.log('Setting diet plans count to:', count);
-        setDietPlansCount(count);
+        const dietPlans = dietPlansResponse.data?.dietPlans || [];
+        setDietPlansCount(dietPlans.length);
+        setTrainerDietPlans(dietPlans);
+        
+        // We've removed the excessive console logging to reduce console clutter
       }
       
       // For messages, we'll use placeholder values for now
@@ -312,6 +563,8 @@ const Index = () => {
       setIsTrainerStatsLoading(false);
     }
   };
+
+  // We've removed the fetch functions for workout and diet plans as we're using dedicated pages
 
   useEffect(() => {
     if (user && userRole === 'super-admin') {
@@ -415,7 +668,8 @@ const Index = () => {
                 </div>
               ), 
               icon: CreditCard, 
-              color: "bg-purple-500" 
+              color: "bg-purple-500",
+              onClick: () => navigate("/gym-owner-plans")
             },
             { 
               label: "Member Capacity", 
@@ -475,7 +729,7 @@ const Index = () => {
     } else if (actionLabel === "View Reports") {
       navigate("/reports");
     } else if (actionLabel === "Manage Billing") {
-      navigate("/billing");
+      navigate("/billing-plans");
     } else if (actionLabel === "System Settings") {
       navigate("/settings");
     }
@@ -487,7 +741,7 @@ const Index = () => {
         return [
           { label: "Add New Gym", icon: Plus, action: () => navigate("/users") },
           { label: "View Reports", icon: BarChart3, action: () => navigate("/reports") },
-          { label: "Manage Billing", icon: CreditCard, action: () => navigate("/billing") },
+          { label: "Manage Billing", icon: CreditCard, action: () => navigate("/billing-plans") },
           { label: "System Settings", icon: Settings, action: () => navigate("/settings") }
         ];
       case 'gym-owner':
@@ -509,7 +763,7 @@ const Index = () => {
             { 
               label: hasActiveSubscription ? "Subscription" : "Renew Subscription", 
               icon: CreditCard, 
-              action: () => navigate("/billing") 
+              action: () => navigate("/gym-owner-plans") 
             }
           ];
         }
@@ -544,15 +798,28 @@ const Index = () => {
             <h1 className="text-4xl font-bold text-white">
               Welcome back, {user.name}!
             </h1>
-            <Badge variant="secondary" className="text-lg px-4 py-2">
-              {userRole.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-            </Badge>
+            <div className="flex flex-col items-center gap-2">
+              <Badge variant="secondary" className="text-lg px-4 py-2">
+                {userRole.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </Badge>
+              
+              {/* Display gym name for trainers */}
+              {userRole === 'trainer' && trainerGymName && (
+                <div className="text-blue-400 font-medium">
+                  <span className="text-gray-400">Gym:</span> {trainerGymName}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {stats.map((stat, index) => (
-              <Card key={index} className="bg-gray-800/50 border-gray-700 hover:bg-gray-800/70 transition-all duration-300 hover:scale-105">
+              <Card 
+                key={index} 
+                className={`bg-gray-800/50 border-gray-700 hover:bg-gray-800/70 transition-all duration-300 hover:scale-105 ${stat.onClick ? 'cursor-pointer' : ''}`}
+                onClick={stat.onClick}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -592,6 +859,177 @@ const Index = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Workout Plans Section for Trainers */}
+          {userRole === 'trainer' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-white">My Workout Plans</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Workout plans you've created
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={fetchTrainerStats}
+                >
+                  Refresh
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {isTrainerStatsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <LoadingIndicator />
+                  </div>
+                ) : trainerWorkoutPlans.length > 0 ? (
+                  <div className="space-y-4">
+                    {trainerWorkoutPlans.slice(0, 3).map(workout => (
+                      <div key={workout._id} className="flex items-start space-x-4 p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors">
+                        <div className="p-2 bg-blue-500 rounded-full">
+                          <Dumbbell className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <p className="text-white font-medium">{workout.name}</p>
+                            <Badge variant="outline" className="ml-2">
+                              {workout.level || 'All Levels'}
+                            </Badge>
+                          </div>
+                          <p className="text-gray-400 text-xs mt-1">
+                            {workout.exercises?.length || 0} exercises
+                          </p>
+                          <p className="text-gray-400 text-xs mt-1">
+                            Created: {new Date(workout.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No workout plans found</p>
+                  </div>
+                )}
+                
+                {trainerWorkoutPlans.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full text-blue-400 hover:text-blue-300 hover:bg-gray-700/50"
+                      onClick={() => navigate('/workouts')}
+                    >
+                      View All Workout Plans
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Diet Plans Section for Trainers */}
+          {userRole === 'trainer' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-white">My Diet Plans</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Diet plans you've created
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={fetchTrainerStats}
+                >
+                  Refresh
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {isTrainerStatsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <LoadingIndicator />
+                  </div>
+                ) : trainerDietPlans.length > 0 ? (
+                  <div className="space-y-4">
+                    {trainerDietPlans.slice(0, 3).map(plan => (
+                      <div key={plan._id} className="flex items-start space-x-4 p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors">
+                        <div className="p-2 bg-orange-500 rounded-full">
+                          <UtensilsCrossed className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <p className="text-white font-medium">{plan.name}</p>
+                            <Badge variant="outline" className="ml-2">
+                              {plan.goalType || 'General'}
+                            </Badge>
+                          </div>
+                          <p className="text-gray-400 text-xs mt-1">
+                            {plan.totalCalories} calories | {plan.meals?.length || 0} meals
+                          </p>
+                          <p className="text-gray-400 text-xs mt-1">
+                            Created: {new Date(plan.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No diet plans found</p>
+                  </div>
+                )}
+                
+                {trainerDietPlans.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <Button 
+                      variant="ghost" 
+                      className="w-full text-blue-400 hover:text-blue-300 hover:bg-gray-700/50"
+                      onClick={() => navigate('/diet-plans')}
+                    >
+                      View All Diet Plans
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Links to Workout and Diet Plans for Gym Owners */}
+          {userRole === 'gym-owner' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader>
+                <CardTitle className="text-white">Trainer Resources</CardTitle>
+                <CardDescription className="text-gray-400">
+                  View workout and diet plans created by your trainers
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Button
+                    variant="outline"
+                    className="h-20 flex-col space-y-2 border-gray-600 hover:bg-gray-700 text-white hover:text-white"
+                    onClick={() => navigate('/workouts')}
+                  >
+                    <Dumbbell className="h-6 w-6 text-blue-400" />
+                    <span className="text-sm">View Workout Plans</span>
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    className="h-20 flex-col space-y-2 border-gray-600 hover:bg-gray-700 text-white hover:text-white"
+                    onClick={() => navigate('/diet-plans')}
+                  >
+                    <UtensilsCrossed className="h-6 w-6 text-orange-400" />
+                    <span className="text-sm">View Diet Plans</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Recent Activity */}
           <Card className="bg-gray-800/50 border-gray-700">

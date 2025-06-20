@@ -5,10 +5,11 @@ import mongoose from 'mongoose';
 // Create a new workout
 export const createWorkout = async (req, res) => {
   try {
-    const { title, type, focus, description, videoLink, duration } = req.body;
+    const { title, type, description, videoLink, duration, exercises, notes } = req.body;
     
     // Validate required fields
-    if (!title || !focus || !description) {
+    if (!title || !description) {
+      console.log('Missing required fields:', { title, description });
       return res.status(400).json({
         success: false,
         message: 'Please provide all required fields'
@@ -28,13 +29,16 @@ export const createWorkout = async (req, res) => {
     const workout = new Workout({
       title,
       type: type || 'intermediate',
-      focus,
+      // focus field is commented out in the model
       description,
       videoLink,
       duration: duration || 30,
       trainer: req.user._id,
       trainerName: req.user.name,
-      gym: trainer.createdBy || trainer.gym || null // Use createdBy (gym owner) or gym field if available
+      gym: trainer.createdBy || trainer.gym || null, // Use createdBy (gym owner) or gym field if available
+      // Add exercises and notes if provided
+      exercises: exercises || '',
+      notes: notes || ''
     });
     
     await workout.save();

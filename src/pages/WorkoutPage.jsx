@@ -28,11 +28,12 @@ const WorkoutPage = () => {
   const [workoutFormData, setWorkoutFormData] = useState({
     title: '',
     type: 'intermediate',
-    focus: '',
     description: '',
     videoLink: '',
     assignedTo: '',
     duration: '30',
+    exercises: '',
+    notes: ''
   });
   
   // State for filtering
@@ -59,11 +60,19 @@ const WorkoutPage = () => {
           endpoint = `/workouts/gym/${user._id}`;
         }
         
+        console.log('Fetching workouts from endpoint:', endpoint);
+        console.log('User role:', isGymOwner ? 'Gym Owner' : isTrainer ? 'Trainer' : isMember ? 'Member' : 'Unknown');
+        console.log('User ID:', user._id);
+        
         const response = await authFetch(endpoint);
         
+        console.log('Workout API response:', response);
+        
         if (response.success) {
+          console.log('Workouts data received:', response.data.workouts || []);
           setWorkouts(response.data.workouts || []);
         } else {
+          console.error('Failed to load workouts:', response.message);
           setMessage({ type: 'error', text: response.message || 'Failed to load workouts' });
         }
       } catch (error) {
@@ -99,7 +108,7 @@ const WorkoutPage = () => {
       const matchesSearch = 
         workout.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         workout.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        workout.focus.toLowerCase().includes(searchTerm.toLowerCase());
+        (workout.focus ? workout.focus.toLowerCase().includes(searchTerm.toLowerCase()) : false);
       
       const matchesType = filterType === 'all' || workout.type === filterType;
       
@@ -123,11 +132,12 @@ const WorkoutPage = () => {
     setWorkoutFormData({
       title: '',
       type: 'intermediate',
-      focus: '',
       description: '',
       videoLink: '',
       assignedTo: '',
       duration: '30',
+      exercises: '',
+      notes: ''
     });
     setIsEditing(false);
     setEditWorkoutId(null);

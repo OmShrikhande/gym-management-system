@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -10,10 +11,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Dumbbell, Settings, User, LogOut, CreditCard } from "lucide-react";
+import { Dumbbell, Settings, User, LogOut, CreditCard, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
+import { toast } from "sonner";
 
 const DashboardHeader = () => {
   const { 
@@ -22,8 +24,29 @@ const DashboardHeader = () => {
     logout, 
     isGymOwner, 
     hasActiveSubscription, 
-    subscriptionDaysRemaining 
+    subscriptionDaysRemaining,
+    checkSubscriptionStatus
   } = useAuth();
+  
+  // Function to refresh the page
+  const handleRefresh = () => {
+    toast.info("Refreshing page...");
+    window.location.reload();
+  };
+  
+  // Check subscription status only once when component mounts
+  // This prevents repeated API calls on every render
+  useEffect(() => {
+    if (isGymOwner && user?._id) {
+      // Only check if we don't have subscription data or it's been more than 30 minutes
+      const lastCheckTime = window.lastSubscriptionCheckTime || 0;
+      const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+      
+      if (Date.now() - lastCheckTime > CACHE_DURATION) {
+        checkSubscriptionStatus(user._id, null, false);
+      }
+    }
+  }, [isGymOwner, user, checkSubscriptionStatus]);
 
   return (
     <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-50">
@@ -43,8 +66,19 @@ const DashboardHeader = () => {
             </div>
           </div>
 
-          {/* Right Side - Subscription Status, Notifications and User Menu */}
+          {/* Right Side - Refresh Button, Subscription Status, Notifications and User Menu */}
           <div className="flex items-center space-x-4">
+            {/* Refresh Button */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh} 
+              className="text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Refresh</span>
+            </Button>
+            
             {/* Subscription Status for Gym Owners */}
             {isGymOwner && (
               <>

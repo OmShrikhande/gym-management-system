@@ -12,11 +12,11 @@ const workoutSchema = new Schema({
     enum: ['beginner', 'intermediate', 'advanced', 'weight-loss', 'weight-gain'],
     default: 'intermediate'
   },
-  focus: {
-    type: String,
-    required: [true, 'Focus area is required'],
-    trim: true
-  },
+  // focus: {
+  //   type: String,
+  //   required: [true, 'Focus area is required'],
+  //   trim: true
+  // },
   description: {
     type: String,
     required: [true, 'Workout description is required']
@@ -31,14 +31,22 @@ const workoutSchema = new Schema({
     type: String,
     trim: true
   },
+  exercises: {
+    type: String,
+    trim: true
+  },
+  notes: {
+    type: String,
+    trim: true
+  },
   trainer: {
     type: Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Trainer ID is required']
+    required: [false, 'Trainer ID is required']
   },
   trainerName: {
     type: String,
-    required: [true, 'Trainer name is required']
+    required: [false, 'Trainer name is required']
   },
   assignedTo: {
     type: Schema.Types.ObjectId,

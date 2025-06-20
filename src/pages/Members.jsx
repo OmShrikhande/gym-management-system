@@ -22,6 +22,7 @@ const Members = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showDetailView, setShowDetailView] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  // Initial form data with default values
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -30,7 +31,7 @@ const Members = () => {
     gender: 'Male',
     dob: '',
     goal: 'weight-loss',
-    planType: 'Basic',
+    planType: 'Basic Member', // Will be updated after gymOwnerPlans is loaded
     address: '',
     whatsapp: '',
     height: '',
@@ -54,6 +55,54 @@ const Members = () => {
     membershipFee: 500 // Default membership fee
   });
   
+  // State for gym owner plans
+  const [gymOwnerPlans, setGymOwnerPlans] = useState([
+    {
+      id: "basic-member",
+      name: "Basic Member",
+      price: 19,
+      duration: "monthly",
+      features: ["Member Management", "Basic Attendance Tracking", "Email Support"],
+      status: "Active"
+    },
+    {
+      id: "premium-member",
+      name: "Premium Member",
+      price: 39,
+      duration: "monthly",
+      features: ["All Basic Features", "Fitness Progress Tracking", "Workout Plans", "Priority Support"],
+      status: "Active",
+      recommended: true
+    },
+    {
+      id: "elite-member",
+      name: "Elite Member",
+      price: 79,
+      duration: "monthly",
+      features: ["All Premium Features", "Nutrition Planning", "Personal Training Sessions", "24/7 Support"],
+      status: "Active"
+    }
+  ]);
+  
+  // Fetch gym owner plans
+  const fetchGymOwnerPlans = async () => {
+    if (!user || !isGymOwner) return;
+    
+    try {
+      const response = await authFetch('/gym-owner-plans');
+      
+      if (response.success || response.status === 'success') {
+        setGymOwnerPlans(response.data.plans);
+      } else {
+        // If API fails, keep the default plans
+        console.log('Using default gym owner plans');
+      }
+    } catch (error) {
+      console.error('Error fetching gym owner plans:', error);
+      // Keep using the default plans
+    }
+  };
+
   // Fetch subscription info to check member limits
   const fetchSubscriptionInfo = async () => {
     if (!user || !isGymOwner) return;
@@ -63,14 +112,12 @@ const Members = () => {
       const hasActiveSubscription = subscription?.hasActiveSubscription || false;
       
       // Get subscription plan details
-      const API_URL = 'http://localhost:8081/api';
-      
       try {
-        const response = await authFetch(`${API_URL}/subscriptions/details/${user._id}`);
+        // Use the authFetch function which already has the API_URL prefix
+        const response = await authFetch(`/subscriptions/details/${user._id}`);
         
-        if (response.ok) {
-          const data = await response.json();
-          const plan = data.data?.subscription?.plan || 'Basic';
+        if (response.success !== false) {
+          const plan = response.data?.subscription?.plan || 'Basic';
           
           // Set max members based on plan
           let maxMembers = 200; // Default for Basic plan
@@ -140,6 +187,11 @@ const Members = () => {
         // Step 3: Fetch subscription info if needed
         if (user && isGymOwner && users.length > 0) {
           await fetchSubscriptionInfo();
+        }
+        
+        // Step 4: Fetch gym owner plans
+        if (user && isGymOwner) {
+          await fetchGymOwnerPlans();
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -241,6 +293,9 @@ const Members = () => {
   }, []);
 
   const resetForm = () => {
+    // Get the first plan name from gymOwnerPlans, or use "Basic Member" as fallback
+    const defaultPlanName = gymOwnerPlans.length > 0 ? gymOwnerPlans[0].name : "Basic Member";
+    
     setFormData({
       name: '',
       email: '',
@@ -249,7 +304,7 @@ const Members = () => {
       gender: 'Male',
       dob: '',
       goal: 'weight-loss',
-      planType: 'Basic',
+      planType: defaultPlanName,
       address: '',
       whatsapp: '',
       height: '',
@@ -396,22 +451,26 @@ const Members = () => {
       return;
     }
     
-    // Calculate membership fee based on duration and plan
-    const baseFee = subscriptionInfo.membershipFee;
-    const durationMultiplier = parseInt(formData.membershipDuration);
-    const planMultiplier = formData.planType === 'Premium' ? 1.5 : 1;
-    const trainerFee = formData.requiresTrainer ? 2000 : 0;
+    // Find the selected plan
+    const selectedPlan = gymOwnerPlans.find(plan => plan.name === formData.planType) || gymOwnerPlans[0];
     
-    const totalFee = (baseFee * durationMultiplier * planMultiplier) + trainerFee;
+    // Calculate membership fee based on duration and plan
+    const monthlyFee = selectedPlan.price || subscriptionInfo.membershipFee;
+  const durationInMonths = parseInt(formData.membershipDuration) * 12; // Convert years to months
+  const trainerFee = formData.requiresTrainer ? 2000 : 0;
+    
+    // Calculate total fee based on plan price, duration, and trainer fee
+    const totalFee = (monthlyFee * durationInMonths) + trainerFee;
+  
     
     // Store the member data with calculated fee and show payment modal
     setPendingMemberData({
       ...formData,
       calculatedFee: totalFee
     });
-    setShowPaymentModal(true);
-    setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
-  }, [formData, subscriptionInfo, setMessage, setPendingMemberData, setShowPaymentModal]);
+     setShowPaymentModal(true);
+  setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
+}, [formData, subscriptionInfo, gymOwnerPlans, setMessage, setPendingMemberData, setShowPaymentModal]);
 
   return (
     <DashboardLayout>
@@ -454,7 +513,7 @@ const Members = () => {
                     variant="outline" 
                     size="sm" 
                     className="mt-2 border-red-700 text-red-300 hover:bg-red-800/50"
-                    onClick={() => navigate("/billing")}
+                    onClick={() => navigate("/gym-owner-plans")}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Renew Subscription
@@ -479,7 +538,7 @@ const Members = () => {
                     variant="outline" 
                     size="sm" 
                     className="mt-2 border-yellow-700 text-yellow-300 hover:bg-yellow-800/50"
-                    onClick={() => navigate("/billing")}
+                    onClick={() => navigate("/gym-owner-plans")}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     Upgrade Plan
@@ -886,14 +945,27 @@ const Members = () => {
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >
-                            <option value="Basic">Basic</option>
-                            <option value="Premium">Premium</option>
+                            {gymOwnerPlans.map(plan => (
+                              <option key={plan.id} value={plan.name}>
+                                {plan.name} (₹{plan.price}/{plan.duration})
+                              </option>
+                            ))}
                           </select>
                           <p className="text-sm text-gray-400 mt-1">
-                            {formData.planType === 'Basic' ? 
-                              'Basic plan includes standard gym access' : 
-                              'Premium plan includes all facilities and priority booking'}
+                            {gymOwnerPlans.find(plan => plan.name === formData.planType)?.features?.[0] || 
+                             'Plan includes standard gym access'}
                           </p>
+                          <div className="mt-2">
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm"
+                              className="text-xs border-gray-600 text-blue-400 hover:bg-gray-700"
+                              onClick={() => navigate("/gym-owner-plans")}
+                            >
+                              Manage Member Plans
+                            </Button>
+                          </div>
                         </div>
                         <div>
                           <Label htmlFor="membershipDuration" className="mb-2 block text-gray-300">Duration *</Label>
@@ -1037,16 +1109,16 @@ const Members = () => {
                         <div className="bg-blue-900/30 p-4 rounded-lg border border-blue-800">
                           <h5 className="font-medium text-blue-400 mb-2">Payment Summary</h5>
                           <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <p className="text-gray-300">Base Membership Fee</p>
-                              <p className="text-white">₹{subscriptionInfo.membershipFee}</p>
-                            </div>
-                            {formData.planType === 'Premium' && (
-                              <div className="flex justify-between">
-                                <p className="text-gray-300">Premium Plan</p>
-                                <p className="text-white">x1.5</p>
-                              </div>
-                            )}
+                            {/* Find the selected plan */}
+                            {(() => {
+                              const selectedPlan = gymOwnerPlans.find(plan => plan.name === formData.planType) || gymOwnerPlans[0];
+                              return (
+                                <div className="flex justify-between">
+                                  <p className="text-gray-300">{selectedPlan.name} Plan</p>
+                                  <p className="text-white">₹{selectedPlan.price}/{selectedPlan.duration}</p>
+                                </div>
+                              );
+                            })()}
                             <div className="flex justify-between">
                               <p className="text-gray-300">Duration</p>
                               <p className="text-white">x{formData.membershipDuration} year(s)</p>

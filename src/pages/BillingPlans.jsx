@@ -4,19 +4,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, CreditCard, TrendingUp, Calendar, FileText, Edit, Download, CheckCircle, AlertTriangle } from "lucide-react";
+import { Search, Plus, CreditCard, TrendingUp, Calendar, FileText, Edit, Download, CheckCircle, AlertTriangle, Trash2, X, Save } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-
-// API URL
-const API_URL = 'http://localhost:8081/api';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Navigate } from "react-router-dom";
 
 const BillingPlans = () => {
   const [activeTab, setActiveTab] = useState("plans");
   const [searchTerm, setSearchTerm] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPlanDialog, setShowPlanDialog] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [planFormData, setPlanFormData] = useState({
+    name: '',
+    price: '',
+    duration: 'monthly',
+    maxMembers: '',
+    maxTrainers: '',
+    features: '',
+    status: 'Active',
+    recommended: false
+  });
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [pendingAmount, setPendingAmount] = useState(0);
+  const [overdueAmount, setOverdueAmount] = useState(0);
+  
   const { 
     user, 
     authFetch, 
@@ -26,47 +47,251 @@ const BillingPlans = () => {
     isGymOwner
   } = useAuth();
   
+  // Redirect gym owners to their specific plans page
+  if (isGymOwner && !isSuperAdmin) {
+    return <Navigate to="/gym-owner-plans" replace />;
+  }
+  
   // Fetch subscription data when component mounts
   useEffect(() => {
-    if (user && isGymOwner) {
-      checkSubscriptionStatus(user._id);
+    fetchPlans();
+    if (isSuperAdmin) {
+      fetchBillingStats();
     }
-  }, [user, checkSubscriptionStatus, isGymOwner]);
-
-  // Plans data
-  const plans = [
-    {
-      id: "basic",
-      name: "Basic",
-      price: 49,
-      duration: "monthly",
-      maxMembers: 200,
-      maxTrainers: 5,
-      features: ["Member Management", "Basic Reports", "Email Support"],
-      status: "Active"
-    },
-    {
-      id: "premium",
-      name: "Premium",
-      price: 99,
-      duration: "monthly",
-      maxMembers: 500,
-      maxTrainers: 15,
-      features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
-      status: "Active",
-      recommended: true
-    },
-    {
-      id: "enterprise",
-      name: "Enterprise",
-      price: 199,
-      duration: "monthly",
-      maxMembers: 1000,
-      maxTrainers: 50,
-      features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
-      status: "Active"
+  }, [user, isSuperAdmin]);
+  
+  // Fetch plans from API
+  const fetchPlans = async () => {
+    setIsLoading(true);
+    try {
+      const response = await authFetch('/subscription-plans');
+      
+      if (response.success || response.status === 'success') {
+        setPlans(response.data.plans);
+      } else {
+        // If API fails, use default plans
+        setPlans([
+          {
+            id: "basic",
+            name: "Basic",
+            price: 49,
+            duration: "monthly",
+            maxMembers: 200,
+            maxTrainers: 5,
+            features: ["Member Management", "Basic Reports", "Email Support"],
+            status: "Active"
+          },
+          {
+            id: "premium",
+            name: "Premium",
+            price: 99,
+            duration: "monthly",
+            maxMembers: 500,
+            maxTrainers: 15,
+            features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
+            status: "Active",
+            recommended: true
+          },
+          {
+            id: "enterprise",
+            name: "Enterprise",
+            price: 199,
+            duration: "monthly",
+            maxMembers: 1000,
+            maxTrainers: 50,
+            features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
+            status: "Active"
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      toast.error('Failed to load subscription plans');
+      
+      // Use default plans if API fails
+      setPlans([
+        {
+          id: "basic",
+          name: "Basic",
+          price: 49,
+          duration: "monthly",
+          maxMembers: 200,
+          maxTrainers: 5,
+          features: ["Member Management", "Basic Reports", "Email Support"],
+          status: "Active"
+        },
+        {
+          id: "premium",
+          name: "Premium",
+          price: 99,
+          duration: "monthly",
+          maxMembers: 500,
+          maxTrainers: 15,
+          features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
+          status: "Active",
+          recommended: true
+        },
+        {
+          id: "enterprise",
+          name: "Enterprise",
+          price: 199,
+          duration: "monthly",
+          maxMembers: 1000,
+          maxTrainers: 50,
+          features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
+          status: "Active"
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
+  
+  // Fetch billing statistics
+  const fetchBillingStats = async () => {
+    try {
+      // Fetch total revenue
+      const revenueResponse = await authFetch('/subscriptions/revenue/total');
+      if (revenueResponse.success || revenueResponse.status === 'success') {
+        setTotalRevenue(revenueResponse.data.totalRevenue || 0);
+      }
+      
+      // For pending and overdue amounts, we would need additional API endpoints
+      // For now, we'll use mock data
+      setPendingAmount(149);
+      setOverdueAmount(99);
+    } catch (error) {
+      console.error('Error fetching billing stats:', error);
+    }
+  };
+  
+  // Handle plan form input changes
+  const handlePlanFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setPlanFormData({
+      ...planFormData,
+      [name]: type === 'checkbox' ? checked : value
+    });
+  };
+  
+  // Handle features input (comma-separated string to array)
+  const handleFeaturesChange = (value) => {
+    setPlanFormData({
+      ...planFormData,
+      features: value
+    });
+  };
+  
+  // Open dialog for creating a new plan
+  const handleCreatePlan = () => {
+    setEditingPlan(null);
+    setPlanFormData({
+      name: '',
+      price: '',
+      duration: 'monthly',
+      maxMembers: '',
+      maxTrainers: '',
+      features: '',
+      status: 'Active',
+      recommended: false
+    });
+    setShowPlanDialog(true);
+  };
+  
+  // Open dialog for editing an existing plan
+  const handleEditPlan = (plan) => {
+    setEditingPlan(plan);
+    setPlanFormData({
+      name: plan.name,
+      price: plan.price,
+      duration: plan.duration || 'monthly',
+      maxMembers: plan.maxMembers,
+      maxTrainers: plan.maxTrainers,
+      features: Array.isArray(plan.features) ? plan.features.join(', ') : plan.features,
+      status: plan.status || 'Active',
+      recommended: plan.recommended || false
+    });
+    setShowPlanDialog(true);
+  };
+  
+  // Save plan (create or update)
+  const handleSavePlan = async () => {
+    // Validate form data
+    if (!planFormData.name || !planFormData.price || !planFormData.maxMembers || !planFormData.maxTrainers) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    setIsProcessing(true);
+    
+    try {
+      // Convert features from string to array
+      const featuresArray = planFormData.features
+        .split(',')
+        .map(feature => feature.trim())
+        .filter(feature => feature.length > 0);
+      
+      const planData = {
+        ...planFormData,
+        price: Number(planFormData.price),
+        maxMembers: Number(planFormData.maxMembers),
+        maxTrainers: Number(planFormData.maxTrainers),
+        features: featuresArray
+      };
+      
+      let response;
+      
+      if (editingPlan) {
+        // Update existing plan
+        response = await authFetch(`/subscription-plans/${editingPlan._id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(planData)
+        });
+      } else {
+        // Create new plan
+        response = await authFetch('/subscription-plans', {
+          method: 'POST',
+          body: JSON.stringify(planData)
+        });
+      }
+      
+      if (response.success || response.status === 'success') {
+        toast.success(editingPlan ? 'Plan updated successfully' : 'Plan created successfully');
+        setShowPlanDialog(false);
+        fetchPlans(); // Refresh plans list
+      } else {
+        toast.error(response.message || 'Failed to save plan');
+      }
+    } catch (error) {
+      console.error('Error saving plan:', error);
+      toast.error('An error occurred while saving the plan');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Delete a plan
+  const handleDeletePlan = async (planId) => {
+    if (!confirm('Are you sure you want to delete this plan? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const response = await authFetch(`/subscription-plans/${planId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.success || response.status === 'success' || response.status === 204) {
+        toast.success('Plan deleted successfully');
+        fetchPlans(); // Refresh plans list
+      } else {
+        toast.error(response.message || 'Failed to delete plan');
+      }
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      toast.error('An error occurred while deleting the plan');
+    }
+  };
   
   // Handle plan selection
   const handlePlanSelection = (plan) => {
@@ -192,9 +417,13 @@ const BillingPlans = () => {
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
 
-  const totalRevenue = invoices.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0);
-  const pendingAmount = invoices.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + inv.amount, 0);
-  const overdueAmount = invoices.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + inv.amount, 0);
+  // Calculate invoice stats for display if API stats are not available
+  const invoiceRevenue = invoices.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + inv.amount, 0);
+  
+  // Use API stats if available, otherwise use calculated values from invoices
+  const displayRevenue = totalRevenue || invoiceRevenue;
+  const displayPendingAmount = pendingAmount || invoices.filter(inv => inv.status === 'Pending').reduce((sum, inv) => sum + inv.amount, 0);
+  const displayOverdueAmount = overdueAmount || invoices.filter(inv => inv.status === 'Overdue').reduce((sum, inv) => sum + inv.amount, 0);
   
   // Get current subscription info
   const currentSubscription = subscription?.subscription;
@@ -207,10 +436,13 @@ const BillingPlans = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">Billing & Plans</h1>
-            <p className="text-gray-400">Manage subscription plans and billing for all gyms</p>
+            <h1 className="text-3xl font-bold text-white">Gym Owner Billing & Plans</h1>
+            <p className="text-gray-400">Manage subscription plans and billing for gym owners</p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={handleCreatePlan}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Create New Plan
           </Button>
@@ -223,7 +455,7 @@ const BillingPlans = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Total Revenue</p>
-                  <p className="text-2xl font-bold text-white">${totalRevenue}</p>
+                  <p className="text-2xl font-bold text-white">₹{displayRevenue}</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-green-500" />
               </div>
@@ -235,7 +467,7 @@ const BillingPlans = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Pending Amount</p>
-                  <p className="text-2xl font-bold text-white">${pendingAmount}</p>
+                  <p className="text-2xl font-bold text-white">₹{displayPendingAmount}</p>
                 </div>
                 <Calendar className="h-8 w-8 text-yellow-500" />
               </div>
@@ -247,7 +479,7 @@ const BillingPlans = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Overdue Amount</p>
-                  <p className="text-2xl font-bold text-white">${overdueAmount}</p>
+                  <p className="text-2xl font-bold text-white">₹{displayOverdueAmount}</p>
                 </div>
                 <CreditCard className="h-8 w-8 text-red-500" />
               </div>
@@ -277,7 +509,7 @@ const BillingPlans = () => {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            Subscription Plans
+            Gym Owner Plans
           </button>
           <button
             onClick={() => setActiveTab("invoices")}
@@ -287,55 +519,29 @@ const BillingPlans = () => {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            Billing History
+            Invoices
+          </button>
+          <button
+            onClick={() => setActiveTab("revenue")}
+            className={`pb-4 px-2 font-medium transition-colors ${
+              activeTab === "revenue" 
+                ? "text-blue-400 border-b-2 border-blue-400" 
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Revenue
           </button>
         </div>
 
-        {/* Current Subscription Status (for gym owners) */}
-        {isGymOwner && currentSubscription && (
-          <Card className={`${hasActiveSubscription ? 'bg-green-900/20 border-green-800' : 'bg-red-900/20 border-red-800'}`}>
-            <CardHeader>
-              <CardTitle className="text-white flex items-center">
-                {hasActiveSubscription ? (
-                  <>
-                    <CheckCircle className="mr-2 h-5 w-5 text-green-400" />
-                    Active Subscription
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="mr-2 h-5 w-5 text-red-400" />
-                    Subscription Expired
-                  </>
-                )}
-              </CardTitle>
-              <CardDescription className="text-gray-400">
-                {hasActiveSubscription ? (
-                  <>
-                    Your {currentSubscription.plan} plan is active until {new Date(currentSubscription.endDate).toLocaleDateString()}.
-                    {daysRemaining <= 5 && (
-                      <span className="text-yellow-400 ml-1">
-                        ({daysRemaining} day{daysRemaining !== 1 ? 's' : ''} remaining)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    Your {currentSubscription.plan} plan expired on {new Date(currentSubscription.endDate).toLocaleDateString()}.
-                    Please renew to regain access to all features.
-                  </>
-                )}
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        )}
+
 
         {/* Plans Tab */}
         {activeTab === "plans" && (
           <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Subscription Plans</CardTitle>
+              <CardTitle className="text-white">Gym Owner Subscription Plans</CardTitle>
               <CardDescription className="text-gray-400">
-                {isGymOwner ? 'Choose a plan to subscribe or renew' : 'Manage available plans and their features'}
+                Manage subscription plans for gym owners
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -418,16 +624,44 @@ const BillingPlans = () => {
                             </>
                           )}
                         </Button>
+                      ) : isSuperAdmin ? (
+                        <div className="flex gap-2 w-full">
+                          <Button 
+                            variant="outline" 
+                            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-600"
+                            onClick={() => handleEditPlan(plan)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            className="border-gray-600 text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                            onClick={() => handleDeletePlan(plan._id || plan.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       ) : (
-                        <Button variant="outline" className="w-full border-gray-600 text-gray-300 hover:bg-gray-600">
+                        <Button 
+                          variant="outline" 
+                          className="w-full border-gray-600 text-gray-300 hover:bg-gray-600"
+                          disabled={true}
+                        >
                           <Edit className="h-4 w-4 mr-2" />
-                          Edit Plan
+                          View Details
                         </Button>
                       )}
                     </CardFooter>
                   </Card>
                 ))}
               </div>
+              
+              {isLoading && (
+                <div className="flex justify-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+              )}
               
               {/* Payment Section */}
               {isGymOwner && selectedPlan && (
@@ -542,90 +776,157 @@ const BillingPlans = () => {
             </CardContent>
           </Card>
         )}
-
-        {/* Invoices Tab */}
-        {activeTab === "invoices" && (
-          <Card className="bg-gray-800/50 border-gray-700">
-            <CardHeader>
-              <CardTitle className="text-white">Billing History</CardTitle>
-              <CardDescription className="text-gray-400">
-                View and manage all invoices and payments
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search invoices or gyms..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
-                  Export All
-                </Button>
-              </div>
-
-              <div className="rounded-md border border-gray-700 overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gray-700 hover:bg-gray-800/50">
-                      <TableHead className="text-gray-300">Invoice Details</TableHead>
-                      <TableHead className="text-gray-300">Gym & Plan</TableHead>
-                      <TableHead className="text-gray-300">Amount</TableHead>
-                      <TableHead className="text-gray-300">Status</TableHead>
-                      <TableHead className="text-gray-300">Dates</TableHead>
-                      <TableHead className="text-gray-300">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoices.map((invoice) => (
-                      <TableRow key={invoice.id} className="border-gray-700 hover:bg-gray-800/30">
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-white">{invoice.invoiceNumber}</p>
-                            <p className="text-sm text-gray-400">Issued: {invoice.issueDate}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="text-white">{invoice.gymName}</p>
-                            <p className="text-sm text-gray-400">{invoice.planName} Plan</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-white font-medium">${invoice.amount}</p>
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(invoice.status)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <p className="text-white">Due: {invoice.dueDate}</p>
-                            <p className="text-gray-400">Renewal: {invoice.renewalDate}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button size="sm" variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
+
+      {/* Plan Creation/Editing Dialog */}
+      <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
+        <DialogContent className="bg-gray-800 border-gray-700 text-white sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-white">{editingPlan ? 'Edit Subscription Plan' : 'Create New Subscription Plan'}</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              {editingPlan ? 'Update the details of this subscription plan.' : 'Fill in the details for the new subscription plan.'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Label htmlFor="name" className="text-white">Plan Name</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={planFormData.name}
+                  onChange={handlePlanFormChange}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="e.g. Basic, Premium, Enterprise"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="price" className="text-white">Price (₹)</Label>
+                <Input
+                  id="price"
+                  name="price"
+                  type="number"
+                  value={planFormData.price}
+                  onChange={handlePlanFormChange}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="e.g. 99"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="duration" className="text-white">Duration</Label>
+                <Select 
+                  name="duration" 
+                  value={planFormData.duration} 
+                  onValueChange={(value) => handlePlanFormChange({ target: { name: 'duration', value } })}
+                >
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Select duration" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-700 border-gray-600 text-white">
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="maxMembers" className="text-white">Max Members</Label>
+                <Input
+                  id="maxMembers"
+                  name="maxMembers"
+                  type="number"
+                  value={planFormData.maxMembers}
+                  onChange={handlePlanFormChange}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="e.g. 200"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="maxTrainers" className="text-white">Max Trainers</Label>
+                <Input
+                  id="maxTrainers"
+                  name="maxTrainers"
+                  type="number"
+                  value={planFormData.maxTrainers}
+                  onChange={handlePlanFormChange}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="e.g. 5"
+                />
+              </div>
+              
+              <div className="col-span-2">
+                <Label htmlFor="features" className="text-white">Features (comma-separated)</Label>
+                <Textarea
+                  id="features"
+                  name="features"
+                  value={planFormData.features}
+                  onChange={(e) => handleFeaturesChange(e.target.value)}
+                  className="bg-gray-700 border-gray-600 text-white min-h-[100px]"
+                  placeholder="e.g. Member Management, Basic Reports, Email Support"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="status" className="text-white">Status</Label>
+                <Select 
+                  name="status" 
+                  value={planFormData.status} 
+                  onValueChange={(value) => handlePlanFormChange({ target: { name: 'status', value } })}
+                >
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-700 border-gray-600 text-white">
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="Deprecated">Deprecated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="recommended" className="text-white">Recommended Plan</Label>
+                <Switch
+                  id="recommended"
+                  name="recommended"
+                  checked={planFormData.recommended}
+                  onCheckedChange={(checked) => handlePlanFormChange({ target: { name: 'recommended', type: 'checkbox', checked } })}
+                />
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              onClick={() => setShowPlanDialog(false)}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleSavePlan}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {editingPlan ? 'Update Plan' : 'Create Plan'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };

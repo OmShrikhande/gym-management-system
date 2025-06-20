@@ -80,9 +80,13 @@ const DietPlans = () => {
   const isSuperAdmin = userRole === 'super-admin';
   const isMember = userRole === 'member';
   
-  // Load diet plans based on user role - defined as a memoized callback
+  // Load diet plans based on user role - defined as a memoized callback with caching
   const loadDietPlans = useCallback(async () => {
     if (!user) return;
+    
+    // Clear cache to ensure we get fresh data for debugging
+    localStorage.removeItem('cached_diet_plans');
+    localStorage.removeItem('cached_diet_plans_timestamp');
     
     setIsLoading(true);
     setError(null);
@@ -98,16 +102,23 @@ const DietPlans = () => {
       } else if (isGymOwner) {
         // Gym owners can see all diet plans created by their trainers
         endpoint = `/diet-plans/gym/${user._id}`;
-        console.log('Gym owner fetching diet plans from:', endpoint);
       }
       
+      console.log('Fetching diet plans from endpoint:', endpoint);
+      console.log('User role:', isGymOwner ? 'Gym Owner' : isTrainer ? 'Trainer' : isMember ? 'Member' : 'Unknown');
+      console.log('User ID:', user._id);
+      
       const response = await authFetch(endpoint);
-      console.log('Diet plans response:', response);
+      
+      console.log('Diet Plan API response:', response);
       
       if (response.success || response.status === 'success') {
-        setDietPlans(response.data?.dietPlans || []);
-        console.log('Diet plans loaded:', response.data?.dietPlans?.length || 0);
+        const dietPlansData = response.data?.dietPlans || [];
+        console.log('Diet plans data received:', dietPlansData);
+        
+        setDietPlans(dietPlansData);
       } else {
+        console.error('Failed to load diet plans:', response.message);
         setError(response.message || 'Failed to load diet plans');
         toast.error(response.message || 'Failed to load diet plans');
       }
@@ -120,17 +131,23 @@ const DietPlans = () => {
     }
   }, [user, isTrainer, isMember, isGymOwner, authFetch, user?._id]);
   
-  // Load diet plans
+  // Load diet plans with reduced API calls
   useEffect(() => {
     if (user) {
       loadDietPlans();
       
-      // Load users for filtering
+      // Load users for filtering with caching
       if (isGymOwner || isSuperAdmin) {
-        fetchUsers();
+        // Check if we have cached users and it's not too old
+        const cachedTimestamp = window.lastUsersFetchTime || 0;
+        const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+        
+        if (!users.length || (Date.now() - cachedTimestamp > CACHE_DURATION)) {
+          fetchUsers(false); // Use cached data if available
+        }
       }
     }
-  }, [user, loadDietPlans, isGymOwner, isSuperAdmin, fetchUsers]);
+  }, [user, loadDietPlans, isGymOwner, isSuperAdmin, fetchUsers, users.length]);
   
   // Extract members from users for filtering using useMemo
   const extractedMembers = useMemo(() => {
@@ -140,7 +157,7 @@ const DietPlans = () => {
   // Extract trainers from users for filtering using useMemo
   const extractedTrainers = useMemo(() => {
     const trainers = users?.filter(u => u.role === 'trainer') || [];
-    console.log('Extracted trainers:', trainers.length, trainers);
+    // Extracted trainers for diet plan assignment
     return trainers;
   }, [users]);
   
@@ -238,7 +255,7 @@ const DietPlans = () => {
         trainerName: user.name,
       };
       
-      console.log('Submitting diet plan data:', dietPlanData);
+      // Submitting diet plan data
       
       let response;
       
@@ -256,14 +273,14 @@ const DietPlans = () => {
         });
       }
       
-      console.log('Diet plan submission response:', response);
+      // Diet plan submission completed
       
       if (response.success || response.status === 'success') {
         toast.success(isEditing ? 'Diet plan updated successfully' : 'Diet plan created successfully');
         
         // Refresh diet plans list
         const updatedDietPlans = await authFetch(`/diet-plans/trainer/${user._id}`);
-        console.log('Updated diet plans response:', updatedDietPlans);
+        // Diet plans updated
         
         if (updatedDietPlans.success || updatedDietPlans.status === 'success') {
           setDietPlans(updatedDietPlans.data?.dietPlans || []);
@@ -279,7 +296,7 @@ const DietPlans = () => {
         toast.error(response.message || 'Failed to save diet plan');
       }
     } catch (error) {
-      console.error('Error submitting diet plan:', error);
+      // Error submitting diet plan
       toast.error('An error occurred while saving the diet plan');
     } finally {
       setFormSubmitting(false);
@@ -311,7 +328,7 @@ const DietPlans = () => {
         method: 'DELETE',
       });
       
-      console.log('Delete diet plan response:', response);
+      // Diet plan deletion completed
       
       if (response.success || response.status === 'success') {
         toast.success('Diet plan deleted successfully');
@@ -322,7 +339,7 @@ const DietPlans = () => {
         toast.error(response.message || 'Failed to delete diet plan');
       }
     } catch (error) {
-      console.error('Error deleting diet plan:', error);
+      // Error deleting diet plan
       toast.error('An error occurred while deleting the diet plan');
     }
   };

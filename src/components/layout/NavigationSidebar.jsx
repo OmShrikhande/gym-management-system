@@ -15,15 +15,19 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-interface NavigationSidebarProps {
-  onClose?: () => void;
-}
+/**
+ * @typedef {Object} NavigationSidebarProps
+ * @property {() => void} [onClose] - Optional function to close the sidebar
+ */
 
-const NavigationSidebar = ({ onClose }: NavigationSidebarProps) => {
+/**
+ * @param {NavigationSidebarProps} props
+ */
+const NavigationSidebar = ({ onClose }) => {
   const { userRole } = useAuth();
   const navigate = useNavigate();
 
-  const handleNavigation = (href: string) => {
+  const handleNavigation = (href) => {
     navigate(href);
     if (onClose) onClose();
   };
@@ -39,7 +43,7 @@ const NavigationSidebar = ({ onClose }: NavigationSidebarProps) => {
           ...baseItems,
           { label: "Gym Management", icon: Building2, href: "/gyms" },
           { label: "User Management", icon: Users, href: "/users" },
-          { label: "Billing & Plans", icon: CreditCard, href: "/billing" },
+          { label: "Billing & Plans", icon: CreditCard, href: "/billing-plans" },
           { label: "Reports", icon: BarChart3, href: "/reports" },
           { label: "System Settings", icon: Settings, href: "/settings" }
         ];
@@ -48,6 +52,7 @@ const NavigationSidebar = ({ onClose }: NavigationSidebarProps) => {
           ...baseItems,
           { label: "Members", icon: Users, href: "/members" },
           { label: "Trainers", icon: UserCheck, href: "/trainers" },
+          { label: "Member Plans", icon: CreditCard, href: "/gym-owner-plans" },
           { label: "Workouts", icon: Dumbbell, href: "/workouts" },
           { label: "Workout Management", icon: Dumbbell, href: "/workout-management" },
           { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" },

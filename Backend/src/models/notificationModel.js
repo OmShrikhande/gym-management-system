@@ -8,7 +8,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['payment_due', 'payment_success', 'subscription_expiring', 'subscription_expired', 'system'],
+    enum: ['payment_due', 'payment_success', 'subscription_expiring', 'subscription_expired', 'system', 'message'],
     required: [true, 'Notification must have a type']
   },
   title: {

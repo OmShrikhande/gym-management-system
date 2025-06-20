@@ -68,40 +68,98 @@ function UserManagement() {
     paymentMethod: 'credit_card'
   });
   
-  // Plans data from BillingPlans.jsx
-  const plans = [
-    {
-      id: "basic",
-      name: "Basic",
-      price: 49,
-      duration: "monthly",
-      maxMembers: 200,
-      maxTrainers: 5,
-      features: ["Member Management", "Basic Reports", "Email Support"],
-      status: "Active"
-    },
-    {
-      id: "premium",
-      name: "Premium",
-      price: 99,
-      duration: "monthly",
-      maxMembers: 500,
-      maxTrainers: 15,
-      features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
-      status: "Active",
-      recommended: true
-    },
-    {
-      id: "enterprise",
-      name: "Enterprise",
-      price: 199,
-      duration: "monthly",
-      maxMembers: 1000,
-      maxTrainers: 50,
-      features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
-      status: "Active"
-    }
-  ];
+  // State for subscription plans
+  const [plans, setPlans] = useState([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  
+  // Fetch subscription plans from API
+  useEffect(() => {
+    const fetchSubscriptionPlans = async () => {
+      setIsLoadingPlans(true);
+      try {
+        const response = await authFetch('/subscription-plans');
+        
+        if (response.success || response.status === 'success') {
+          setPlans(response.data.plans);
+        } else {
+          // If API fails, use default plans
+          setPlans([
+            {
+              _id: "basic",
+              name: "Basic",
+              price: 49,
+              duration: "monthly",
+              maxMembers: 200,
+              maxTrainers: 5,
+              features: ["Member Management", "Basic Reports", "Email Support"],
+              status: "Active"
+            },
+            {
+              _id: "premium",
+              name: "Premium",
+              price: 99,
+              duration: "monthly",
+              maxMembers: 500,
+              maxTrainers: 15,
+              features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
+              status: "Active",
+              recommended: true
+            },
+            {
+              _id: "enterprise",
+              name: "Enterprise",
+              price: 199,
+              duration: "monthly",
+              maxMembers: 1000,
+              maxTrainers: 50,
+              features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
+              status: "Active"
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('Error fetching subscription plans:', error);
+        // Use default plans if API fails
+        setPlans([
+          {
+            _id: "basic",
+            name: "Basic",
+            price: 49,
+            duration: "monthly",
+            maxMembers: 200,
+            maxTrainers: 5,
+            features: ["Member Management", "Basic Reports", "Email Support"],
+            status: "Active"
+          },
+          {
+            _id: "premium",
+            name: "Premium",
+            price: 99,
+            duration: "monthly",
+            maxMembers: 500,
+            maxTrainers: 15,
+            features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
+            status: "Active",
+            recommended: true
+          },
+          {
+            _id: "enterprise",
+            name: "Enterprise",
+            price: 199,
+            duration: "monthly",
+            maxMembers: 1000,
+            maxTrainers: 50,
+            features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
+            status: "Active"
+          }
+        ]);
+      } finally {
+        setIsLoadingPlans(false);
+      }
+    };
+    
+    fetchSubscriptionPlans();
+  }, [authFetch]);
   
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isLoading, setIsLoading] = useState(false);
@@ -300,7 +358,7 @@ function UserManagement() {
     
     try {
       // Get the selected plan details
-      const selectedPlan = plans.find(p => p.id === formData.subscriptionPlan);
+      const selectedPlan = plans.find(p => (p._id || p.id) === formData.subscriptionPlan);
       
       if (!selectedPlan) {
         setMessage({ type: 'error', text: 'Invalid subscription plan selected' });
@@ -309,12 +367,8 @@ function UserManagement() {
       }
       
       // Create a Razorpay order
-      const API_URL = 'http://localhost:8081/api';
-      const orderResponse = await authFetch(`${API_URL}/payments/razorpay/create-order`, {
+      const orderResponse = await authFetch(`/payments/razorpay/create-order`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           amount: selectedPlan.price,
           currency: 'INR',
@@ -328,15 +382,13 @@ function UserManagement() {
         })
       });
       
-      if (!orderResponse.ok) {
-        const errorData = await orderResponse.json();
-        setMessage({ type: 'error', text: errorData.message || 'Failed to create payment order' });
+      if (!orderResponse.success && !orderResponse.status === 'success') {
+        setMessage({ type: 'error', text: orderResponse.message || 'Failed to create payment order' });
         setIsProcessingPayment(false);
         return;
       }
       
-      const orderData = await orderResponse.json();
-      const order = orderData.data.order;
+      const order = orderResponse.data.order;
       
       // If QR code payment is selected, generate QR code
       if (formData.paymentMethod === 'qr_scanner') {
@@ -469,7 +521,6 @@ function UserManagement() {
       const pendingGymOwnerData = JSON.parse(pendingGymOwnerDataStr);
       console.log('Retrieved pending gym owner data:', pendingGymOwnerData);
       
-      const API_URL = 'http://localhost:8081/api';
       const requestBody = {
         ...paymentResponse,
         gymOwnerData: pendingGymOwnerData
@@ -477,28 +528,22 @@ function UserManagement() {
       
       console.log('Sending payment verification request:', requestBody);
       
-      const verifyResponse = await authFetch(`${API_URL}/payments/razorpay/verify`, {
+      const verifyResponse = await authFetch(`/payments/razorpay/verify`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify(requestBody)
       });
       
-      if (!verifyResponse.ok) {
-        const errorData = await verifyResponse.json();
-        setMessage({ type: 'error', text: errorData.message || 'Payment verification failed' });
+      if (!verifyResponse.success && !verifyResponse.status === 'success') {
+        setMessage({ type: 'error', text: verifyResponse.message || 'Payment verification failed' });
         setIsProcessingPayment(false);
         return;
       }
-      
-      const responseData = await verifyResponse.json();
       
       // Show success message
       toast.success('Payment successful! Gym owner account created.');
       setMessage({ 
         type: 'success', 
-        text: `Gym owner created successfully with ${responseData.data.subscription.plan} subscription plan.` 
+        text: `Gym owner created successfully with ${verifyResponse.data.subscription.plan} subscription plan.` 
       });
       
       // Clear session storage
@@ -877,35 +922,41 @@ function UserManagement() {
                       <div className="mb-5">
                         <Label className="mb-2 block text-gray-300">Subscription Plan</Label>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                          {plans.map((plan) => (
-                            <div 
-                              key={plan.id}
-                              className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                                formData.subscriptionPlan === plan.id 
-                                  ? 'bg-blue-900/30 border-blue-500' 
-                                  : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800'
-                              }`}
-                              onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: plan.id }))}
-                            >
-                              <div className="flex justify-between items-start mb-2">
-                                <div>
-                                  <h3 className="font-bold text-white">{plan.name}</h3>
-                                  <p className="text-gray-400">
-                                    <span className="text-lg font-bold text-white">${plan.price}</span>/month
-                                  </p>
-                                </div>
-                                {plan.recommended && (
-                                  <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
-                                    Recommended
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm text-gray-300">
-                                <p>Max Members: {plan.maxMembers}</p>
-                                <p>Max Trainers: {plan.maxTrainers}</p>
-                              </div>
+                          {isLoadingPlans ? (
+                            <div className="col-span-3 flex justify-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                             </div>
-                          ))}
+                          ) : (
+                            plans.filter(plan => plan.status === 'Active').map((plan) => (
+                              <div 
+                                key={plan._id || plan.id}
+                                className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                                  formData.subscriptionPlan === (plan._id || plan.id)
+                                    ? 'bg-blue-900/30 border-blue-500' 
+                                    : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800'
+                                }`}
+                                onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: plan._id || plan.id }))}
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h3 className="font-bold text-white">{plan.name}</h3>
+                                    <p className="text-gray-400">
+                                      <span className="text-lg font-bold text-white">₹{plan.price}</span>/month
+                                    </p>
+                                  </div>
+                                  {plan.recommended && (
+                                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                                      Recommended
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-sm text-gray-300">
+                                  <p>Max Members: {plan.maxMembers}</p>
+                                  <p>Max Trainers: {plan.maxTrainers}</p>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     </>
@@ -966,7 +1017,7 @@ function UserManagement() {
                             <div className="flex justify-between mb-2">
                               <span className="text-gray-300">Plan:</span>
                               <span className="text-white font-medium">
-                                {plans.find(p => p.id === formData.subscriptionPlan)?.name}
+                                {plans.find(p => (p._id || p.id) === formData.subscriptionPlan)?.name}
                               </span>
                             </div>
                             <div className="flex justify-between mb-2">

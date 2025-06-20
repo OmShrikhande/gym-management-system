@@ -32,16 +32,14 @@ const NotificationCenter = () => {
     };
   }, []);
 
-  // Refresh notifications every minute
+  // Temporarily disable automatic notification fetching to reduce system load
   useEffect(() => {
-    if (!user) return;
+    // We're disabling automatic notification fetching to improve performance
+    // Notifications will only be fetched when explicitly requested by user actions
     
-    const interval = setInterval(() => {
-      fetchNotifications(user._id);
-    }, 60000); // 1 minute
-    
-    return () => clearInterval(interval);
-  }, [user, fetchNotifications]);
+    // No interval polling to reduce API calls and system load
+    return () => {};
+  }, []);
 
   // Handle notification click
   const handleNotificationClick = (notification) => {

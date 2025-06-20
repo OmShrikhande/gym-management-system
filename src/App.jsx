@@ -9,6 +9,7 @@ import GymManagement from "./pages/GymManagement.jsx";
 import GymOwnerDetails from "./pages/GymOwnerDetails.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
 import BillingPlans from "./pages/BillingPlans.jsx";
+import GymOwnerPlans from "./pages/GymOwnerPlans.jsx";
 import Reports from "./pages/Reports.jsx";
 import SystemSettings from "./pages/SystemSettings.jsx";
 import Members from "./pages/Members.jsx";
@@ -55,13 +56,19 @@ const App = () => (
             </ProtectedRoute>
           } />
           <Route path="/billing" element={
-            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner']}>
+            <ProtectedRoute allowedRoles={['super-admin']}>
               <BillingPlans />
             </ProtectedRoute>
           } />
           <Route path="/billing-plans" element={
-            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner']}>
+            <ProtectedRoute allowedRoles={['super-admin']}>
               <BillingPlans />
+            </ProtectedRoute>
+          }
+          />
+          <Route path="/gym-owner-plans" element={
+            <ProtectedRoute allowedRoles={['gym-owner']}>
+              <GymOwnerPlans />
             </ProtectedRoute>
           } />
           <Route path="/reports" element={

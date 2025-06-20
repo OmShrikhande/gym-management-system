@@ -28,27 +28,24 @@ const GymOwnerDetails = () => {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  const API_URL = 'http://localhost:8081/api';
 
   useEffect(() => {
     const fetchGymOwnerDetails = async () => {
       setLoading(true);
       try {
         // Fetch gym owner details
-        const userResponse = await authFetch(`${API_URL}/users/${id}`);
-        if (!userResponse.ok) {
-          throw new Error('Failed to fetch gym owner details');
+        const userResponse = await authFetch(`/users/${id}`);
+        if (userResponse.success || userResponse.status === 'success') {
+          setGymOwner(userResponse.data.user);
+        } else {
+          throw new Error(userResponse.message || 'Failed to fetch gym owner details');
         }
-        const userData = await userResponse.json();
-        setGymOwner(userData.data.user);
         
         // Fetch subscription details
         try {
-          const subscriptionResponse = await authFetch(`${API_URL}/subscriptions/gym-owner/${id}`);
-          if (subscriptionResponse.ok) {
-            const subscriptionData = await subscriptionResponse.json();
-            setSubscription(subscriptionData.data.subscription);
+          const subscriptionResponse = await authFetch(`/subscriptions/gym-owner/${id}`);
+          if (subscriptionResponse.success || subscriptionResponse.status === 'success') {
+            setSubscription(subscriptionResponse.data.subscription);
           }
         } catch (subError) {
           console.log('No subscription found for this gym owner');
@@ -56,10 +53,9 @@ const GymOwnerDetails = () => {
         
         // Fetch members associated with this gym owner
         try {
-          const membersResponse = await authFetch(`${API_URL}/users/gym-owner/${id}/members`);
-          if (membersResponse.ok) {
-            const membersData = await membersResponse.json();
-            setMembers(membersData.data.users);
+          const membersResponse = await authFetch(`/users/gym-owner/${id}/members`);
+          if (membersResponse.success || membersResponse.status === 'success') {
+            setMembers(membersResponse.data.users);
           }
         } catch (membersError) {
           console.log('Error fetching members');

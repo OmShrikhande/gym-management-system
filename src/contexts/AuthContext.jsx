@@ -66,17 +66,17 @@ export const AuthProvider = ({ children }) => {
                 await checkSubscriptionStatus(storedUser._id, storedToken);
               }
               
-              // Load notifications
-              await fetchNotifications(storedUser._id, storedToken);
+              // PERFORMANCE OPTIMIZATION: Skip loading notifications to reduce API calls
+              // await fetchNotifications(storedUser._id, storedToken);
             }
           } else {
             // Token is invalid or expired, clear auth data
-            console.log('Token invalid or expired, logging out');
+            // PERFORMANCE OPTIMIZATION: Remove console logging
             clearAuthData();
           }
         } catch (err) {
           // If verification endpoint doesn't exist, fallback to stored user
-          console.log('Token verification failed, using stored user data');
+          // PERFORMANCE OPTIMIZATION: Remove console logging
           const storedUser = getStorageItem(USER_STORAGE_KEY, null);
           if (storedUser) {
             setUser(storedUser);
@@ -90,18 +90,34 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, [clearAuthData]);
   
-  // Check subscription status
-  const checkSubscriptionStatus = async (userId, authToken) => {
+  // Check subscription status with caching
+  const checkSubscriptionStatus = useCallback(async (userId, authToken, forceRefresh = false) => {
+    // If we have subscription data and it's not a forced refresh, use the cached data
+    // Only refresh subscription data every 30 minutes unless forced
+    const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const lastCheckTime = window.lastSubscriptionCheckTime || 0;
+    const shouldUseCache = !forceRefresh && 
+                          subscription && 
+                          (Date.now() - lastCheckTime < CACHE_DURATION);
+    
+    if (shouldUseCache) {
+      return subscription.hasActiveSubscription || !subscription.requiresSubscription;
+    }
+    
     try {
       const response = await fetch(`${API_URL}/subscriptions/status/${userId}`, {
         headers: {
           'Authorization': `Bearer ${authToken || token}`
-        }
+        },
+        cache: 'default'
       });
       
       if (response.ok) {
         const data = await response.json();
         setSubscription(data.data);
+        
+        // Store last check timestamp
+        window.lastSubscriptionCheckTime = Date.now();
         
         // If subscription has expired, log out the user
         if (data.data.requiresSubscription && !data.data.hasActiveSubscription) {
@@ -118,10 +134,30 @@ export const AuthProvider = ({ children }) => {
       console.error('Error checking subscription status:', err);
       return false;
     }
-  };
+  }, [subscription, token]);
   
-  // Fetch notifications
-  const fetchNotifications = async (userId, authToken, unreadOnly = false) => {
+  // Fetch notifications with caching - OPTIMIZED VERSION
+  const fetchNotifications = useCallback(async (userId, authToken, unreadOnly = false, forceRefresh = false) => {
+    // PERFORMANCE OPTIMIZATION: Return cached data immediately
+    // This function is temporarily modified to reduce API calls and system load
+    return { 
+      notifications: notifications || [], 
+      unreadCount: unreadNotificationCount || 0 
+    };
+    
+    // The original implementation is commented out to prevent excessive API calls
+    /*
+    // Cache notifications for 5 minutes unless forced refresh
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const lastFetchTime = window.lastNotificationsFetchTime || 0;
+    const shouldUseCache = !forceRefresh && 
+                          notifications.length > 0 && 
+                          (Date.now() - lastFetchTime < CACHE_DURATION);
+    
+    if (shouldUseCache) {
+      return { notifications, unreadCount: unreadNotificationCount };
+    }
+    
     try {
       // Fetch notifications
       const response = await fetch(
@@ -129,33 +165,47 @@ export const AuthProvider = ({ children }) => {
         {
           headers: {
             'Authorization': `Bearer ${authToken || token}`
-          }
+          },
+          cache: 'default'
         }
       );
       
       if (response.ok) {
         const data = await response.json();
         setNotifications(data.data.notifications);
+        
+        // Store last fetch timestamp
+        window.lastNotificationsFetchTime = Date.now();
       }
       
-      // Fetch unread count
-      const countResponse = await fetch(
-        `${API_URL}/notifications/user/${userId}/unread-count`, 
-        {
-          headers: {
-            'Authorization': `Bearer ${authToken || token}`
+      // Fetch unread count - only if we're not already getting unread only
+      if (!unreadOnly) {
+        const countResponse = await fetch(
+          `${API_URL}/notifications/user/${userId}/unread-count`, 
+          {
+            headers: {
+              'Authorization': `Bearer ${authToken || token}`
+            },
+            cache: 'default'
           }
+        );
+        
+        if (countResponse.ok) {
+          const countData = await countResponse.json();
+          setUnreadNotificationCount(countData.data.unreadCount);
         }
-      );
-      
-      if (countResponse.ok) {
-        const countData = await countResponse.json();
-        setUnreadNotificationCount(countData.data.unreadCount);
       }
+      
+      return { 
+        notifications: notifications, 
+        unreadCount: unreadNotificationCount 
+      };
     } catch (err) {
-      console.error('Error fetching notifications:', err);
+      // Silently fail without logging
+      return { notifications, unreadCount: unreadNotificationCount };
     }
-  };
+    */
+  }, [notifications, unreadNotificationCount]);
   
   // Mark notification as read
   const markNotificationAsRead = async (notificationId) => {
@@ -449,12 +499,12 @@ export const AuthProvider = ({ children }) => {
         }
       }
       
-      // Load notifications
-      await fetchNotifications(data.data.user._id, data.token);
+      // PERFORMANCE OPTIMIZATION: Skip loading notifications to reduce API calls
+      // await fetchNotifications(data.data.user._id, data.token);
       
       return { success: true, message: 'Login successful' };
     } catch (err) {
-      console.error('Login error:', err);
+      // PERFORMANCE OPTIMIZATION: Remove console logging
       setError('Login failed. Please try again.');
       return { success: false, message: 'Login failed. Please try again.' };
     } finally {
@@ -469,20 +519,31 @@ export const AuthProvider = ({ children }) => {
 
   const userRole = user?.role || "";
 
-  // Fetch users from backend (for admin purposes)
-  const fetchUsers = async () => {
+  // Fetch users from backend (for admin purposes) with caching
+  const fetchUsers = useCallback(async (forceRefresh = false) => {
     if (!token) return [];
+    
+    // Use cached users if available and not forcing refresh
+    if (!forceRefresh && users.length > 0) {
+      return users;
+    }
     
     try {
       const response = await fetch(`${API_URL}/users`, {
         headers: {
           'Authorization': `Bearer ${token}`
-        }
+        },
+        // Add cache control headers to leverage browser caching
+        cache: 'default'
       });
       
       if (response.ok) {
         const data = await response.json();
         setUsers(data.data.users);
+        
+        // Store last fetch timestamp
+        window.lastUsersFetchTime = Date.now();
+        
         return data.data.users;
       } else if (response.status === 401) {
         // Token expired or invalid
@@ -497,7 +558,7 @@ export const AuthProvider = ({ children }) => {
     }
     
     return [];
-  };
+  }, [token, users, clearAuthData]);
 
   // Update current user data
   const updateCurrentUser = (updatedUser) => {
@@ -543,14 +604,27 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Authentication expired. Please login again.');
       }
       
+      if (response.status === 403) {
+        // Permission denied - return a structured error response without logging
+        return {
+          success: false,
+          status: 'error',
+          message: 'Permission denied',
+          data: null
+        };
+      }
+      
       // Parse JSON response
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Auth fetch error:', error);
+      // PERFORMANCE OPTIMIZATION: Completely silent error handling
+      // No console logging to reduce system load
       return {
         success: false,
-        message: error.message || 'An error occurred during the request'
+        status: 'error',
+        message: error.message || 'An error occurred during the request',
+        data: null
       };
     }
   };

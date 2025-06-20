@@ -2,7 +2,12 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Video, Calendar, Dumbbell } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Search, Video, Calendar, Dumbbell, Plus } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -97,6 +102,7 @@ const WorkoutCard = React.memo(({ workout, formatDate }) => {
 
 const Workouts = () => {
   const { user, users, fetchUsers, isGymOwner, authFetch } = useAuth();
+  const userRole = user?.role || '';
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGoal, setFilterGoal] = useState("all");
   const [filterDifficulty, setFilterDifficulty] = useState("all");
@@ -108,7 +114,24 @@ const Workouts = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Define loadWorkouts as a memoized callback
+  // State for workout form
+  const [showWorkoutForm, setShowWorkoutForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [workoutFormData, setWorkoutFormData] = useState({
+    title: '',  // Changed from name to title to match backend
+    description: '',
+    type: 'beginner',
+    duration: '30',
+    exercises: '',
+    videoLink: '',  // Changed from videoUrl to videoLink to match backend
+    notes: ''
+  });
+  
+  // Check if user is a trainer
+  const isTrainer = userRole === 'trainer';
+  
+  // Define loadWorkouts as a memoized callback with caching
   const loadWorkouts = useCallback(async () => {
     if (!user || !user._id) return;
     
@@ -116,54 +139,109 @@ const Workouts = () => {
     setError(null);
     
     try {
-      // Gym owners can see all workouts created by their trainers
-      const endpoint = `/workouts/gym/${user._id}`;
-      console.log(`Fetching workouts for gym owner from: ${endpoint}`);
+      // Different endpoints based on user role
+      let endpoint;
+      
+      if (userRole === 'gym-owner') {
+        // Gym owners can see all workouts created by their trainers
+        endpoint = `/workouts/gym/${user._id}`;
+      } else if (userRole === 'trainer') {
+        // Trainers can see workouts they created
+        endpoint = `/workouts/trainer/${user._id}`;
+      } else {
+        // Other roles (like members) would have different endpoints
+        endpoint = `/workouts/user/${user._id}`;
+      }
       
       const response = await authFetch(endpoint);
-      console.log('API Response:', response);
       
       if (response.success || response.status === 'success') {
         const workoutsData = response.data?.workouts || [];
-        console.log(`Successfully loaded ${workoutsData.length} workouts`);
         
         // Sort workouts by creation date (newest first)
         const sortedWorkouts = [...workoutsData].sort((a, b) => 
           new Date(b.createdAt) - new Date(a.createdAt)
         );
         
+        // Cache the workouts data in localStorage
+        try {
+          localStorage.setItem('cached_workouts', JSON.stringify(sortedWorkouts));
+          localStorage.setItem('cached_workouts_timestamp', Date.now().toString());
+        } catch (e) {
+          console.warn('Failed to cache workouts data:', e);
+        }
+        
         setWorkouts(sortedWorkouts);
         
         if (workoutsData.length === 0) {
-          console.log('No workouts found for this gym owner');
+          // No workouts found for this gym owner
         }
       } else {
-        console.error('Failed to load workouts:', response.message);
+        // Failed to load workouts
         setError(response.message || 'Failed to load workouts');
         toast.error(response.message || 'Failed to load workouts');
       }
     } catch (error) {
-      console.error('Error loading workouts:', error);
+      // Error loading workouts
       setError('Failed to load workouts');
       toast.error('Failed to load workouts');
+      
+      // Try to use cached data as fallback if available
+      try {
+        const cachedWorkouts = localStorage.getItem('cached_workouts');
+        if (cachedWorkouts) {
+          const parsedWorkouts = JSON.parse(cachedWorkouts);
+          setWorkouts(parsedWorkouts);
+          setError('Using cached data. Pull to refresh for latest data.');
+        }
+      } catch (e) {
+        // Failed to load cached workouts
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [user, authFetch]);
+  }, [user, userRole, authFetch]);
   
   // Load workouts data only when user is available and stable
+  // Added a localStorage cache to prevent unnecessary API calls
   useEffect(() => {
     if (user && user._id) {
-      loadWorkouts();
+      // Check if we have cached workouts data and it's not too old
+      const cachedWorkouts = localStorage.getItem('cached_workouts');
+      const cachedTimestamp = localStorage.getItem('cached_workouts_timestamp');
+      const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+      
+      if (cachedWorkouts && cachedTimestamp && 
+          (Date.now() - parseInt(cachedTimestamp) < CACHE_DURATION)) {
+        // Use cached data
+        try {
+          const parsedWorkouts = JSON.parse(cachedWorkouts);
+          setWorkouts(parsedWorkouts);
+          setIsLoading(false);
+          // Using cached workouts data
+        } catch (e) {
+          // If parsing fails, load from API
+          loadWorkouts();
+        }
+      } else {
+        // No valid cache, load from API
+        loadWorkouts();
+      }
     }
-  }, [user?._id]);
+  }, [user?._id, loadWorkouts]);
   
-  // Load users data for gym owner to filter by trainer
+  // Load users data for gym owner to filter by trainer - with reduced frequency
   useEffect(() => {
     if (isGymOwner && fetchUsers) {
-      fetchUsers();
+      // Check if we have cached users and it's not too old
+      const cachedTimestamp = window.lastUsersFetchTime || 0;
+      const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+      
+      if (!users.length || (Date.now() - cachedTimestamp > CACHE_DURATION)) {
+        fetchUsers(false); // Use cached data if available
+      }
     }
-  }, [isGymOwner, fetchUsers]);
+  }, [isGymOwner, fetchUsers, users.length]);
   
   // Extract trainers from users for filtering using useMemo
   const extractedTrainers = useMemo(() => {
@@ -202,11 +280,95 @@ const Workouts = () => {
     });
   }, [workouts, searchTerm, filterGoal, filterDifficulty, filterTrainer]);
   
-  // Format date
+  // Format date helper function
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+  
+  // Form handling functions
+  const resetForm = () => {
+    setWorkoutFormData({
+      title: '',  // Changed from name to title
+      description: '',
+      type: 'beginner',
+      duration: '30',
+      exercises: '',
+      videoLink: '',  // Changed from videoUrl to videoLink
+      notes: ''
+    });
+    setIsEditing(false);
+  };
+  
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setWorkoutFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSelectChange = (name, value) => {
+    setWorkoutFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  const handleSubmitWorkout = async (e) => {
+    e.preventDefault();
+    
+    // Validate required fields - using title instead of name
+    if (!workoutFormData.title.trim() || !workoutFormData.description.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    // Validate duration is a number
+    if (isNaN(parseInt(workoutFormData.duration)) || parseInt(workoutFormData.duration) < 5) {
+      toast.error('Please enter a valid duration (minimum 5 minutes)');
+      return;
+    }
+    
+    setFormSubmitting(true);
+    
+    try {
+      const endpoint = isEditing 
+        ? `/workouts/${workoutFormData._id}` 
+        : '/workouts';
+      
+      const method = isEditing ? 'PUT' : 'POST';
+      
+      // Create a copy of the form data with trimmed values
+      const submissionData = {
+        ...workoutFormData,
+        title: workoutFormData.title.trim(),
+        description: workoutFormData.description.trim(),
+        exercises: workoutFormData.exercises.trim(),
+        videoLink: workoutFormData.videoLink.trim(),
+        notes: workoutFormData.notes.trim()
+      };
+      
+      const response = await authFetch(endpoint, {
+        method,
+        body: JSON.stringify(submissionData)
+      });
+      
+      if (response.success || response.status === 'success') {
+        toast.success(isEditing ? 'Workout plan updated successfully' : 'Workout plan created successfully');
+        setShowWorkoutForm(false);
+        resetForm();
+        loadWorkouts(); // Refresh the workouts list
+      } else {
+        toast.error(response.message || 'Failed to save workout plan');
+      }
+    } catch (error) {
+      // Error submitting workout plan - silent error handling
+      toast.error('Please check all required fields and try again');
+      // Reset form submitting state but keep the form open for user to fix issues
+    } finally {
+      setFormSubmitting(false);
+    }
   };
   
   // Calculate workout stats
@@ -223,14 +385,31 @@ const Workouts = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">Trainer Workout Plans</h1>
+            <h1 className="text-3xl font-bold text-white">
+              {isTrainer ? "My Workout Plans" : "Trainer Workout Plans"}
+            </h1>
             <p className="text-gray-400">
-              Monitor all workout plans created by your trainers for gym members. 
-              {workouts.length > 0 ? 
-                ` Currently showing ${workouts.length} workout plans from ${trainers.length} trainers.` : 
-                ' No workout plans have been created yet.'}
+              {isTrainer ? 
+                "Create and manage workout plans for your gym members." :
+                `Monitor all workout plans created by your trainers for gym members. 
+                ${workouts.length > 0 ? 
+                  `Currently showing ${workouts.length} workout plans from ${trainers.length} trainers.` : 
+                  'No workout plans have been created yet.'}`
+              }
             </p>
           </div>
+          {isTrainer && (
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                resetForm();
+                setShowWorkoutForm(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Workout
+            </Button>
+          )}
         </div>
 
         {/* Stats Cards */}
@@ -378,6 +557,146 @@ const Workouts = () => {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Workout Form Dialog */}
+      <Dialog open={showWorkoutForm} onOpenChange={setShowWorkoutForm}>
+        <DialogContent className="bg-gray-800 text-white border-gray-700 max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{isEditing ? 'Edit Workout Plan' : 'Create New Workout Plan'}</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              {isEditing ? 'Update the details of this workout plan' : 'Fill in the details to create a new workout plan'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form id="workout-form" name="workout-form" onSubmit={handleSubmitWorkout}>
+            <div className="grid gap-6 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title" className="text-gray-300">Workout Name</Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    value={workoutFormData.title}
+                    onChange={handleInputChange}
+                    className="bg-gray-700 border-gray-600 text-white"
+                    placeholder="e.g., Full Body HIIT"
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="workout-type" className="text-gray-300">Workout Type</Label>
+                  <Select 
+                    id="type-select"
+                    value={workoutFormData.type} 
+                    onValueChange={(value) => handleSelectChange('type', value)}
+                    name="type"
+                  >
+                    <SelectTrigger id="workout-type" className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue id="workout-type-value" name="workout-type-value" placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent id="workout-type-content" className="bg-gray-800 border-gray-700 text-white">
+                      <SelectItem id="type-beginner" value="beginner">Beginner</SelectItem>
+                      <SelectItem id="type-intermediate" value="intermediate">Intermediate</SelectItem>
+                      <SelectItem id="type-advanced" value="advanced">Advanced</SelectItem>
+                      <SelectItem id="type-weight-loss" value="weight-loss">Weight Loss</SelectItem>
+                      <SelectItem id="type-weight-gain" value="weight-gain">Weight Gain</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-gray-300">Description</Label>
+                <Textarea
+                  id="description"
+                  name="description"
+                  value={workoutFormData.description}
+                  onChange={handleInputChange}
+                  className="bg-gray-700 border-gray-600 text-white min-h-[100px]"
+                  placeholder="Describe the workout plan and its benefits..."
+                  
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="duration" className="text-gray-300">Duration (minutes)</Label>
+                  <Input
+                    id="duration"
+                    name="duration"
+                    type="number"
+                    min="5"
+                    max="180"
+                    value={workoutFormData.duration}
+                    onChange={handleInputChange}
+                    className="bg-gray-700 border-gray-600 text-white"
+                  
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="videoLink" className="text-gray-300">Video URL (optional)</Label>
+                  <Input
+                    id="videoLink"
+                    name="videoLink"
+                    value={workoutFormData.videoLink}
+                    onChange={handleInputChange}
+                    className="bg-gray-700 border-gray-600 text-white"
+                    placeholder="e.g., https://youtube.com/watch?v=..."
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="exercises" className="text-gray-300">Exercises</Label>
+                <Textarea
+                  id="exercises"
+                  name="exercises"
+                  value={workoutFormData.exercises}
+                  onChange={handleInputChange}
+                  className="bg-gray-700 border-gray-600 text-white min-h-[150px]"
+                  placeholder="List exercises with sets and reps (e.g., Squats: 3 sets x 12 reps)"    
+               />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="notes" className="text-gray-300">Additional Notes (optional)</Label>
+                <Textarea
+                  id="notes"
+                  name="notes"
+                  value={workoutFormData.notes}
+                  onChange={handleInputChange}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="Any additional instructions or tips..."
+                />
+              </div>
+            </div>
+            
+            <DialogFooter className="flex justify-end gap-2 pt-4">
+              <Button 
+                id="cancel-button"
+                name="cancel-button"
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowWorkoutForm(false)}
+                className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button 
+                id="submit-button"
+                name="submit-button"
+                type="submit" 
+                className="bg-blue-600 hover:bg-blue-700"
+                disabled={formSubmitting}
+              >
+                {formSubmitting ? 'Saving...' : isEditing ? 'Update Workout' : 'Create Workout'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
