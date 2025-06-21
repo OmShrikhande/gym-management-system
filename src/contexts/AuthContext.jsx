@@ -577,13 +577,13 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Authentication required');
     }
     
-    // Add content-type header if not provided and method is POST or PUT
+    // Add content-type header if not provided and method is POST, PUT or PATCH
     const headers = {
       ...options.headers,
       'Authorization': `Bearer ${token}`
     };
     
-    if ((options.method === 'POST' || options.method === 'PUT') && !headers['Content-Type']) {
+    if ((options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH') && !headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
     
@@ -596,6 +596,7 @@ export const AuthProvider = ({ children }) => {
     const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
     
     try {
+      console.log(`Making ${options.method || 'GET'} request to: ${fullUrl}`);
       const response = await fetch(fullUrl, authOptions);
       
       if (response.status === 401) {
@@ -605,7 +606,8 @@ export const AuthProvider = ({ children }) => {
       }
       
       if (response.status === 403) {
-        // Permission denied - return a structured error response without logging
+        // Permission denied - return a structured error response
+        console.error('Permission denied for request:', fullUrl);
         return {
           success: false,
           status: 'error',
@@ -614,12 +616,35 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
-      // Parse JSON response
-      const data = await response.json();
-      return data;
+      if (response.status === 404) {
+        console.error('Resource not found:', fullUrl);
+        return {
+          success: false,
+          status: 'error',
+          message: 'Resource not found',
+          data: null
+        };
+      }
+      
+      // Check if the response is JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        // Parse JSON response
+        const data = await response.json();
+        return data;
+      } else {
+        // Handle non-JSON responses
+        const text = await response.text();
+        console.error('Non-JSON response received:', text.substring(0, 100) + '...');
+        return {
+          success: false,
+          status: 'error',
+          message: 'Invalid response format from server',
+          data: null
+        };
+      }
     } catch (error) {
-      // PERFORMANCE OPTIMIZATION: Completely silent error handling
-      // No console logging to reduce system load
+      console.error('Error in authFetch:', error.message);
       return {
         success: false,
         status: 'error',

@@ -66,9 +66,7 @@ const NavigationSidebar = ({ onClose }) => {
           { label: "My Members", icon: Users, href: "/my-members" },
           { label: "Workouts", icon: Dumbbell, href: "/workouts" },
           { label: "Workout Management", icon: Dumbbell, href: "/workout-management" },
-          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" },
-          { label: "Messages", icon: MessageSquare, href: "/messages" },
-          { label: "Schedule", icon: Calendar, href: "/schedule" }
+          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       case 'member':
         return [

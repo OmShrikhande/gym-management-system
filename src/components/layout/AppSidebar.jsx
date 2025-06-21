@@ -9,8 +9,7 @@ import {
   Settings,
   Home,
   Building2,
-  UserCheck,
-  Calendar
+  UserCheck
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
 import {
@@ -64,9 +63,7 @@ export function AppSidebar() {
           ...baseItems,
           { label: "My Members", icon: Users, href: "/my-members" },
           { label: "Workouts", icon: Dumbbell, href: "/workouts" },
-          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" },
-          { label: "Messages", icon: MessageSquare, href: "/messages" },
-          { label: "Schedule", icon: Calendar, href: "/schedule" }
+          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       case 'member':
         return [

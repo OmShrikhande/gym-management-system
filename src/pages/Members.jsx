@@ -11,9 +11,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import QRPaymentModal from "@/components/payment/QRPaymentModal";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { Textarea } from "@/components/ui/textarea";
 
+// const Members = () => {
 const Members = () => {
-  const { createMember, isGymOwner, users, fetchUsers, user, subscription, authFetch, checkSubscriptionStatus } = useAuth();
+  const { createMember, isGymOwner, users, fetchUsers, user, subscription, authFetch, checkSubscriptionStatus, updateMember, deleteMember } = useAuth();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
@@ -22,6 +24,8 @@ const Members = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showDetailView, setShowDetailView] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Initial form data with default values
   const [formData, setFormData] = useState({
     name: '',
@@ -39,9 +43,13 @@ const Members = () => {
     emergencyContact: '',
     medicalConditions: '',
     requiresTrainer: false,
+    assignedTrainer: '', // Trainer ID will be stored here
     membershipDuration: '1', // in years
     fitnessGoalDescription: ''
   });
+  
+  // State for available trainers
+  const [availableTrainers, setAvailableTrainers] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [realMembers, setRealMembers] = useState([]);
@@ -89,17 +97,39 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
-      const response = await authFetch('/gym-owner-plans');
-      
-      if (response.success || response.status === 'success') {
-        setGymOwnerPlans(response.data.plans);
-      } else {
-        // If API fails, keep the default plans
-        console.log('Using default gym owner plans');
+      // Try to fetch from the correct endpoint - first try plans endpoint
+      try {
+        const response = await authFetch('/plans');
+        
+        if (response.success || response.status === 'success') {
+          if (response.data && response.data.plans) {
+            setGymOwnerPlans(response.data.plans);
+            return;
+          }
+        }
+      } catch (endpointError) {
+        // Silently fail and try the next endpoint
       }
+      
+      // Try alternative endpoint
+      try {
+        const response = await authFetch('/membership-plans');
+        
+        if (response.success || response.status === 'success') {
+          if (response.data && response.data.plans) {
+            setGymOwnerPlans(response.data.plans);
+            return;
+          }
+        }
+      } catch (endpointError) {
+        // Silently fail and use default plans
+      }
+      
+      // If all API calls fail, keep the default plans
+      console.log('Using default gym owner plans');
     } catch (error) {
-      console.error('Error fetching gym owner plans:', error);
       // Keep using the default plans
+      console.log('Using default gym owner plans');
     }
   };
 
@@ -170,6 +200,19 @@ const Members = () => {
     }
   };
 
+  // Function to fetch trainers for the current gym
+  const fetchTrainers = async () => {
+    if (!user || !isGymOwner) return;
+    
+    try {
+      // Filter trainers from users array
+      const gymTrainers = users.filter(u => u.role === 'trainer');
+      setAvailableTrainers(gymTrainers);
+    } catch (error) {
+      console.error('Error fetching trainers:', error);
+    }
+  };
+
   // Combined data loading effect to reduce re-renders
   useEffect(() => {
     const loadData = async () => {
@@ -193,6 +236,11 @@ const Members = () => {
         if (user && isGymOwner) {
           await fetchGymOwnerPlans();
         }
+        
+        // Step 5: Fetch trainers
+        if (user && isGymOwner && users.length > 0) {
+          await fetchTrainers();
+        }
       } catch (error) {
         console.error('Error loading data:', error);
         setMessage({ type: 'error', text: 'Failed to load data' });
@@ -201,7 +249,7 @@ const Members = () => {
     
     loadData();
     // We'll set isLoading to false after processing the data in the next useEffect
-  }, [fetchUsers, user, isGymOwner, checkSubscriptionStatus]);
+  }, [fetchUsers, user, isGymOwner, checkSubscriptionStatus, users]);
 
   // Process users to get members - only runs when users array changes
   useEffect(() => {
@@ -312,6 +360,7 @@ const Members = () => {
       emergencyContact: '',
       medicalConditions: '',
       requiresTrainer: false,
+      assignedTrainer: '',
       membershipDuration: '1',
       fitnessGoalDescription: ''
     });
@@ -327,6 +376,141 @@ const Members = () => {
   const handleCloseDetailView = () => {
     setSelectedMember(null);
     setShowDetailView(false);
+    setIsEditMode(false);
+  };
+  
+  // Handle edit member
+  const handleEditMember = (member) => {
+    setSelectedMember(member);
+    setIsEditMode(true);
+    setShowDetailView(true);
+    
+    // Populate form data with member details
+    setFormData({
+      name: member.name,
+      email: member.email,
+      password: '', // Don't populate password for security
+      mobile: member.mobile || '',
+      gender: member.gender || 'Male',
+      dob: member.dob || '',
+      goal: member.goal || 'weight-loss',
+      planType: member.planType || 'Basic Member',
+      address: member.address || '',
+      whatsapp: member.whatsapp || '',
+      height: member.height || '',
+      weight: member.weight || '',
+      emergencyContact: member.emergencyContact || '',
+      medicalConditions: member.medicalConditions || '',
+      requiresTrainer: member.assignedTrainer !== 'Not assigned',
+      assignedTrainer: member.assignedTrainer !== 'Not assigned' ? member.assignedTrainer : '',
+      membershipDuration: '1', // Default
+      fitnessGoalDescription: member.notes || ''
+    });
+  };
+  
+  // Handle update member
+  const handleUpdateMember = async () => {
+    if (!selectedMember) return;
+    
+    setFormSubmitting(true);
+    setMessage({ type: 'info', text: 'Updating member...' });
+    
+    try {
+      // Prepare data for API
+      const updateData = {
+        id: selectedMember.id, // Include ID in the request body
+        name: formData.name,
+        email: formData.email,
+        phone: formData.mobile,
+        gender: formData.gender,
+        dob: formData.dob,
+        goal: formData.goal,
+        planType: formData.planType,
+        address: formData.address,
+        whatsapp: formData.whatsapp,
+        height: formData.height,
+        weight: formData.weight,
+        emergencyContact: formData.emergencyContact,
+        medicalConditions: formData.medicalConditions,
+        assignedTrainer: formData.requiresTrainer ? formData.assignedTrainer : null,
+        notes: formData.fitnessGoalDescription,
+        role: 'member' // Ensure role is specified
+      };
+      
+      // If password is provided, include it
+      if (formData.password && formData.password.length >= 6) {
+        updateData.password = formData.password;
+      }
+      
+      console.log(`Attempting to update member with ID: ${selectedMember.id}`);
+      
+      // Use the updateMember function from AuthContext
+      const result = await updateMember(updateData);
+      
+      if (result.success) {
+        // Refresh users list
+        await fetchUsers();
+        
+        setMessage({ type: 'success', text: 'Member updated successfully' });
+        toast.success('Member updated successfully');
+        
+        // Close detail view after a short delay
+        setTimeout(() => {
+          handleCloseDetailView();
+        }, 1500);
+      } else {
+        console.error('Failed to update member:', result);
+        setMessage({ type: 'error', text: result.message || 'Failed to update member' });
+        toast.error(result.message || 'Failed to update member');
+      }
+    } catch (error) {
+      console.error('Error updating member:', error);
+      setMessage({ type: 'error', text: 'An error occurred while updating the member' });
+      toast.error('An error occurred while updating the member');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+  
+  // Handle delete member
+  const handleDeleteMember = async (memberId) => {
+    if (!memberId) {
+      toast.error('Invalid member ID');
+      setFormSubmitting(false);
+      setShowDeleteConfirm(false);
+      return;
+    }
+    
+    try {
+      setFormSubmitting(true);
+      console.log(`Attempting to delete member with ID: ${memberId}`);
+      
+      // Use the deleteMember function from AuthContext
+      const result = await deleteMember(memberId);
+      
+      console.log('Delete response:', result);
+      
+      if (result.success) {
+        // Refresh users list
+        await fetchUsers();
+        
+        toast.success('Member deleted successfully');
+        
+        // Close detail view if open
+        if (showDetailView) {
+          handleCloseDetailView();
+        }
+      } else {
+        toast.error(result.message || 'Failed to delete member');
+      }
+    } catch (error) {
+      console.error('Error deleting member:', error);
+      toast.error('An error occurred while deleting the member');
+    } finally {
+      // Close delete confirmation
+      setShowDeleteConfirm(false);
+      setFormSubmitting(false);
+    }
   };
   
   // State for form submission
@@ -349,6 +533,7 @@ const Members = () => {
         paymentDate: paymentData.timestamp,
         // Include the new fields
         requiresTrainer: pendingMemberData.requiresTrainer || false,
+        assignedTrainer: pendingMemberData.requiresTrainer ? pendingMemberData.assignedTrainer : null,
         membershipDuration: pendingMemberData.membershipDuration || '1',
         fitnessGoalDescription: pendingMemberData.fitnessGoalDescription || ''
       };
@@ -412,6 +597,12 @@ const Members = () => {
       // Validate membership details
       if (!formData.goal || !formData.fitnessGoalDescription) {
         setMessage({ type: 'error', text: 'Please specify fitness goal and description' });
+        return;
+      }
+      
+      // Validate trainer selection if requiresTrainer is true
+      if (formData.requiresTrainer && !formData.assignedTrainer) {
+        setMessage({ type: 'error', text: 'Please select a trainer' });
         return;
       }
       
@@ -569,145 +760,551 @@ const Members = () => {
             <Card key={`detail-${selectedMember.id}`} className="bg-gray-800/50 border-gray-700">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-white">Member Details</CardTitle>
+                  <CardTitle className="text-white">
+                    {isEditMode ? "Edit Member" : "Member Details"}
+                  </CardTitle>
                   <CardDescription className="text-gray-400">
-                    Complete information about {selectedMember.name}
+                    {isEditMode 
+                      ? "Update information for " + selectedMember.name
+                      : "Complete information about " + selectedMember.name
+                    }
                   </CardDescription>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleCloseDetailView}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
+                <div className="flex gap-2">
+                  {!isEditMode && (
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => handleEditMember(selectedMember)}
+                        className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="border-red-800 text-red-300 hover:bg-red-900/30"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={handleCloseDetailView}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  {/* Basic Information */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Basic Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Full Name</p>
-                        <p className="text-white">{selectedMember.name}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Email Address</p>
-                        <p className="text-white">{selectedMember.email}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Member ID</p>
-                        <p className="text-white">{selectedMember.id}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Contact Information */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Contact Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Mobile Number</p>
-                        <p className="text-white">{selectedMember.mobile || 'Not provided'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">WhatsApp Number</p>
-                        <p className="text-white">{selectedMember.whatsapp || 'Not provided'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Address</p>
-                        <p className="text-white">{selectedMember.address || 'Not provided'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Emergency Contact</p>
-                        <p className="text-white">{selectedMember.emergencyContact || 'Not provided'}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Membership Details */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Membership Details</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Join Date</p>
-                        <p className="text-white">{new Date(selectedMember.joinDate).toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Membership Status</p>
-                        <div>{getStatusBadge(selectedMember.membershipStatus)}</div>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Plan Type</p>
-                        <div>{getPlanBadge(selectedMember.planType)}</div>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Fitness Goal</p>
-                        <div>{getGoalBadge(selectedMember.goal)}</div>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Assigned Trainer</p>
-                        <p className="text-white">{selectedMember.assignedTrainer}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Payment Status</p>
-                        <p className="text-white">{selectedMember.paymentStatus || 'Not recorded'}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Physical Information */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Physical Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Gender</p>
-                        <p className="text-white">{selectedMember.gender}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Date of Birth</p>
-                        <p className="text-white">{selectedMember.dob ? new Date(selectedMember.dob).toLocaleDateString() : 'Not provided'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Height</p>
-                        <p className="text-white">{selectedMember.height || 'Not recorded'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Weight</p>
-                        <p className="text-white">{selectedMember.weight || 'Not recorded'}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <p className="text-gray-400 text-sm mb-1">Medical Conditions</p>
-                      <p className="text-white">{selectedMember.medicalConditions || 'None recorded'}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Attendance Information */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Attendance Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Last Check-in</p>
-                        <p className="text-white">{selectedMember.lastCheckIn ? new Date(selectedMember.lastCheckIn).toLocaleString() : 'No check-ins recorded'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-sm mb-1">Attendance Rate</p>
-                        <p className="text-white">{selectedMember.attendanceRate || '0%'}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Notes */}
-                  <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-                    <h4 className="text-lg font-semibold mb-4 text-white">Notes</h4>
-                    <p className="text-white">{selectedMember.notes || 'No notes recorded for this member.'}</p>
-                  </div>
+  {isEditMode ? (
+    // Edit Form
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleUpdateMember();
+      }}
+    >
+      <div className="space-y-6">
+        {/* Basic Information */}
+        <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+          <h4 className="text-lg font-semibold mb-4 text-white">Basic Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Label htmlFor="name" className="mb-2 block text-gray-300">
+                Full Name *
+              </Label>
+              <Input
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                placeholder="Enter full name"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="email" className="mb-2 block text-gray-300">
+                Email Address *
+              </Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                placeholder="Enter email address"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="password" className="mb-2 block text-gray-300">
+                Password (leave blank to keep current)
+              </Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                placeholder="Enter new password (min 6 characters)"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <Label htmlFor="mobile" className="mb-2 block text-gray-300">
+                Mobile Number *
+              </Label>
+              <Input
+                id="mobile"
+                name="mobile"
+                value={formData.mobile}
+                onChange={handleInputChange}
+                placeholder="Enter mobile number"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="gender" className="mb-2 block text-gray-300">
+                Gender
+              </Label>
+              <select
+                id="gender"
+                name="gender"
+                value={formData.gender}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="whatsapp" className="mb-2 block text-gray-300">
+                WhatsApp Number
+              </Label>
+              <Input
+                id="whatsapp"
+                name="whatsapp"
+                value={formData.whatsapp}
+                onChange={handleInputChange}
+                placeholder="Enter WhatsApp number"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Membership Details */}
+        <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+          <h4 className="text-lg font-semibold mb-4 text-white">Membership Details</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Label htmlFor="goal" className="mb-2 block text-gray-300">
+                Fitness Goal
+              </Label>
+              <select
+                id="goal"
+                name="goal"
+                value={formData.goal}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              >
+                <option value="weight-loss">Weight Loss</option>
+                <option value="weight-gain">Weight Gain</option>
+                <option value="general-fitness">General Fitness</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="planType" className="mb-2 block text-gray-300">
+                Plan Type
+              </Label>
+              <select
+                id="planType"
+                name="planType"
+                value={formData.planType}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+              >
+                {gymOwnerPlans.map((plan) => (
+                  <option key={plan.id} value={plan.name}>
+                    {plan.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="flex items-center space-x-2 mb-2 text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={formData.requiresTrainer}
+                  onChange={(e) =>
+                    setFormData({ ...formData, requiresTrainer: e.target.checked })
+                  }
+                  className="rounded bg-gray-700 border-gray-600 text-blue-600"
+                />
+                <span>Assign Trainer</span>
+              </Label>
+              {formData.requiresTrainer && (
+                <select
+                  name="assignedTrainer"
+                  value={formData.assignedTrainer}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                >
+                  <option value="">Select a trainer</option>
+                  {availableTrainers.map((trainer) => (
+                    <option key={trainer._id} value={trainer._id}>
+                      {trainer.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="fitnessGoalDescription" className="mb-2 block text-gray-300">
+                Goal Description
+              </Label>
+              <Textarea
+                id="fitnessGoalDescription"
+                name="fitnessGoalDescription"
+                value={formData.fitnessGoalDescription}
+                onChange={handleInputChange}
+                placeholder="Describe fitness goals in detail"
+                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+                rows={3}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleCloseDetailView}
+            className="border-gray-600 text-gray-300 hover:bg-gray-700"
+            disabled={formSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700"
+            disabled={formSubmitting}
+          >
+            {formSubmitting ? 'Updating...' : 'Update Member'}
+          </Button>
+        </div>
+
+        {/* Display message */}
+        {message.text && (
+          <div
+            className={`mt-6 p-4 rounded-lg flex items-center ${
+              message.type === "error"
+                ? "bg-red-900/30 text-red-200 border border-red-600"
+                : message.type === "info"
+                ? "bg-blue-900/30 text-blue-600 border border-blue-600"
+                : "bg-green-900/30 text-green-600 border border-green-600"
+            }`}
+          >
+            <div
+              className={`mr-3 p-2 rounded-full ${
+                message.type === "error"
+                  ? "bg-red-600"
+                  : message.type === "info"
+                  ? "bg-blue-600"
+                  : "bg-green-600"
+              }`}
+            >
+              {message.type === "error" ? (
+                <AlertCircle className="h-5 w-5" />
+              ) : message.type === "info" ? (
+                <AlertCircle className="h-5 w-5" />
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+            </div>
+            <div>{message.text}</div>
+          </div>
+        )}
+      </div>
+    </form>
+  ) : (
+    // View Mode
+    <div className="space-y-6">
+      {/* Basic Information */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Basic Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Full Name</p>
+            <p className="text-white">{selectedMember.name}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Email Address</p>
+            <p className="text-white">{selectedMember.email}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Member ID</p>
+            <p className="text-white">{selectedMember.id}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Information */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Contact Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Mobile Number</p>
+            <p className="text-white">{selectedMember.mobile || "Not provided"}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">WhatsApp Number</p>
+            <p className="text-white">{selectedMember.whatsapp || "Not provided"}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Address</p>
+            <p className="text-white">{selectedMember.address || "Not provided"}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Emergency Contact</p>
+            <p className="text-white">{selectedMember.emergencyContact || "Not provided"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Membership Details */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Membership Details</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Join Date</p>
+            <p className="text-white">{new Date(selectedMember.joinDate).toLocaleDateString()}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Membership Status</p>
+            <div>{getStatusBadge(selectedMember.membershipStatus)}</div>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Plan Type</p>
+            <div>{getPlanBadge(selectedMember.planType)}</div>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Fitness Goal</p>
+            <div>{getGoalBadge(selectedMember.goal)}</div>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Assigned Trainer</p>
+            <p className="text-white">
+              {(() => {
+                // Find the trainer by ID
+                if (selectedMember.assignedTrainer && selectedMember.assignedTrainer !== "Not assigned") {
+                  const trainer = availableTrainers.find((t) => t._id === selectedMember.assignedTrainer);
+                  return trainer ? trainer.name : selectedMember.assignedTrainer;
+                }
+                return "Not assigned";
+              })()}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Information */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <div className="flex justify-between items-center mb-4">
+          <h4 className="text-lg font-semibold text-white">Payment Information</h4>
+          <Badge variant={selectedMember.paymentStatus === "Paid" ? "default" : "destructive"}>
+            {selectedMember.paymentStatus || "Not Recorded"}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Payment Amount</p>
+            <p className="text-white font-medium">
+              {selectedMember.paymentAmount
+                ? new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency: "INR",
+                    maximumFractionDigits: 0,
+                  }).format(selectedMember.paymentAmount)
+                : "Not recorded"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Payment Date</p>
+            <p className="text-white">
+              {selectedMember.paymentDate
+                ? new Date(selectedMember.paymentDate).toLocaleDateString()
+                : "Not recorded"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Payment ID</p>
+            <p className="text-white">{selectedMember.paymentId || "Not recorded"}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Membership Duration</p>
+            <p className="text-white">
+              {selectedMember.membershipDuration
+                ? `${selectedMember.membershipDuration} ${
+                    parseInt(selectedMember.membershipDuration) > 1 ? "Years" : "Year"
+                  }`
+                : "1 Year (Default)"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Next Payment Due</p>
+            <p className="text-white">
+              {selectedMember.paymentDate
+                ? (() => {
+                    const paymentDate = new Date(selectedMember.paymentDate);
+                    const duration = parseInt(selectedMember.membershipDuration || "1");
+                    paymentDate.setFullYear(paymentDate.getFullYear() + duration);
+                    return paymentDate.toLocaleDateString();
+                  })()
+                : "Not applicable"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Physical Information */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Physical Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Gender</p>
+            <p className="text-white">{selectedMember.gender}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Date of Birth</p>
+            <p className="text-white">
+              {selectedMember.dob ? new Date(selectedMember.dob).toLocaleDateString() : "Not provided"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Height</p>
+            <p className="text-white">{selectedMember.height || "Not recorded"}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Weight</p>
+            <p className="text-white">{selectedMember.weight || "Not recorded"}</p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <p className="text-gray-400 text-sm mb-1">Medical Conditions</p>
+          <p className="text-white">{selectedMember.medicalConditions || "None recorded"}</p>
+        </div>
+      </div>
+
+      {/* Attendance Information */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Attendance Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Last Check-in</p>
+            <p className="text-white">
+              {selectedMember.lastCheckIn
+                ? new Date(selectedMember.lastCheckIn).toLocaleString()
+                : "No check-ins recorded"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Attendance Rate</p>
+            <p className="text-white">{selectedMember.attendanceRate || "0%"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
+        <h4 className="text-lg font-semibold mb-4 text-white">Notes</h4>
+        <p className="text-white">{selectedMember.notes || "No notes recorded for this member."}</p>
+      </div>
+    </div>
+  )}
+</CardContent>
+</Card>
+          )}
+          
+          {/* Delete Confirmation Dialog */}
+          {showDeleteConfirm && selectedMember && (
+            <div 
+              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+              onClick={(e) => {
+                // Prevent clicks on the backdrop from closing the modal
+                e.stopPropagation();
+              }}
+            >
+              <div 
+                className="bg-gray-800 p-6 rounded-lg border border-gray-700 max-w-md w-full"
+                onClick={(e) => {
+                  // Prevent clicks on the modal from bubbling up
+                  e.stopPropagation();
+                }}
+              >
+                <h3 className="text-xl font-bold text-white mb-4">Confirm Delete</h3>
+                <p className="text-gray-300 mb-6">
+                  Are you sure you want to delete {selectedMember.name}? This action cannot be undone.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowDeleteConfirm(false);
+                    }}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                    disabled={formSubmitting}
+                    type="button"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (selectedMember && selectedMember.id) {
+                        handleDeleteMember(selectedMember.id);
+                      } else {
+                        toast.error('Invalid member selected');
+                        setShowDeleteConfirm(false);
+                      }
+                    }}
+                    disabled={formSubmitting}
+                    type="button"
+                  >
+                    {formSubmitting ? "Deleting..." : "Delete Member"}
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
           
           {/* Add Member Form */}
@@ -906,7 +1503,9 @@ const Members = () => {
                             value={formData.requiresTrainer.toString()}
                             onChange={(e) => setFormData({
                               ...formData,
-                              requiresTrainer: e.target.value === "true"
+                              requiresTrainer: e.target.value === "true",
+                              // Reset assignedTrainer if requiresTrainer is set to false
+                              assignedTrainer: e.target.value === "false" ? "" : formData.assignedTrainer
                             })}
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
@@ -915,6 +1514,33 @@ const Members = () => {
                             <option value="true">Yes</option>
                           </select>
                         </div>
+                        
+                        {/* Trainer selection dropdown - only shown when requiresTrainer is true */}
+                        {formData.requiresTrainer && (
+                          <div>
+                            <Label htmlFor="assignedTrainer" className="mb-2 block text-gray-300">Select Trainer *</Label>
+                            <select
+                              id="assignedTrainer"
+                              name="assignedTrainer"
+                              value={formData.assignedTrainer}
+                              onChange={handleInputChange}
+                              className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
+                              required
+                            >
+                              <option value="">-- Select a Trainer --</option>
+                              {availableTrainers.map(trainer => (
+                                <option key={trainer._id} value={trainer._id}>
+                                  {trainer.name} - {trainer.specialization || 'General Fitness'}
+                                </option>
+                              ))}
+                            </select>
+                            {availableTrainers.length === 0 && (
+                              <p className="text-yellow-500 text-sm mt-1">
+                                No trainers available. Please add trainers first.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div className="md:col-span-2">
                           <Label htmlFor="fitnessGoalDescription" className="mb-2 block text-gray-300">
                             Reason for joining gym / Fitness goals *
@@ -1085,6 +1711,14 @@ const Members = () => {
                               <p className="text-gray-400 text-sm">Requires Trainer</p>
                               <p className="text-white">{formData.requiresTrainer ? 'Yes' : 'No'}</p>
                             </div>
+                            {formData.requiresTrainer && formData.assignedTrainer && (
+                              <div>
+                                <p className="text-gray-400 text-sm">Assigned Trainer</p>
+                                <p className="text-white">
+                                  {availableTrainers.find(t => t._id === formData.assignedTrainer)?.name || 'Unknown Trainer'}
+                                </p>
+                              </div>
+                            )}
                             <div className="md:col-span-2">
                               <p className="text-gray-400 text-sm">Goal Description</p>
                               <p className="text-white">{formData.fitnessGoalDescription}</p>
@@ -1367,7 +2001,16 @@ const Members = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <p className="text-white">{member.assignedTrainer}</p>
+                          <p className="text-white">
+                            {(() => {
+                              // Find the trainer by ID
+                              if (member.assignedTrainer && member.assignedTrainer !== 'Not assigned') {
+                                const trainer = availableTrainers.find(t => t._id === member.assignedTrainer);
+                                return trainer ? trainer.name : member.assignedTrainer;
+                              }
+                              return 'Not assigned';
+                            })()}
+                          </p>
                         </TableCell>
                         <TableCell>
                           {getStatusBadge(member.membershipStatus)}
@@ -1379,13 +2022,40 @@ const Members = () => {
                               variant="outline" 
                               className="border-gray-600 text-gray-300 hover:bg-gray-700"
                               onClick={() => handleViewMember(member)}
+                              title="View Member Details"
                             >
                               <User className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                              onClick={() => navigate(`/attendance/${member.id}`)}
+                              title="View Attendance"
+                            >
+                              <Calendar className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                              onClick={() => handleEditMember(member)}
+                              title="Edit Member"
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedMember(member);
+                                setShowDeleteConfirm(true);
+                              }}
+                              title="Delete Member"
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -1413,7 +2083,11 @@ const Members = () => {
               onPaymentComplete={handlePaymentComplete}
               memberData={pendingMemberData}
               paymentAmount={pendingMemberData.calculatedFee || subscriptionInfo.membershipFee}
-              paymentDescription={`Gym Membership Fee for ${pendingMemberData?.name || 'New Member'} (${pendingMemberData?.membershipDuration || '1'} Year ${pendingMemberData?.planType || 'Basic'} Plan${pendingMemberData?.requiresTrainer ? ' with Trainer' : ''})`}
+              paymentDescription={`Gym Membership Fee for ${pendingMemberData?.name || 'New Member'} (${pendingMemberData?.membershipDuration || '1'} Year ${pendingMemberData?.planType || 'Basic'} Plan${
+                pendingMemberData?.requiresTrainer 
+                  ? ` with Trainer: ${availableTrainers.find(t => t._id === pendingMemberData?.assignedTrainer)?.name || 'Selected Trainer'}` 
+                  : ''
+              })`}
             />
           )}
         </div>

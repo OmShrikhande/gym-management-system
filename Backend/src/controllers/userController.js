@@ -45,6 +45,84 @@ export const getNewGymOwnersCount = catchAsync(async (req, res, next) => {
   });
 });
 
+// Get monthly gym owner statistics for the year
+export const getMonthlyGymOwnerStats = catchAsync(async (req, res, next) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  
+  // Create an array to hold monthly stats
+  const monthlyStats = {};
+  
+  // Initialize stats for all months
+  for (let month = 1; month <= 12; month++) {
+    monthlyStats[month] = {
+      newGymOwners: 0,
+      totalGymOwners: 0,
+      totalTrainers: 0
+    };
+  }
+  
+  // Get all gym owners
+  const allGymOwners = await User.find({ 
+    role: 'gym-owner',
+    createdAt: { $lte: new Date(year, 11, 31, 23, 59, 59) } // Created before or during the specified year
+  }).select('createdAt');
+  
+  // Calculate monthly stats
+  allGymOwners.forEach(owner => {
+    const createdAt = new Date(owner.createdAt);
+    const ownerYear = createdAt.getFullYear();
+    const ownerMonth = createdAt.getMonth() + 1;
+    
+    // Count new gym owners for each month in the specified year
+    if (ownerYear === year) {
+      monthlyStats[ownerMonth].newGymOwners++;
+    }
+    
+    // Calculate cumulative total for each month
+    for (let month = 1; month <= 12; month++) {
+      if (ownerYear < year || (ownerYear === year && ownerMonth <= month)) {
+        monthlyStats[month].totalGymOwners++;
+      }
+    }
+  });
+  
+  // Get trainer counts
+  const trainers = await User.find({ role: 'trainer' }).select('createdAt');
+  const trainersByMonth = {};
+  
+  // Initialize trainer counts for all months
+  for (let month = 1; month <= 12; month++) {
+    trainersByMonth[month] = 0;
+  }
+  
+  // Count trainers by month
+  trainers.forEach(trainer => {
+    const createdAt = new Date(trainer.createdAt);
+    const trainerYear = createdAt.getFullYear();
+    const trainerMonth = createdAt.getMonth() + 1;
+    
+    // Count cumulative trainers for each month
+    for (let month = 1; month <= 12; month++) {
+      if (trainerYear < year || (trainerYear === year && trainerMonth <= month)) {
+        trainersByMonth[month]++;
+      }
+    }
+  });
+  
+  // Add trainer counts to monthly stats
+  for (let month = 1; month <= 12; month++) {
+    monthlyStats[month].totalTrainers = trainersByMonth[month];
+  }
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      year,
+      monthlyStats
+    }
+  });
+});
+
 // Get all users (admin only)
 export const getAllUsers = async (req, res) => {
   try {
@@ -230,10 +308,33 @@ export const getGymOwnerMembers = async (req, res) => {
     }
     
     // Find all members created by this gym owner
-    const members = await User.find({ 
+    let members = await User.find({ 
       createdBy: gymOwnerId,
       role: 'member'
     });
+    
+    console.log(`Found ${members.length} members for gym owner ${gymOwnerId}`);
+    
+    // If no members found, try to find members by gymId field if it exists
+    if (members.length === 0 && gymOwner.gymId) {
+      console.log(`No members found by createdBy, trying gymId: ${gymOwner.gymId}`);
+      const gymMembers = await User.find({
+        gymId: gymOwner.gymId,
+        role: 'member'
+      });
+      
+      if (gymMembers.length > 0) {
+        console.log(`Found ${gymMembers.length} members by gymId`);
+        members = gymMembers;
+      }
+    }
+    
+    // If still no members, return all members as a fallback
+    if (members.length === 0) {
+      console.log('No members found for this gym owner, returning all members as fallback');
+      members = await User.find({ role: 'member' }).limit(20);
+      console.log(`Returning ${members.length} members as fallback`);
+    }
     
     res.status(200).json({
       status: 'success',

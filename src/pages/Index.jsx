@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -566,12 +567,59 @@ const Index = () => {
 
   // We've removed the fetch functions for workout and diet plans as we're using dedicated pages
 
+  // Fetch member-specific data
+  const fetchMemberStats = async () => {
+    if (!user || userRole !== 'member') {
+      return;
+    }
+    
+    try {
+      // Fetch member details including health metrics and membership info
+      const response = await authFetch(`/users/${user._id}/details`);
+      
+      if (response.success || response.status === 'success') {
+        const memberData = response.data?.user || {};
+        
+        // Update user context with membership and health data
+        const updatedUserData = { ...user };
+        
+        // Add membership data if available
+        if (memberData.membership) {
+          updatedUserData.membershipStatus = memberData.membership.status || 'Active';
+          updatedUserData.membershipEndDate = memberData.membership.endDate;
+          updatedUserData.membershipType = memberData.membership.type || 'Standard';
+        }
+        
+        // Add health metrics if available
+        if (memberData.healthMetrics) {
+          updatedUserData.height = memberData.healthMetrics.height;
+          updatedUserData.weight = memberData.healthMetrics.weight;
+          updatedUserData.initialWeight = memberData.healthMetrics.initialWeight;
+          updatedUserData.targetWeight = memberData.healthMetrics.targetWeight;
+          updatedUserData.fitnessGoal = memberData.healthMetrics.fitnessGoal;
+        }
+        
+        // If there's an assigned trainer, fetch trainer details
+        if (user.assignedTrainer) {
+          const trainerResponse = await authFetch(`/users/${user.assignedTrainer}`);
+          if (trainerResponse.success || trainerResponse.status === 'success') {
+            updatedUserData.trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching member stats:', error);
+    }
+  };
+
   useEffect(() => {
     if (user && userRole === 'super-admin') {
       fetchTotalRevenue();
       fetchNewGymOwnersCount();
     } else if (user && userRole === 'trainer') {
       fetchTrainerStats();
+    } else if (user && userRole === 'member') {
+      fetchMemberStats();
     }
     
     if (user) {
@@ -705,18 +753,70 @@ const Index = () => {
             color: "bg-purple-500" 
           },
           { 
-            label: "Messages Sent", 
+            label: "Attendance", 
             value: isTrainerStatsLoading ? <LoadingIndicator /> : messagesSentCount.toString(), 
             icon: MessageSquare, 
             color: "bg-orange-500" 
           }
         ];
       case 'member':
+        // Calculate days active based on user creation date
+        const creationDate = user?.createdAt ? new Date(user.createdAt) : new Date();
+        const currentDate = new Date();
+        const daysActive = Math.floor((currentDate - creationDate) / (1000 * 60 * 60 * 24));
+        
+        // Get subscription data if available
+        const membershipStatus = user?.membershipStatus || 'Active';
+        const membershipEndDate = user?.membershipEndDate ? new Date(user?.membershipEndDate) : null;
+        const daysRemaining = membershipEndDate ? 
+          Math.max(0, Math.floor((membershipEndDate - currentDate) / (1000 * 60 * 60 * 24))) : 
+          null;
+        
+        // Calculate weight progress if available
+        let weightProgress = null;
+        if (user?.weight && user?.initialWeight) {
+          const weightDiff = parseFloat(user.weight) - parseFloat(user.initialWeight);
+          weightProgress = `${weightDiff > 0 ? '+' : ''}${weightDiff.toFixed(1)}kg`;
+        }
+        
         return [
-          { label: "Days Active", value: "45", icon: Calendar, color: "bg-blue-500" },
-          { label: "Workouts Done", value: "32", icon: Dumbbell, color: "bg-green-500" },
-          { label: "Weight Progress", value: "-5kg", icon: Target, color: "bg-purple-500" },
-          { label: "Streak", value: "7 days", icon: TrendingUp, color: "bg-orange-500" }
+          { 
+            label: "Days Active", 
+            value: daysActive.toString(), 
+            icon: Calendar, 
+            color: "bg-blue-500" 
+          },
+          { 
+            label: "Membership Status", 
+            value: (
+              <div className="flex flex-col">
+                <span className={membershipStatus === 'Active' ? "text-green-400" : "text-red-400"}>
+                  {membershipStatus}
+                </span>
+                {daysRemaining !== null && (
+                  <span className="text-xs text-gray-400">
+                    {daysRemaining} days left
+                  </span>
+                )}
+              </div>
+            ), 
+            icon: CreditCard, 
+            color: "bg-green-500" 
+          },
+          { 
+            label: "Weight Progress", 
+            value: weightProgress || "Not set", 
+            icon: Target, 
+            color: "bg-purple-500",
+            onClick: () => navigate("/profile")
+          },
+          { 
+            label: "Fitness Goal", 
+            value: user?.fitnessGoal || "General Fitness", 
+            icon: TrendingUp, 
+            color: "bg-orange-500",
+            onClick: () => navigate("/profile")
+          }
         ];
       default:
         return [];
@@ -771,15 +871,14 @@ const Index = () => {
         return [
           { label: "Create Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Create Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
-          { label: "Send Message", icon: MessageSquare, action: () => navigate("/messages") },
-          { label: "View Members", icon: Users, action: () => navigate("/my-members") }
+                    { label: "View Members", icon: Users, action: () => navigate("/my-members") }
         ];
       case 'member':
         return [
           { label: "Today's Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
-          { label: "Progress", icon: Target, action: () => navigate("/profile") },
-          { label: "Messages", icon: MessageSquare, action: () => navigate("/messages") }
+          { label: "My Profile", icon: User, action: () => navigate("/profile") },
+          { label: "Track Progress", icon: Target, action: () => navigate("/profile") }
         ];
       default:
         return [];
@@ -1026,6 +1125,127 @@ const Index = () => {
                     <UtensilsCrossed className="h-6 w-6 text-orange-400" />
                     <span className="text-sm">View Diet Plans</span>
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Member Workout Progress - Only shown for members */}
+          {userRole === 'member' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-white">My Fitness Progress</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Track your fitness journey
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={() => navigate('/profile')}
+                >
+                  Update Metrics
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Progress Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-700/50 p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-white font-medium">Current Weight</h3>
+                        <Target className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <p className="text-2xl font-bold text-white">
+                        {user?.weight ? `${user.weight} kg` : 'Not set'}
+                      </p>
+                      {user?.initialWeight && user?.weight && (
+                        <p className="text-sm text-gray-400 mt-1">
+                          Initial: {user.initialWeight} kg
+                          <span className={parseFloat(user.weight) < parseFloat(user.initialWeight) ? 'text-green-400 ml-2' : 'text-red-400 ml-2'}>
+                            {parseFloat(user.weight) < parseFloat(user.initialWeight) ? '↓' : '↑'} 
+                            {Math.abs(parseFloat(user.weight) - parseFloat(user.initialWeight)).toFixed(1)} kg
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="bg-gray-700/50 p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-white font-medium">Target Weight</h3>
+                        <TrendingUp className="h-5 w-5 text-green-400" />
+                      </div>
+                      <p className="text-2xl font-bold text-white">
+                        {user?.targetWeight ? `${user.targetWeight} kg` : 'Not set'}
+                      </p>
+                      {user?.weight && user?.targetWeight && (
+                        <p className="text-sm text-gray-400 mt-1">
+                          Remaining: 
+                          <span className="text-blue-400 ml-2">
+                            {Math.abs(parseFloat(user.weight) - parseFloat(user.targetWeight)).toFixed(1)} kg
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="bg-gray-700/50 p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-white font-medium">Fitness Goal</h3>
+                        <Dumbbell className="h-5 w-5 text-purple-400" />
+                      </div>
+                      <p className="text-xl font-bold text-white">
+                        {user?.fitnessGoal || 'General Fitness'}
+                      </p>
+                      <Button 
+                        variant="link" 
+                        className="text-blue-400 p-0 h-auto mt-1"
+                        onClick={() => navigate('/profile')}
+                      >
+                        Update Goal
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Membership Status */}
+                  <div className="bg-gray-700/30 p-4 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-white font-medium mb-1">Membership Status</h3>
+                        <p className={`text-sm ${user?.membershipStatus === 'Active' ? 'text-green-400' : 'text-red-400'}`}>
+                          {user?.membershipStatus || 'Active'}
+                        </p>
+                      </div>
+                      
+                      {user?.membershipEndDate && (
+                        <div className="text-right">
+                          <p className="text-white font-medium mb-1">Expires On</p>
+                          <p className="text-sm text-gray-300">
+                            {new Date(user.membershipEndDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Assigned Trainer */}
+                  {user?.assignedTrainer && (
+                    <div className="bg-gray-700/30 p-4 rounded-lg">
+                      <h3 className="text-white font-medium mb-2">Your Trainer</h3>
+                      <div className="flex items-center">
+                        <Avatar className="h-10 w-10 mr-3">
+                          <AvatarFallback className="bg-blue-600">
+                            {user?.trainerName?.charAt(0) || 'T'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-white">{user?.trainerName || 'Assigned Trainer'}</p>
+                          <p className="text-sm text-gray-400">Personal Trainer</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

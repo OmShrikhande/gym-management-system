@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.ObjectId,
     ref: 'User'
+  },
+  assignedTrainer: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User'
   }
 });
 

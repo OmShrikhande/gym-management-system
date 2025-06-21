@@ -42,13 +42,18 @@ const Messages = () => {
       try {
         // Fetch members - for gym owners, fetch only their gym's members
         let membersUrl = '/api/users?role=member';
-        if (isGymOwner && user?.gymId) {
-          membersUrl = `/api/gyms/${user.gymId}/members`;
+        if (isGymOwner && user?._id) {
+          membersUrl = `/api/users/gym-owner/${user._id}/members`;
+          console.log('Current user is a gym owner with ID:', user._id);
+        } else {
+          console.log('Current user role:', user?.role);
         }
         
+        console.log('Fetching members from URL:', membersUrl);
         const membersResponse = await authFetch(membersUrl);
+        console.log('Members response:', membersResponse);
         
-        if (membersResponse.success || membersResponse.status === 'success') {
+        if (membersResponse.status === 'success' || membersResponse.success) {
           // Handle different API response formats
           const membersData = membersResponse.data?.users || membersResponse.data?.members || [];
           console.log('Fetched members:', membersData);
@@ -64,20 +69,44 @@ const Messages = () => {
           console.log('Processed members for display:', processedMembers);
         } else {
           console.error('Failed to fetch members:', membersResponse);
-          toast.error("Failed to load members. Using sample data instead.");
-          // Use mock data if API fails - but with clear indication these are mock
-          setMembers([]
-          );
+          
+          // If gym owner-specific endpoint failed, try fetching all members as fallback
+          if (isGymOwner && user?._id) {
+            console.log('Trying fallback: fetching all members');
+            try {
+              const fallbackResponse = await authFetch('/api/users?role=member');
+              if (fallbackResponse.status === 'success' || fallbackResponse.success) {
+                const fallbackData = fallbackResponse.data?.users || [];
+                const processedFallbackMembers = fallbackData.map(member => ({
+                  ...member,
+                  name: member.name || member.fullName || (member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : null) || 'Unknown Member',
+                  email: member.email || member.emailAddress || 'No email'
+                }));
+                setMembers(processedFallbackMembers);
+                console.log('Fallback successful, loaded all members:', processedFallbackMembers.length);
+                return;
+              }
+            } catch (fallbackError) {
+              console.error('Fallback also failed:', fallbackError);
+            }
+          }
+          
+          toast.error("Failed to load members. Please try again.");
+          // Use empty array if all attempts fail
+          setMembers([]);
         }
         
         // Fetch messages
         const messagesResponse = await authFetch('/api/messages/history');
+        console.log('Messages response:', messagesResponse);
         
-        if (messagesResponse.success || messagesResponse.status === 'success') {
+        if (messagesResponse.status === 'success' || messagesResponse.success) {
           setRealMessages(messagesResponse.data?.messages || []);
         } else {
           console.error('Failed to fetch messages:', messagesResponse);
           toast.error("Failed to load message history.");
+          // Initialize with empty array
+          setRealMessages([]);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -273,6 +302,46 @@ const Messages = () => {
     setSelectedTemplate(null);
   };
   
+  // Fetch members specifically for the form
+  const fetchMembersForForm = async () => {
+    try {
+      // Fetch members - for gym owners, fetch only their gym's members
+      let membersUrl = '/api/users?role=member';
+      if (isGymOwner && user?._id) {
+        membersUrl = `/api/users/gym-owner/${user._id}/members`;
+        console.log('Fetching members for form from URL:', membersUrl);
+      }
+      
+      const membersResponse = await authFetch(membersUrl);
+      console.log('Members response for form:', membersResponse);
+      
+      if (membersResponse.status === 'success' || membersResponse.success) {
+        // Handle different API response formats
+        const membersData = membersResponse.data?.users || membersResponse.data?.members || [];
+        
+        // Ensure each member has a name and email property
+        const processedMembers = membersData.map(member => ({
+          ...member,
+          name: member.name || member.fullName || (member.firstName && member.lastName ? `${member.firstName} ${member.lastName}` : null) || 'Unknown Member',
+          email: member.email || member.emailAddress || 'No email'
+        }));
+        
+        setMembers(processedMembers);
+        console.log('Updated members for form:', processedMembers);
+      } else {
+        console.error('Failed to fetch members for form:', membersResponse);
+      }
+    } catch (error) {
+      console.error('Error fetching members for form:', error);
+    }
+  };
+
+  // Handle dialog open
+  const handleDialogOpen = () => {
+    setIsCreateDialogOpen(true);
+    fetchMembersForForm(); // Fetch fresh members data when opening the form
+  };
+  
   // Handle dialog close
   const handleDialogClose = () => {
     setIsCreateDialogOpen(false);
@@ -404,7 +473,7 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
           </div>
           <Button 
             className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => setIsCreateDialogOpen(true)}
+            onClick={handleDialogOpen}
           >
             <Plus className="h-4 w-4 mr-2" />
             Create New Message
@@ -769,11 +838,19 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                   
                   <div className="border border-gray-700 rounded-md p-4 max-h-[200px] overflow-y-auto">
                     <div className="space-y-2">
-                      {members.length > 0 ? (
+                      {/* Debug info */}
+                      <div className="mb-2 p-2 bg-gray-700/50 rounded text-xs">
+                        <p>Debug: Total members loaded: {members ? members.length : 0}</p>
+                        {members && members.length > 0 && (
+                          <p>First member: {members[0].name || 'Unknown'} (ID: {members[0]._id || 'No ID'})</p>
+                        )}
+                      </div>
+                      
+                      {members && members.length > 0 ? (
                         members
                           .filter(member => 
-                            (member.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                            (member.email?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+                            ((member.name || '')?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                            ((member.email || '')?.toLowerCase() || '').includes(searchTerm.toLowerCase())
                           )
                           .map(member => (
                             <div key={member._id} className="flex items-center p-2 hover:bg-gray-700 rounded-md">
@@ -793,13 +870,13 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                             </div>
                           ))
                       ) : (
-                        <p className="text-gray-400">No members found</p>
+                        <p className="text-gray-400">No members found. Please make sure you have added members to your gym.</p>
                       )}
                       
-                      {members.length > 0 && 
+                      {members && members.length > 0 && 
                         members.filter(member => 
-                          member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          member.email?.toLowerCase().includes(searchTerm.toLowerCase())
+                          ((member.name || '')?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                          ((member.email || '')?.toLowerCase() || '').includes(searchTerm.toLowerCase())
                         ).length === 0 && (
                           <p className="text-gray-400">No members match your search</p>
                         )

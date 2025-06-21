@@ -10,7 +10,7 @@ router.use(authController.protect);
 // Check subscription status
 router.get('/status/:userId', subscriptionController.checkSubscriptionStatus);
 
-// Get total revenue - accessible to super admin only
+// Routes accessible to super admin only
 router.get('/revenue/total', 
   authController.restrictTo('super-admin'),
   subscriptionController.getTotalRevenue
@@ -20,6 +20,7 @@ router.get('/revenue/total',
 router.use(authController.restrictTo('super-admin'));
 
 router.route('/')
+  .get(subscriptionController.getAllSubscriptions)
   .post(subscriptionController.createSubscription);
 
 router.route('/:id')

@@ -13,6 +13,7 @@ router.patch('/update-me', userController.updateMe);
 
 // Routes restricted to super admin only
 router.get('/stats/new-gym-owners', restrictTo('super-admin'), userController.getNewGymOwnersCount);
+router.get('/stats/monthly-gym-owners', restrictTo('super-admin'), userController.getMonthlyGymOwnerStats);
 
 // Trainer routes
 router.get('/trainer/:trainerId/members', userController.getTrainerMembers);

@@ -34,6 +34,46 @@ export const getTotalRevenue = catchAsync(async (req, res, next) => {
   });
 });
 
+// Get all subscriptions (for Super Admin)
+export const getAllSubscriptions = catchAsync(async (req, res, next) => {
+  // Get query parameters for filtering
+  const { year, month, status } = req.query;
+  
+  // Build filter object
+  const filter = {};
+  
+  // Filter by status if provided
+  if (status) {
+    filter.isActive = status === 'active';
+  }
+  
+  // Filter by date if year/month provided
+  if (year && month) {
+    const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+    const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
+    
+    filter.startDate = { $gte: startDate, $lte: endDate };
+  } else if (year) {
+    const startDate = new Date(parseInt(year), 0, 1);
+    const endDate = new Date(parseInt(year), 11, 31, 23, 59, 59);
+    
+    filter.startDate = { $gte: startDate, $lte: endDate };
+  }
+  
+  // Find subscriptions with populated gym owner data
+  const subscriptions = await Subscription.find(filter)
+    .populate('gymOwner', 'name email gymName')
+    .sort({ createdAt: -1 });
+  
+  res.status(200).json({
+    status: 'success',
+    results: subscriptions.length,
+    data: {
+      subscriptions
+    }
+  });
+});
+
 // Helper function to calculate subscription end date
 const calculateEndDate = (startDate, months) => {
   const endDate = new Date(startDate);
