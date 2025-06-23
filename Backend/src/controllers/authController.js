@@ -24,20 +24,61 @@ const createUserWithRole = async (req, res, role) => {
       });
     }
 
-    console.log(`Creating new ${role} in database...`);
-    const newUser = await User.create({
+    // Create user object with basic fields
+    const userData = {
       name,
       email,
       password,
       role,
       createdBy: req.user._id // Track who created this user
-    });
+    };
+    
+    // Add additional fields for member
+    if (role === 'member') {
+      // Add all the additional fields from the request body
+      const additionalFields = [
+        'phone', 'gender', 'dob', 'goal', 'planType', 'address', 
+        'whatsapp', 'height', 'weight', 'emergencyContact', 
+        'medicalConditions', 'assignedTrainer', 'notes'
+      ];
+      
+      additionalFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          userData[field] = req.body[field];
+        }
+      });
+    }
+
+    console.log(`Creating new ${role} in database...`);
+    const newUser = await User.create(userData);
     
     console.log(`${role} created successfully with ID:`, newUser._id);
     
     // Verify user exists in database immediately after creation
     const verifyUser = await User.findById(newUser._id);
     console.log('Verification - User exists in DB:', verifyUser ? 'Yes' : 'No');
+    
+    // If this is a member with an assigned trainer, update the trainer's member count
+    if (role === 'member' && newUser.assignedTrainer) {
+      try {
+        const trainer = await User.findById(newUser.assignedTrainer);
+        if (trainer) {
+          // Count members assigned to this trainer
+          const trainerMembers = await User.countDocuments({
+            assignedTrainer: newUser.assignedTrainer,
+            role: 'member'
+          });
+          
+          // Update the trainer's assignedMembers count
+          trainer.assignedMembers = trainerMembers;
+          await trainer.save({ validateBeforeSave: false });
+          console.log(`Updated trainer ${trainer.name} with ${trainerMembers} assigned members`);
+        }
+      } catch (error) {
+        console.error('Error updating trainer member count:', error);
+        // Continue with user creation even if trainer update fails
+      }
+    }
 
     // Remove password from output
     newUser.password = undefined;

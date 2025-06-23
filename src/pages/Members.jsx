@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 // const Members = () => {
 const Members = () => {
-  const { createMember, isGymOwner, users, fetchUsers, user, subscription, authFetch, checkSubscriptionStatus, updateMember, deleteMember } = useAuth();
+  const { createMember, isGymOwner, isTrainer, users, fetchUsers, user, subscription, authFetch, checkSubscriptionStatus, updateMember, deleteMember } = useAuth();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
@@ -53,6 +53,7 @@ const Members = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [realMembers, setRealMembers] = useState([]);
+  const [trainerMembers, setTrainerMembers] = useState([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingMemberData, setPendingMemberData] = useState(null);
   const [formStep, setFormStep] = useState(1); // 1: Basic Info, 2: Membership Details, 3: Review
@@ -212,6 +213,52 @@ const Members = () => {
       console.error('Error fetching trainers:', error);
     }
   };
+  
+  // Function to fetch members assigned to the current trainer
+  const fetchTrainerMembers = async () => {
+    if (!user || !isTrainer) return;
+    
+    try {
+      console.log('Fetching members for trainer:', user._id);
+      const response = await authFetch(`/users/trainer/${user._id}/members`);
+      console.log('Trainer members response:', response);
+      
+      if (response.success || response.status === 'success') {
+        const members = response.data?.members || [];
+        console.log('Trainer assigned members:', members.length);
+        
+        // Process members data
+        const processedMembers = members.map(member => ({
+          id: member._id,
+          name: member.name,
+          email: member.email,
+          mobile: member.phone || '',
+          whatsapp: member.whatsapp || '',
+          gender: member.gender || 'Not specified',
+          dob: member.dob || '',
+          joinDate: member.createdAt || new Date().toISOString(),
+          assignedTrainer: member.assignedTrainer || null,
+          goal: member.goal || 'general-fitness',
+          membershipStatus: member.membershipStatus || 'Active',
+          planType: member.planType || 'Basic',
+          profileImage: member.profileImage || null,
+          address: member.address || '',
+          height: member.height || '',
+          weight: member.weight || '',
+          emergencyContact: member.emergencyContact || '',
+          medicalConditions: member.medicalConditions || '',
+          lastCheckIn: member.lastCheckIn || '',
+          attendanceRate: member.attendanceRate || '0%',
+          paymentStatus: member.paymentStatus || 'Paid',
+          notes: member.notes || ''
+        }));
+        
+        setTrainerMembers(processedMembers);
+      }
+    } catch (error) {
+      console.error('Error fetching trainer members:', error);
+    }
+  };
 
   // Combined data loading effect to reduce re-renders
   useEffect(() => {
@@ -241,6 +288,11 @@ const Members = () => {
         if (user && isGymOwner && users.length > 0) {
           await fetchTrainers();
         }
+        
+        // Step 6: Fetch trainer members if user is a trainer
+        if (user && isTrainer) {
+          await fetchTrainerMembers();
+        }
       } catch (error) {
         console.error('Error loading data:', error);
         setMessage({ type: 'error', text: 'Failed to load data' });
@@ -249,7 +301,7 @@ const Members = () => {
     
     loadData();
     // We'll set isLoading to false after processing the data in the next useEffect
-  }, [fetchUsers, user, isGymOwner, checkSubscriptionStatus, users]);
+  }, [fetchUsers, user, isGymOwner, isTrainer, checkSubscriptionStatus, users]);
 
   // Process users to get members - only runs when users array changes
   useEffect(() => {
@@ -267,7 +319,7 @@ const Members = () => {
         gender: member.gender || 'Not specified',
         dob: member.dob || '',
         joinDate: member.createdAt || new Date().toISOString(),
-        assignedTrainer: member.assignedTrainer || 'Not assigned',
+        assignedTrainer: member.assignedTrainer || null,
         goal: member.goal || 'general-fitness',
         membershipStatus: member.membershipStatus || 'Active',
         planType: member.planType || 'Basic',
@@ -297,10 +349,13 @@ const Members = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
   
-  const filteredMembers = realMembers.filter(member => {
+  // Determine which members list to use based on user role
+  const membersToFilter = isTrainer ? trainerMembers : realMembers;
+
+  const filteredMembers = membersToFilter.filter(member => {
     const matchesSearch = member.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
                          member.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-                         (member.assignedTrainer && member.assignedTrainer.toLowerCase().includes(debouncedSearchTerm.toLowerCase()));
+                         (member.assignedTrainer && typeof member.assignedTrainer === 'string' && member.assignedTrainer.toLowerCase().includes(debouncedSearchTerm.toLowerCase()));
     const matchesGoal = filterGoal === "all" || member.goal === filterGoal;
     const matchesStatus = filterStatus === "all" || member.membershipStatus === filterStatus;
     return matchesSearch && matchesGoal && matchesStatus;
@@ -326,13 +381,29 @@ const Members = () => {
     return <Badge variant={variant}>{plan}</Badge>;
   };
 
-  const memberStats = {
-    total: realMembers.length,
-    active: realMembers.filter(m => m.membershipStatus === 'Active').length,
-    weightLoss: realMembers.filter(m => m.goal === 'weight-loss').length,
-    weightGain: realMembers.filter(m => m.goal === 'weight-gain').length,
-    premium: realMembers.filter(m => m.planType === 'Premium').length
-  };
+  const memberStats = isTrainer 
+    ? {
+        total: trainerMembers.length,
+        active: trainerMembers.filter(m => m.membershipStatus === 'Active').length,
+        weightLoss: trainerMembers.filter(m => m.goal === 'weight-loss').length,
+        weightGain: trainerMembers.filter(m => m.goal === 'weight-gain').length,
+        premium: trainerMembers.filter(m => 
+          m.planType === 'Premium' || 
+          m.planType === 'Premium Member' || 
+          m.planType?.toLowerCase().includes('premium')
+        ).length
+      }
+    : {
+        total: realMembers.length,
+        active: realMembers.filter(m => m.membershipStatus === 'Active').length,
+        weightLoss: realMembers.filter(m => m.goal === 'weight-loss').length,
+        weightGain: realMembers.filter(m => m.goal === 'weight-gain').length,
+        premium: realMembers.filter(m => 
+          m.planType === 'Premium' || 
+          m.planType === 'Premium Member' || 
+          m.planType?.toLowerCase().includes('premium')
+        ).length
+      };
 
   // Memoized input change handler to prevent unnecessary re-renders
   const handleInputChange = useCallback((e) => {
@@ -401,8 +472,8 @@ const Members = () => {
       weight: member.weight || '',
       emergencyContact: member.emergencyContact || '',
       medicalConditions: member.medicalConditions || '',
-      requiresTrainer: member.assignedTrainer !== 'Not assigned',
-      assignedTrainer: member.assignedTrainer !== 'Not assigned' ? member.assignedTrainer : '',
+      requiresTrainer: !!member.assignedTrainer,
+      assignedTrainer: member.assignedTrainer || '',
       membershipDuration: '1', // Default
       fitnessGoalDescription: member.notes || ''
     });
@@ -450,6 +521,19 @@ const Members = () => {
       if (result.success) {
         // Refresh users list
         await fetchUsers();
+        
+        // If the member has been assigned to a trainer, trigger an event to refresh the trainer stats
+        if (formData.requiresTrainer && formData.assignedTrainer) {
+          // Create and dispatch a custom event
+          const event = new CustomEvent('memberAssignmentChanged', {
+            detail: {
+              memberId: selectedMember.id,
+              trainerId: formData.assignedTrainer
+            }
+          });
+          window.dispatchEvent(event);
+          console.log(`Dispatched memberAssignmentChanged event for trainer ${formData.assignedTrainer}`);
+        }
         
         setMessage({ type: 'success', text: 'Member updated successfully' });
         toast.success('Member updated successfully');
@@ -533,7 +617,7 @@ const Members = () => {
         paymentDate: paymentData.timestamp,
         // Include the new fields
         requiresTrainer: pendingMemberData.requiresTrainer || false,
-        assignedTrainer: pendingMemberData.requiresTrainer ? pendingMemberData.assignedTrainer : null,
+        assignedTrainer: pendingMemberData.requiresTrainer && pendingMemberData.assignedTrainer ? pendingMemberData.assignedTrainer : null,
         membershipDuration: pendingMemberData.membershipDuration || '1',
         fitnessGoalDescription: pendingMemberData.fitnessGoalDescription || ''
       };
@@ -551,6 +635,19 @@ const Members = () => {
         
         // Refresh members list
         await fetchUsers();
+        
+        // If the new member has been assigned to a trainer, trigger an event to refresh the trainer stats
+        if (memberDataWithPayment.requiresTrainer && memberDataWithPayment.assignedTrainer) {
+          // Create and dispatch a custom event
+          const event = new CustomEvent('memberAssignmentChanged', {
+            detail: {
+              memberId: result.user?._id,
+              trainerId: memberDataWithPayment.assignedTrainer
+            }
+          });
+          window.dispatchEvent(event);
+          console.log(`Dispatched memberAssignmentChanged event for trainer ${memberDataWithPayment.assignedTrainer}`);
+        }
         
         // Show success toast
         toast.success("Member created successfully with payment verification");
@@ -670,8 +767,14 @@ const Members = () => {
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-white">Member Management</h1>
-              <p className="text-gray-400">Manage gym members, assignments, and goals</p>
+              <h1 className="text-3xl font-bold text-white">
+                {isTrainer ? 'My Assigned Members' : 'Member Management'}
+              </h1>
+              <p className="text-gray-400">
+                {isTrainer 
+                  ? 'View and manage members assigned to you' 
+                  : 'Manage gym members, assignments, and goals'}
+              </p>
             </div>
             {isGymOwner && (
               <Button 
@@ -773,15 +876,18 @@ const Members = () => {
                 <div className="flex gap-2">
                   {!isEditMode && (
                     <>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => handleEditMember(selectedMember)}
-                        className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
+                      {/* Only show edit button for trainers, not gym owners */}
+                      {isTrainer && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleEditMember(selectedMember)}
+                          className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      )}
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -1122,9 +1228,9 @@ const Members = () => {
             <p className="text-white">
               {(() => {
                 // Find the trainer by ID
-                if (selectedMember.assignedTrainer && selectedMember.assignedTrainer !== "Not assigned") {
+                if (selectedMember.assignedTrainer) {
                   const trainer = availableTrainers.find((t) => t._id === selectedMember.assignedTrainer);
-                  return trainer ? trainer.name : selectedMember.assignedTrainer;
+                  return trainer ? trainer.name : "Not assigned";
                 }
                 return "Not assigned";
               })()}
@@ -1899,7 +2005,7 @@ const Members = () => {
                       <p className="text-gray-400 text-sm">Premium</p>
                       <p className="text-2xl font-bold text-white">{memberStats.premium}</p>
                     </div>
-                    <Calendar className="h-6 w-6 text-purple-500" />
+                    <CreditCard className="h-6 w-6 text-purple-500" />
                   </div>
                 </CardContent>
               </Card>
@@ -2004,9 +2110,9 @@ const Members = () => {
                           <p className="text-white">
                             {(() => {
                               // Find the trainer by ID
-                              if (member.assignedTrainer && member.assignedTrainer !== 'Not assigned') {
+                              if (member.assignedTrainer) {
                                 const trainer = availableTrainers.find(t => t._id === member.assignedTrainer);
-                                return trainer ? trainer.name : member.assignedTrainer;
+                                return trainer ? trainer.name : 'Not assigned';
                               }
                               return 'Not assigned';
                             })()}
@@ -2035,15 +2141,18 @@ const Members = () => {
                             >
                               <Calendar className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                              onClick={() => handleEditMember(member)}
-                              title="Edit Member"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            {/* Only show edit button for trainers, not gym owners */}
+                            {isTrainer && (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                                onClick={() => handleEditMember(member)}
+                                title="Edit Member"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button 
                               size="sm" 
                               variant="outline" 

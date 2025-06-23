@@ -40,9 +40,43 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User'
   },
+  // Member specific fields
+  phone: String,
+  gender: {
+    type: String,
+    enum: ['Male', 'Female', 'Other'],
+    default: 'Male'
+  },
+  dob: String,
+  goal: {
+    type: String,
+    enum: ['weight-loss', 'weight-gain', 'general-fitness'],
+    default: 'weight-loss'
+  },
+  planType: {
+    type: String,
+    default: 'Basic'
+  },
+  address: String,
+  whatsapp: String,
+  height: String,
+  weight: String,
+  emergencyContact: String,
+  medicalConditions: String,
+  notes: String,
   assignedTrainer: {
     type: mongoose.Schema.ObjectId,
     ref: 'User'
+  },
+  membershipStatus: {
+    type: String,
+    enum: ['Active', 'Inactive', 'Expired', 'Pending'],
+    default: 'Active'
+  },
+  // Trainer specific fields
+  assignedMembers: {
+    type: Number,
+    default: 0
   }
 });
 

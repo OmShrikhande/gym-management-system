@@ -79,39 +79,65 @@ export const deleteMessageTemplate = catchAsync(async (req, res, next) => {
 
 // Helper function to create notifications and messages
 const createNotificationsAndMessage = async (recipients, messageData, sender) => {
-  const { type, title, content, channel } = messageData;
+  const { type, title, content, channel, isScheduled, scheduledDateTime, sentStatus } = messageData;
   
   // Create a new message record
   const message = await Message.create({
     type,
+    title,
     content,
     sender: sender.id,
     recipients: recipients.map(r => r._id),
     channel,
     totalRecipients: recipients.length,
-    sentStatus: 'Sent'
+    sentStatus: sentStatus || (isScheduled ? 'Scheduled' : 'Sent'),
+    isScheduled: isScheduled || false,
+    scheduledDateTime: scheduledDateTime || null,
+    sendDate: isScheduled ? scheduledDateTime : new Date()
   });
   
-  // Create notifications for each recipient
-  const notifications = await Promise.all(
-    recipients.map(recipient => 
-      Notification.create({
-        recipient: recipient._id,
-        type: 'message',
-        title,
-        message: content,
-        read: false
+  // Create notifications for each recipient with improved content
+  let notifications = [];
+  
+  // Only create notifications immediately if the message is not scheduled
+  if (!isScheduled) {
+    notifications = await Promise.all(
+      recipients.map(recipient => {
+        // Personalize the message if needed
+        const personalizedContent = content.replace(/\[NAME\]/g, recipient.name || 'Member');
+        
+        return Notification.create({
+          recipient: recipient._id,
+          type: 'message',
+          title: title,
+          message: personalizedContent,
+          read: false,
+          actionLink: '/notifications',
+          createdAt: new Date()
+        });
       })
-    )
-  );
+    );
+  } else {
+    console.log(`Message scheduled for ${new Date(scheduledDateTime).toLocaleString()}`);
+  }
   
   // Update message with delivered count
-  await Message.findByIdAndUpdate(
-    message._id,
-    { deliveredCount: notifications.length }
-  );
+  if (!isScheduled) {
+    await Message.findByIdAndUpdate(
+      message._id,
+      { deliveredCount: notifications.length }
+    );
+    
+    console.log(`Created ${notifications.length} notifications for message ID: ${message._id}`);
+  } else {
+    console.log(`Scheduled message created with ID: ${message._id}`);
+  }
   
-  return { message, notifications };
+  return { 
+    message, 
+    notifications,
+    isScheduled: isScheduled || false
+  };
 };
 
 // Send message to all members
@@ -137,10 +163,15 @@ export const sendMessageToAllMembers = catchAsync(async (req, res, next) => {
   
   res.status(201).json({
     status: 'success',
+    success: true,
+    message: result.isScheduled 
+      ? `Message scheduled for ${new Date(result.message.scheduledDateTime).toLocaleString()} to ${members.length} members`
+      : `Message sent successfully to ${members.length} members`,
     data: {
       message: result.message,
       recipientCount: members.length,
-      deliveredCount: result.notifications.length
+      deliveredCount: result.notifications.length,
+      isScheduled: result.isScheduled
     }
   });
 });
@@ -170,10 +201,15 @@ export const sendMessageToMember = catchAsync(async (req, res, next) => {
   
   res.status(201).json({
     status: 'success',
+    success: true,
+    message: result.isScheduled 
+      ? `Message scheduled for ${new Date(result.message.scheduledDateTime).toLocaleString()} to ${member.name || 'member'}`
+      : `Message sent successfully to ${member.name || 'member'}`,
     data: {
       message: result.message,
       recipientCount: 1,
-      deliveredCount: result.notifications.length
+      deliveredCount: result.notifications.length,
+      isScheduled: result.isScheduled
     }
   });
 });

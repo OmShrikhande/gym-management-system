@@ -17,6 +17,7 @@ router.get('/stats/monthly-gym-owners', restrictTo('super-admin'), userControlle
 
 // Trainer routes
 router.get('/trainer/:trainerId/members', userController.getTrainerMembers);
+router.post('/trainers/update-member-counts', restrictTo('super-admin', 'gym-owner'), userController.updateAllTrainerMemberCounts);
 
 // Routes restricted to admin users
 router.use(restrictTo('super-admin', 'gym-owner'));

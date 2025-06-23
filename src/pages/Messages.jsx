@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Edit, Trash2, Calendar, Users, User, X, Send } from "lucide-react";
+import { Search, Plus, Edit, Trash2, Calendar, Users, User, X, Send, Loader2, Clock } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +33,8 @@ const Messages = () => {
     content: "",
     recipientType: "all", // "all" or "specific"
     selectedMembers: [],
-    channel: "In-App"
+    channel: "In-App",
+    successMessage: "" // For displaying success message
   });
   
   // Fetch members and messages on component mount
@@ -41,9 +42,9 @@ const Messages = () => {
     const fetchData = async () => {
       try {
         // Fetch members - for gym owners, fetch only their gym's members
-        let membersUrl = '/api/users?role=member';
+        let membersUrl = '/users?role=member';
         if (isGymOwner && user?._id) {
-          membersUrl = `/api/users/gym-owner/${user._id}/members`;
+          membersUrl = `/users/gym-owner/${user._id}/members`;
           console.log('Current user is a gym owner with ID:', user._id);
         } else {
           console.log('Current user role:', user?.role);
@@ -74,7 +75,7 @@ const Messages = () => {
           if (isGymOwner && user?._id) {
             console.log('Trying fallback: fetching all members');
             try {
-              const fallbackResponse = await authFetch('/api/users?role=member');
+              const fallbackResponse = await authFetch('/users?role=member');
               if (fallbackResponse.status === 'success' || fallbackResponse.success) {
                 const fallbackData = fallbackResponse.data?.users || [];
                 const processedFallbackMembers = fallbackData.map(member => ({
@@ -97,7 +98,7 @@ const Messages = () => {
         }
         
         // Fetch messages
-        const messagesResponse = await authFetch('/api/messages/history');
+        const messagesResponse = await authFetch('/messages/history');
         console.log('Messages response:', messagesResponse);
         
         if (messagesResponse.status === 'success' || messagesResponse.success) {
@@ -234,9 +235,30 @@ const Messages = () => {
     return <Badge variant={config.variant}>{type}</Badge>;
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, deliveredCount = 0, totalTargets = 0) => {
     const variant = status === 'Sent' ? 'default' : status === 'Scheduled' ? 'secondary' : 'destructive';
-    return <Badge variant={variant}>{status}</Badge>;
+    
+    // Add icons to show message status
+    let statusIcon = null;
+    if (status === 'Sent') {
+      // Double check mark for sent and delivered messages (like WhatsApp)
+      if (deliveredCount >= totalTargets) {
+        statusIcon = <span className="ml-1 text-blue-400">✓✓</span>;
+      } else if (deliveredCount > 0) {
+        // Single check mark for sent but not all delivered
+        statusIcon = <span className="ml-1 text-gray-400">✓</span>;
+      }
+    } else if (status === 'Scheduled') {
+      // Clock icon for scheduled messages
+      statusIcon = <Clock className="ml-1 h-3 w-3 inline text-yellow-400" />;
+    }
+    
+    return (
+      <div className="flex items-center">
+        <Badge variant={variant}>{status}</Badge>
+        {statusIcon}
+      </div>
+    );
   };
 
   const getChannelBadge = (channel) => {
@@ -297,7 +319,8 @@ const Messages = () => {
       content: "",
       recipientType: "all",
       selectedMembers: [],
-      channel: "In-App"
+      channel: "In-App",
+      successMessage: ""
     });
     setSelectedTemplate(null);
   };
@@ -306,9 +329,9 @@ const Messages = () => {
   const fetchMembersForForm = async () => {
     try {
       // Fetch members - for gym owners, fetch only their gym's members
-      let membersUrl = '/api/users?role=member';
+      let membersUrl = '/users?role=member';
       if (isGymOwner && user?._id) {
-        membersUrl = `/api/users/gym-owner/${user._id}/members`;
+        membersUrl = `/users/gym-owner/${user._id}/members`;
         console.log('Fetching members for form from URL:', membersUrl);
       }
       
@@ -360,27 +383,58 @@ const Messages = () => {
       return;
     }
     
+    // Validate schedule date and time if scheduling is enabled
+    if (messageForm.isScheduled) {
+      if (!messageForm.scheduleDate) {
+        toast.error("Please select a date for the scheduled message");
+        return;
+      }
+      
+      if (!messageForm.scheduleTime) {
+        toast.error("Please select a time for the scheduled message");
+        return;
+      }
+      
+      // Validate that the scheduled date is within the next 7 days
+      const selectedDate = new Date(`${messageForm.scheduleDate}T${messageForm.scheduleTime}`);
+      const now = new Date();
+      const maxDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+      
+      if (selectedDate < now) {
+        toast.error("Scheduled time must be in the future");
+        return;
+      }
+      
+      if (selectedDate > maxDate) {
+        toast.error("Scheduled date must be within the next 7 days");
+        return;
+      }
+    }
+    
     setIsLoading(true);
     
     try {
       let response;
       
       // Get selected member details for logging
-      // In the handleSendMessage function
-const selectedMemberDetails = messageForm.recipientType === "specific" 
-  ? messageForm.selectedMembers.map(memberId => {
-      const member = members.find(m => m._id === memberId);
-      return member ? member.name : 'Unknown Member';
-    }).join(', ')
-  : 'All Members';
+      const selectedMemberDetails = messageForm.recipientType === "specific" 
+        ? messageForm.selectedMembers.map(memberId => {
+            const member = members.find(m => m._id === memberId);
+            return member ? member.name : 'Unknown Member';
+          }).join(', ')
+        : 'All Members';
 
-console.log(`Sending message to: ${selectedMemberDetails}`);
-      
       console.log(`Sending message to: ${selectedMemberDetails}`);
+      
+      // Prepare scheduled date if needed
+      let scheduledDateTime = null;
+      if (messageForm.isScheduled) {
+        scheduledDateTime = new Date(`${messageForm.scheduleDate}T${messageForm.scheduleTime}`).toISOString();
+      }
       
       if (messageForm.recipientType === "all") {
         // Send to all members
-        response = await authFetch('/api/messages/send-to-all', {
+        response = await authFetch('/messages/send-to-all', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -389,7 +443,10 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
             type: messageForm.type,
             title: messageForm.title,
             content: messageForm.content,
-            channel: messageForm.channel
+            channel: messageForm.channel,
+            isScheduled: messageForm.isScheduled,
+            scheduledDateTime: scheduledDateTime,
+            sentStatus: messageForm.isScheduled ? 'Scheduled' : 'Sent'
           })
         });
       } else {
@@ -402,7 +459,7 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
           // Replace [NAME] placeholder with actual member name
           const personalizedContent = messageForm.content.replace(/\[NAME\]/g, memberName);
           
-          return authFetch(`/api/messages/send-to-member/${memberId}`, {
+          return authFetch(`/messages/send-to-member/${memberId}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -412,22 +469,65 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
               title: messageForm.title,
               content: personalizedContent,
               channel: messageForm.channel,
-              recipientName: memberName // Add recipient name to the request
+              recipientName: memberName, // Add recipient name to the request
+              isScheduled: messageForm.isScheduled,
+              scheduledDateTime: scheduledDateTime,
+              sentStatus: messageForm.isScheduled ? 'Scheduled' : 'Sent'
             })
           });
         });
         
-        await Promise.all(sendPromises);
-        response = { ok: true, success: true }; // Mock response for multiple requests
+        // Wait for all messages to be sent
+        const results = await Promise.all(sendPromises);
+        
+        // Check if all messages were sent successfully
+        const allSuccessful = results.every(result => result.success || result.ok);
+        response = { 
+          ok: allSuccessful, 
+          success: allSuccessful,
+          message: allSuccessful ? 
+            `Messages sent successfully to ${selectedMemberDetails}` : 
+            'Some messages failed to send'
+        };
       }
       
       if (response.ok || response.success) {
-        toast.success("Message sent successfully");
-        handleDialogClose();
+        // Show a more prominent success message
+        toast.success(
+          response.message || "Message sent successfully", 
+          {
+            duration: 5000,
+            style: {
+              background: '#10B981',
+              color: '#fff',
+              padding: '16px',
+              borderRadius: '8px',
+              fontWeight: 'bold'
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#10B981',
+            }
+          }
+        );
+        
+        // Display a success message before closing the dialog
+        setIsLoading(false);
+        setMessageForm(prev => ({
+          ...prev,
+          successMessage: messageForm.isScheduled 
+            ? `Message scheduled for ${new Date(`${messageForm.scheduleDate}T${messageForm.scheduleTime}`).toLocaleString()} to ${messageForm.recipientType === "all" ? "all members" : `${messageForm.selectedMembers.length} member(s)`}`
+            : `Message sent successfully to ${messageForm.recipientType === "all" ? "all members" : `${messageForm.selectedMembers.length} member(s)`}`
+        }));
+        
+        // Close the dialog after a short delay to show the success message
+        setTimeout(() => {
+          handleDialogClose();
+        }, 1500);
         
         // Refresh message list
         try {
-          const messagesResponse = await authFetch('/api/messages/history');
+          const messagesResponse = await authFetch('/messages/history');
           
           if (messagesResponse.success || messagesResponse.status === 'success') {
             setRealMessages(messagesResponse.data?.messages || []);
@@ -458,8 +558,9 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
   const messageStats = {
     total: realMessages.length,
     sent: realMessages.filter(m => m.sentStatus === 'Sent').length,
-    scheduled: realMessages.filter(m => m.sentStatus === 'Scheduled').length,
-    totalDelivered: realMessages.reduce((sum, message) => sum + (message.deliveredCount || 0), 0)
+    scheduled: realMessages.filter(m => m.sentStatus === 'Scheduled' || m.isScheduled).length,
+    totalDelivered: realMessages.reduce((sum, message) => sum + (message.deliveredCount || 0), 0),
+    scheduledCount: realMessages.filter(m => m.sentStatus === 'Scheduled' || m.isScheduled).length
   };
 
   return (
@@ -513,7 +614,14 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                   <p className="text-gray-400 text-sm">Scheduled</p>
                   <p className="text-2xl font-bold text-white">{messageStats.scheduled}</p>
                 </div>
-                <Calendar className="h-6 w-6 text-purple-500" />
+                <div className="relative">
+                  <Calendar className="h-6 w-6 text-purple-500" />
+                  {messageStats.scheduled > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                      {messageStats.scheduled}
+                    </span>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -637,7 +745,11 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                           </div>
                         </TableCell>
                         <TableCell>
-                          {getStatusBadge(message.sentStatus || 'Sent')}
+                          {getStatusBadge(
+                            message.sentStatus || 'Sent', 
+                            message.deliveredCount || 0, 
+                            message.totalRecipients || message.totalTargets || 0
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
@@ -712,15 +824,15 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
       
       {/* Create Message Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="bg-gray-800 text-white border-gray-700 max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="bg-gray-800 text-white border-gray-700 max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="text-xl font-bold">Create New Message</DialogTitle>
             <DialogDescription className="text-gray-400">
               Send a message to all members or select specific members
             </DialogDescription>
           </DialogHeader>
           
-          <div className="grid gap-6 py-4">
+          <div className="grid gap-6 py-4 overflow-y-auto pr-2 custom-scrollbar">
             {/* Message Type and Template Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -836,15 +948,8 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                     />
                   </div>
                   
-                  <div className="border border-gray-700 rounded-md p-4 max-h-[200px] overflow-y-auto">
+                  <div className="border border-gray-700 rounded-md p-4 max-h-[250px] overflow-y-auto custom-scrollbar">
                     <div className="space-y-2">
-                      {/* Debug info */}
-                      <div className="mb-2 p-2 bg-gray-700/50 rounded text-xs">
-                        <p>Debug: Total members loaded: {members ? members.length : 0}</p>
-                        {members && members.length > 0 && (
-                          <p>First member: {members[0].name || 'Unknown'} (ID: {members[0]._id || 'No ID'})</p>
-                        )}
-                      </div>
                       
                       {members && members.length > 0 ? (
                         members
@@ -923,9 +1028,69 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Schedule Message Option */}
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="schedule-message"
+                  checked={messageForm.isScheduled}
+                  onChange={(e) => handleInputChange('isScheduled', e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-500 bg-gray-700 text-blue-600"
+                />
+                <Label htmlFor="schedule-message" className="font-normal cursor-pointer flex items-center">
+                  <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                  Schedule this message
+                </Label>
+              </div>
+              
+              {messageForm.isScheduled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6 border-l-2 border-gray-700">
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduleDate">Date (within next 7 days)</Label>
+                    <Input
+                      id="scheduleDate"
+                      type="date"
+                      value={messageForm.scheduleDate}
+                      onChange={(e) => handleInputChange('scheduleDate', e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                      min={new Date().toISOString().split('T')[0]}
+                      max={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    />
+                    <p className="text-xs text-gray-400">
+                      You can only schedule messages up to 7 days in advance
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduleTime">Time</Label>
+                    <Input
+                      id="scheduleTime"
+                      type="time"
+                      value={messageForm.scheduleTime}
+                      onChange={(e) => handleInputChange('scheduleTime', e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           
-          <DialogFooter>
+          {/* Success Message */}
+          {messageForm.successMessage && (
+            <div className="mb-4 p-4 bg-green-900/50 border border-green-700 rounded-md flex items-center">
+              <div className="bg-green-500 rounded-full p-1 mr-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <span className="text-green-300 font-medium">{messageForm.successMessage}</span>
+            </div>
+          )}
+          
+          <DialogFooter className="flex-shrink-0 mt-4 pt-4 border-t border-gray-700">
             <Button 
               variant="outline" 
               onClick={handleDialogClose}
@@ -937,7 +1102,7 @@ console.log(`Sending message to: ${selectedMemberDetails}`);
             <Button 
               onClick={handleSendMessage}
               className="bg-blue-600 hover:bg-blue-700"
-              disabled={isLoading}
+              disabled={isLoading || messageForm.successMessage !== ""}
             >
               {isLoading ? (
                 <span className="flex items-center">

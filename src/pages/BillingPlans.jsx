@@ -44,13 +44,17 @@ const BillingPlans = () => {
     subscription, 
     checkSubscriptionStatus,
     isSuperAdmin,
-    isGymOwner
+    isGymOwner,
+    isMember,
+    updateCurrentUser
   } = useAuth();
   
   // Redirect gym owners to their specific plans page
   if (isGymOwner && !isSuperAdmin) {
     return <Navigate to="/gym-owner-plans" replace />;
   }
+  
+  // For members, we'll show available membership plans they can renew with
   
   // Fetch subscription data when component mounts
   useEffect(() => {
@@ -310,9 +314,89 @@ const BillingPlans = () => {
     setIsProcessing(true);
     
     try {
-      // In a real app, this would redirect to a payment gateway
-      // For demo purposes, we'll simulate a successful payment
+      // If this is a member renewing their membership
+      if (isMember) {
+        // Calculate new end date based on plan duration
+        const startDate = new Date();
+        const endDate = new Date();
+        
+        // Set duration based on plan
+        if (selectedPlan.duration === 'monthly') {
+          endDate.setMonth(endDate.getMonth() + 1);
+        } else if (selectedPlan.duration === 'quarterly') {
+          endDate.setMonth(endDate.getMonth() + 3);
+        } else if (selectedPlan.duration === 'yearly') {
+          endDate.setMonth(endDate.getMonth() + 12);
+        } else {
+          // Default to 1 month
+          endDate.setMonth(endDate.getMonth() + 1);
+        }
+        
+        // Create payment record
+        const paymentResponse = await authFetch('/payments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            amount: selectedPlan.price,
+            paymentType: 'Membership Renewal',
+            paymentMethod: 'Card',
+            status: 'Paid',
+            description: `Membership renewal - ${selectedPlan.name} (${selectedPlan.duration})`,
+            memberId: user._id
+          })
+        });
+        
+        if (!paymentResponse.ok && !paymentResponse.success) {
+          throw new Error('Payment failed');
+        }
+        
+        // Update member's membership status
+        const updateResponse = await authFetch(`/users/${user._id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            membershipStatus: 'Active',
+            membershipStartDate: startDate.toISOString(),
+            membershipEndDate: endDate.toISOString(),
+            membershipType: selectedPlan.name,
+            planType: selectedPlan.name
+          })
+        });
+        
+        if (!updateResponse.ok && !updateResponse.success) {
+          throw new Error('Failed to update membership');
+        }
+        
+        // Calculate days remaining
+        const daysRemaining = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+        
+        // Update user context
+        const updatedUser = {
+          ...user,
+          membershipStatus: 'Active',
+          membershipEndDate: endDate.toISOString(),
+          membershipType: selectedPlan.name,
+          planType: selectedPlan.name,
+          membershipDaysRemaining: daysRemaining
+        };
+        
+        updateCurrentUser(updatedUser);
+        
+        toast.success(`Successfully renewed membership with ${selectedPlan.name} plan`);
+        
+        // Redirect to dashboard after successful renewal
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 2000);
+        
+        return;
+      }
       
+      // For gym owners - handle subscription
       // Determine if this is a new subscription or renewal
       const isRenewal = subscription?.subscription?._id;
       

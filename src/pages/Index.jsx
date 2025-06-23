@@ -530,9 +530,13 @@ const Index = () => {
       }
       
       // Fetch assigned members count
+      console.log('Fetching assigned members for trainer:', user._id);
       const membersResponse = await authFetch(`/users/trainer/${user._id}/members`);
+      console.log('Trainer members response:', membersResponse);
       if (membersResponse.success || membersResponse.status === 'success') {
-        setAssignedMembersCount(membersResponse.data?.members?.length || 0);
+        const count = membersResponse.data?.members?.length || 0;
+        console.log('Assigned members count:', count);
+        setAssignedMembersCount(count);
       }
       
       // Fetch workout plans count and data
@@ -611,6 +615,26 @@ const Index = () => {
       console.error('Error fetching member stats:', error);
     }
   };
+
+  // Add an event listener to refresh trainer stats when a member is assigned to a trainer
+  useEffect(() => {
+    // Only add the event listener if the user is a trainer
+    if (user && userRole === 'trainer') {
+      // Function to handle the event
+      const handleMemberAssigned = () => {
+        console.log('Member assignment changed, refreshing trainer stats');
+        fetchTrainerStats();
+      };
+      
+      // Add event listener for member assignment changes
+      window.addEventListener('memberAssignmentChanged', handleMemberAssigned);
+      
+      // Clean up the event listener when the component unmounts
+      return () => {
+        window.removeEventListener('memberAssignmentChanged', handleMemberAssigned);
+      };
+    }
+  }, [user, userRole]);
 
   useEffect(() => {
     if (user && userRole === 'super-admin') {

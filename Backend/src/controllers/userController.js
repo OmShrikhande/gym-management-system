@@ -269,29 +269,31 @@ export const updateUser = async (req, res) => {
 };
 
 // Delete a user (admin only)
-export const deleteUser = async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-    
-    if (!user) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'User not found'
-      });
-    }
-    
-    res.status(204).json({
-      status: 'success',
-      data: null
-    });
-  } catch (err) {
-    console.error('Error deleting user:', err);
-    res.status(500).json({
-      status: 'error',
-      message: 'Error deleting user'
-    });
+export const deleteUser = catchAsync(async (req, res, next) => {
+  // First find the user to check if they exist
+  const user = await User.findById(req.params.id);
+  
+  if (!user) {
+    return next(new AppError('User not found', 404));
   }
-};
+  
+  // Check if the user is a member and belongs to the current gym owner
+  if (user.role === 'member' && req.user.role === 'gym-owner' && 
+      user.createdBy && user.createdBy.toString() !== req.user.id) {
+    return next(new AppError('You are not authorized to delete this member', 403));
+  }
+  
+  // Delete the user
+  await User.findByIdAndDelete(req.params.id);
+  
+  // Send success response with status 200 instead of 204 to ensure the response body is sent
+  res.status(200).json({
+    status: 'success',
+    success: true,
+    message: 'User deleted successfully',
+    data: null
+  });
+});
 
 // Get all members for a specific gym owner
 export const getGymOwnerMembers = async (req, res) => {
@@ -353,6 +355,33 @@ export const getGymOwnerMembers = async (req, res) => {
 };
 
 // Get all members assigned to a specific trainer
+// Helper function to update a trainer's member count
+const updateTrainerMemberCount = async (trainerId) => {
+  try {
+    const trainer = await User.findById(trainerId);
+    if (!trainer || trainer.role !== 'trainer') return null;
+    
+    // Count members assigned to this trainer
+    const memberCount = await User.countDocuments({
+      assignedTrainer: trainerId,
+      role: 'member'
+    });
+    
+    // Update the trainer's assignedMembers count
+    trainer.assignedMembers = memberCount;
+    await trainer.save({ validateBeforeSave: false });
+    
+    return {
+      trainerId: trainer._id,
+      trainerName: trainer.name,
+      memberCount
+    };
+  } catch (error) {
+    console.error(`Error updating member count for trainer ${trainerId}:`, error);
+    return null;
+  }
+};
+
 export const getTrainerMembers = async (req, res) => {
   try {
     const { trainerId } = req.params;
@@ -382,6 +411,10 @@ export const getTrainerMembers = async (req, res) => {
       role: 'member'
     });
     
+    // Update the trainer's assignedMembers count
+    trainer.assignedMembers = members.length;
+    await trainer.save({ validateBeforeSave: false });
+    
     res.status(200).json({
       success: true,
       results: members.length,
@@ -394,6 +427,46 @@ export const getTrainerMembers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching trainer members'
+    });
+  }
+};
+
+// Update all trainers' member counts
+export const updateAllTrainerMemberCounts = async (req, res) => {
+  try {
+    // Check if the requesting user is authorized (only super-admin or gym-owner)
+    if (req.user.role !== 'super-admin' && req.user.role !== 'gym-owner') {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You are not authorized to perform this action'
+      });
+    }
+    
+    // Get all trainers
+    const trainers = await User.find({ role: 'trainer' });
+    
+    // Update each trainer's member count
+    const results = await Promise.all(
+      trainers.map(async (trainer) => {
+        return await updateTrainerMemberCount(trainer._id);
+      })
+    );
+    
+    // Filter out null results
+    const validResults = results.filter(result => result !== null);
+    
+    res.status(200).json({
+      success: true,
+      results: validResults.length,
+      data: {
+        trainers: validResults
+      }
+    });
+  } catch (err) {
+    console.error('Error updating all trainer member counts:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating all trainer member counts'
     });
   }
 };

@@ -15,6 +15,11 @@ const Profile = () => {
   const { user, authFetch, updateCurrentUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showTrainerSelection, setShowTrainerSelection] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [availableTrainers, setAvailableTrainers] = useState([]);
+  const [selectedTrainer, setSelectedTrainer] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
   const [profileData, setProfileData] = useState({
     fullName: "",
     email: "",
@@ -31,7 +36,7 @@ const Profile = () => {
     // Health metrics for members
     height: "",
     weight: "",
-    fitnessGoal: "Weight Loss",
+    fitnessGoal: "weight-loss",
     initialWeight: "",
     targetWeight: ""
   });
@@ -45,6 +50,95 @@ const Profile = () => {
     assignedTrainer: null,
     trainerName: ""
   });
+
+  // Function to fetch available trainers
+  const fetchAvailableTrainers = async () => {
+    try {
+      const response = await authFetch('/auth/users?role=trainer');
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableTrainers(data.data.users || []);
+      } else {
+        toast.error('Failed to load available trainers');
+      }
+    } catch (error) {
+      console.error('Error fetching trainers:', error);
+      toast.error('Failed to load available trainers');
+    }
+  };
+  
+  // Handle trainer payment and assignment
+  const handleTrainerPayment = async () => {
+    if (!selectedTrainer) {
+      toast.error('Please select a trainer first');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Create a payment record
+      const paymentResponse = await authFetch('/payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: paymentAmount,
+          paymentType: 'Trainer Fee',
+          paymentMethod: 'Card',
+          status: 'Paid',
+          description: `Trainer fee for ${selectedTrainer.name}`,
+          trainerId: selectedTrainer._id
+        })
+      });
+      
+      if (!paymentResponse.ok) {
+        throw new Error('Payment failed');
+      }
+      
+      // Update user profile with assigned trainer
+      const updateResponse = await authFetch('/auth/update-me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          assignedTrainer: selectedTrainer._id
+        })
+      });
+      
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update profile');
+      }
+      
+      // Update local state
+      setMembershipData(prev => ({
+        ...prev,
+        assignedTrainer: selectedTrainer._id,
+        trainerName: selectedTrainer.name
+      }));
+      
+      // Update user context
+      if (updateCurrentUser) {
+        updateCurrentUser({
+          ...user,
+          assignedTrainer: selectedTrainer._id,
+          trainerName: selectedTrainer.name
+        });
+      }
+      
+      toast.success(`Successfully assigned ${selectedTrainer.name} as your trainer`);
+      setShowPaymentForm(false);
+      setSelectedTrainer(null);
+      
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      toast.error('Payment failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Load user data when component mounts
   useEffect(() => {
@@ -65,7 +159,7 @@ const Profile = () => {
         // Health metrics
         height: user.height || "",
         weight: user.weight || "",
-        fitnessGoal: user.fitnessGoal || "Weight Loss",
+        fitnessGoal: user.fitnessGoal || user.goal || "weight-loss",
         initialWeight: user.initialWeight || "",
         targetWeight: user.targetWeight || ""
       });
@@ -159,6 +253,11 @@ const Profile = () => {
         };
         
         fetchMemberDetails();
+        
+        // If member doesn't have a trainer yet, fetch available trainers
+        if (!user.assignedTrainer) {
+          fetchAvailableTrainers();
+        }
       }
     }
   }, [user, authFetch, updateCurrentUser]);
@@ -186,7 +285,7 @@ const Profile = () => {
       if (user?.role === 'member') {
         updateData.height = profileData.height;
         updateData.weight = profileData.weight;
-        updateData.fitnessGoal = profileData.fitnessGoal;
+        updateData.goal = profileData.fitnessGoal;
         updateData.targetWeight = profileData.targetWeight;
         
         // Only set initialWeight if it's not already set
@@ -196,21 +295,19 @@ const Profile = () => {
       }
 
       // Call API to update user
-      const API_URL = 'http://localhost:8081/api';
-      const response = await authFetch(`${API_URL}/users/update-me`, {
+      const response = await authFetch(`/users/update-me`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(updateData)
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update profile');
+      
+      if (response.status === 'error' || response.success === false) {
+        throw new Error(response.message || 'Failed to update profile');
       }
-
-      const data = await response.json();
+      
+      const data = response;
       
       // Update user in context
       updateCurrentUser(data.data.user);
@@ -423,17 +520,52 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                <div className="mt-2">
-                  <p className="text-blue-200 mb-1">Membership Type</p>
-                  <p className="text-white font-medium">{membershipData.type || 'Standard'}</p>
+                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                  <div>
+                    <p className="text-blue-200 mb-1">Membership Type</p>
+                    <p className="text-white font-medium">{membershipData.type || 'Standard'}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-200 mb-1">Days Remaining</p>
+                    <p className={`font-medium ${
+                      user?.membershipDaysRemaining > 10 ? 'text-green-400' : 
+                      user?.membershipDaysRemaining > 3 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
+                      {user?.membershipDaysRemaining || 0} days
+                      {user?.membershipDaysRemaining < 10 && (
+                        <Button 
+                          variant="link" 
+                          className="text-blue-400 p-0 h-auto ml-2"
+                          onClick={() => window.location.href = '/billing-plans'}
+                        >
+                          Renew
+                        </Button>
+                      )}
+                    </p>
+                  </div>
                 </div>
                 
-                {membershipData.assignedTrainer && (
-                  <div className="mt-4 pt-4 border-t border-blue-600">
-                    <p className="text-blue-200 mb-1">Assigned Trainer</p>
+                {/* Trainer Information */}
+                <div className="mt-4 pt-4 border-t border-blue-600">
+                  <p className="text-blue-200 mb-1">Assigned Trainer</p>
+                  {membershipData.assignedTrainer ? (
                     <p className="text-white font-medium">{membershipData.trainerName || 'Not assigned'}</p>
-                  </div>
-                )}
+                  ) : (
+                    user?.role === 'member' && (
+                      <div className="mt-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setShowTrainerSelection(true)}
+                          className="bg-blue-600/20 hover:bg-blue-600/30 border-blue-500 text-blue-100"
+                        >
+                          <Dumbbell className="h-4 w-4 mr-2" />
+                          Select a Trainer
+                        </Button>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -653,11 +785,9 @@ const Profile = () => {
                       disabled={!isEditing}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
                     >
-                      <option value="Weight Loss">Weight Loss</option>
-                      <option value="Muscle Gain">Muscle Gain</option>
-                      <option value="Endurance">Endurance</option>
-                      <option value="Flexibility">Flexibility</option>
-                      <option value="General Fitness">General Fitness</option>
+                      <option value="weight-loss">Weight Loss</option>
+                      <option value="weight-gain">Weight Gain</option>
+                      <option value="general-fitness">General Fitness</option>
                     </select>
                   </div>
                   
@@ -687,6 +817,190 @@ const Profile = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Trainer Selection Dialog */}
+      {showTrainerSelection && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-6 border border-gray-700">
+            <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+              <Dumbbell className="h-5 w-5 mr-2 text-blue-400" />
+              Select a Trainer
+            </h3>
+            
+            <p className="text-gray-300 mb-4">
+              Choose a trainer to help you achieve your fitness goals. A trainer fee will apply.
+            </p>
+            
+            <div className="max-h-60 overflow-y-auto mb-4 space-y-3">
+              {availableTrainers.length > 0 ? (
+                availableTrainers.map(trainer => (
+                  <div 
+                    key={trainer._id}
+                    className={`p-3 rounded-md border cursor-pointer transition-colors ${
+                      selectedTrainer?._id === trainer._id 
+                        ? 'bg-blue-600/20 border-blue-500' 
+                        : 'bg-gray-700/50 border-gray-600 hover:bg-gray-700'
+                    }`}
+                    onClick={() => {
+                      setSelectedTrainer(trainer);
+                      setPaymentAmount(trainer.trainerFee || 2000); // Default fee if not set
+                    }}
+                  >
+                    <div className="flex items-center">
+                      <Avatar className="h-10 w-10 mr-3">
+                        <AvatarFallback className="bg-blue-600 text-white">
+                          {trainer.name?.charAt(0) || 'T'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h4 className="font-medium text-white">{trainer.name}</h4>
+                        <p className="text-sm text-gray-400">
+                          {trainer.specialization || 'General Fitness'} • 
+                          {trainer.experience ? ` ${trainer.experience} exp.` : ' Experienced'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400 text-center py-4">No trainers available at the moment.</p>
+              )}
+            </div>
+            
+            {selectedTrainer && (
+              <div className="mb-4 p-3 bg-blue-900/20 rounded-md border border-blue-800">
+                <p className="text-sm text-blue-300 mb-1">Trainer Fee</p>
+                <p className="text-white font-medium">
+                  ₹{paymentAmount.toLocaleString()} per month
+                </p>
+              </div>
+            )}
+            
+            <div className="flex justify-end space-x-3 mt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowTrainerSelection(false);
+                  setSelectedTrainer(null);
+                }}
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  setShowTrainerSelection(false);
+                  setShowPaymentForm(true);
+                }}
+                disabled={!selectedTrainer}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50"
+              >
+                Continue to Payment
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Form Dialog */}
+      {showPaymentForm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg shadow-lg max-w-md w-full p-6 border border-gray-700">
+            <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+              <CreditCard className="h-5 w-5 mr-2 text-green-400" />
+              Trainer Payment
+            </h3>
+            
+            <div className="mb-4 p-3 bg-gray-700/50 rounded-md border border-gray-600">
+              <div className="flex items-center mb-3">
+                <Avatar className="h-10 w-10 mr-3">
+                  <AvatarFallback className="bg-blue-600 text-white">
+                    {selectedTrainer?.name?.charAt(0) || 'T'}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h4 className="font-medium text-white">{selectedTrainer?.name}</h4>
+                  <p className="text-sm text-gray-400">
+                    {selectedTrainer?.specialization || 'General Fitness'}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-400">Trainer Fee</p>
+                <p className="text-white font-medium">₹{paymentAmount.toLocaleString()}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <Label htmlFor="cardNumber" className="text-gray-300">Card Number</Label>
+                <Input 
+                  id="cardNumber" 
+                  placeholder="1234 5678 9012 3456" 
+                  className="bg-gray-700 border-gray-600 text-white"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="expiry" className="text-gray-300">Expiry Date</Label>
+                  <Input 
+                    id="expiry" 
+                    placeholder="MM/YY" 
+                    className="bg-gray-700 border-gray-600 text-white"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cvv" className="text-gray-300">CVV</Label>
+                  <Input 
+                    id="cvv" 
+                    placeholder="123" 
+                    className="bg-gray-700 border-gray-600 text-white"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <Label htmlFor="name" className="text-gray-300">Name on Card</Label>
+                <Input 
+                  id="name" 
+                  placeholder="John Doe" 
+                  className="bg-gray-700 border-gray-600 text-white"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowPaymentForm(false);
+                  setSelectedTrainer(null);
+                }}
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleTrainerPayment}
+                disabled={isLoading}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    Pay ₹{paymentAmount.toLocaleString()}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

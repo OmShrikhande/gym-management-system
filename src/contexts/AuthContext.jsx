@@ -315,6 +315,26 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
+      // Add additional fields for member
+      if (userType === 'member') {
+        requestBody = {
+          ...requestBody,
+          phone: userData.phone || '',
+          gender: userData.gender || 'Male',
+          dob: userData.dob || '',
+          goal: userData.goal || 'weight-loss',
+          planType: userData.planType || 'Basic',
+          address: userData.address || '',
+          whatsapp: userData.whatsapp || '',
+          height: userData.height || '',
+          weight: userData.weight || '',
+          emergencyContact: userData.emergencyContact || '',
+          medicalConditions: userData.medicalConditions || '',
+          assignedTrainer: userData.assignedTrainer || null,
+          notes: userData.fitnessGoalDescription || ''
+        };
+      }
+      
       // Call the backend API to create the user
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -334,6 +354,12 @@ export const AuthProvider = ({ children }) => {
       
       // Refresh the users list
       await fetchUsers();
+      
+      // If this is a premium member, update the premium count in stats
+      if (userType === 'member' && userData.planType === 'Premium Member') {
+        // The stats will be automatically updated when fetchUsers is called
+        console.log('Premium member added successfully');
+      }
       
       return { 
         success: true, 
@@ -420,15 +446,39 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: 'Member ID is required' };
       }
       
-      // Call the backend API to delete the member
-      const response = await fetch(`${API_URL}/auth/users/${memberId}`, {
+      // First try the auth endpoint
+      let response = await fetch(`${API_URL}/auth/users/${memberId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
       
-      const data = await response.json();
+      // If the first endpoint fails, try the users endpoint
+      if (!response.ok) {
+        console.log('First delete endpoint failed, trying users endpoint...');
+        response = await fetch(`${API_URL}/users/${memberId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+      
+      // For 204 No Content responses, there's no JSON to parse
+      let data = {};
+      if (response.status !== 204) {
+        try {
+          data = await response.json();
+        } catch (err) {
+          console.error('Error parsing response:', err);
+          // If we can't parse the response, create a default response
+          data = { success: response.ok, message: response.ok ? 'Operation successful' : 'Operation failed' };
+        }
+      } else {
+        // For 204 responses, create a success response
+        data = { success: true, message: 'Member deleted successfully' };
+      }
       
       if (!response.ok) {
         setError(data.message || 'Member deletion failed');

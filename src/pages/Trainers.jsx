@@ -10,7 +10,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Trainers = () => {
-  const { users, fetchUsers, isGymOwner, createTrainer } = useAuth();
+  const { users, fetchUsers, isGymOwner, createTrainer, authFetch } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [filterGym, setFilterGym] = useState("all");
@@ -37,6 +37,7 @@ const Trainers = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [realTrainers, setRealTrainers] = useState([]);
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
   
   // Fetch trainers when component mounts
   useEffect(() => {
@@ -152,6 +153,32 @@ const Trainers = () => {
     setShowDetailView(false);
   };
   
+  // Function to refresh all trainer member counts
+  const refreshTrainerStats = async () => {
+    setIsRefreshingStats(true);
+    setMessage({ type: 'info', text: 'Refreshing trainer stats...' });
+    
+    try {
+      // Call the backend API to update all trainer member counts
+      const response = await authFetch('/users/trainers/update-member-counts', {
+        method: 'POST'
+      });
+      
+      if (response.success) {
+        // Refresh the trainers list to get updated counts
+        await fetchUsers();
+        setMessage({ type: 'success', text: 'Trainer stats refreshed successfully' });
+      } else {
+        setMessage({ type: 'error', text: response.message || 'Failed to refresh trainer stats' });
+      }
+    } catch (error) {
+      console.error('Error refreshing trainer stats:', error);
+      setMessage({ type: 'error', text: 'An error occurred while refreshing trainer stats' });
+    } finally {
+      setIsRefreshingStats(false);
+    }
+  };
+
   const handleCreateTrainer = async (e) => {
     e.preventDefault();
     
@@ -219,15 +246,52 @@ const Trainers = () => {
             <p className="text-gray-400">Manage gym trainers and their member assignments</p>
           </div>
           {isGymOwner && (
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => setShowAddForm(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add New Trainer
-            </Button>
+            <div className="flex space-x-2">
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => setShowAddForm(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add New Trainer
+              </Button>
+              <Button 
+                variant="outline"
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                onClick={refreshTrainerStats}
+                disabled={isRefreshingStats}
+              >
+                {isRefreshingStats ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <Users className="h-4 w-4 mr-2" />
+                    Refresh Member Counts
+                  </>
+                )}
+              </Button>
+            </div>
           )}
         </div>
+
+        {/* Status Message */}
+        {message.text && (
+          <div className={`p-4 rounded-md ${
+            message.type === 'error' ? 'bg-red-900/50 border border-red-700' : 
+            message.type === 'success' ? 'bg-green-900/50 border border-green-700' : 
+            'bg-blue-900/50 border border-blue-700'
+          }`}>
+            <p className={`text-sm ${
+              message.type === 'error' ? 'text-red-300' : 
+              message.type === 'success' ? 'text-green-300' : 
+              'text-blue-300'
+            }`}>
+              {message.text}
+            </p>
+          </div>
+        )}
 
         {/* Trainer Detail View */}
         {showDetailView && selectedTrainer && (

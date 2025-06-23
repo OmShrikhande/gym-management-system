@@ -6,6 +6,10 @@ const messageSchema = new mongoose.Schema({
     enum: ['Birthday', 'Anniversary', 'Offer', 'Custom', 'Motivation'],
     required: [true, 'Message must have a type']
   },
+  title: {
+    type: String,
+    required: [true, 'Message must have a title']
+  },
   content: {
     type: String,
     required: [true, 'Message must have content']
@@ -27,6 +31,14 @@ const messageSchema = new mongoose.Schema({
   sendDate: {
     type: Date,
     default: Date.now
+  },
+  scheduledDateTime: {
+    type: Date,
+    default: null
+  },
+  isScheduled: {
+    type: Boolean,
+    default: false
   },
   sentStatus: {
     type: String,
