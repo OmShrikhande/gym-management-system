@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dumbbell, Mail, Lock, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const LoginForm = () => {
   const [formData, setFormData] = useState({
@@ -119,9 +119,15 @@ const LoginForm = () => {
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-gray-400 text-sm">
+              <p className="text-gray-400 text-sm mb-2">
                 Contact your administrator if you need an account
               </p>
+              <Link 
+                to="/register" 
+                className="text-blue-400 hover:text-blue-300 text-sm"
+              >
+                Register as Super Admin
+              </Link>
             </div>
           </CardContent>
         </Card>

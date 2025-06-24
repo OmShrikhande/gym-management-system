@@ -5,6 +5,8 @@ import { AuthProvider } from "@/contexts/AuthContext.jsx";
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import Index from "./pages/Index.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import Login from "./pages/Login.jsx";
+import Register from "./pages/Register.jsx";
 import GymManagement from "./pages/GymManagement.jsx";
 import GymOwnerDetails from "./pages/GymOwnerDetails.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
@@ -31,6 +33,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           
           {/* Super Admin & Gym Owner Routes */}
           <Route path="/gyms" element={

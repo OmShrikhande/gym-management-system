@@ -665,7 +665,22 @@ const Index = () => {
   }, [users, userRole]);
 
   if (!user) {
-    return <LoginForm />;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-end mb-4">
+            <Button 
+              variant="outline" 
+              className="text-blue-400 border-blue-400 hover:bg-blue-900/20"
+              onClick={() => navigate('/register')}
+            >
+              Register Super Admin
+            </Button>
+          </div>
+          <LoginForm />
+        </div>
+      </div>
+    );
   }
 
   // Memoize dashboard stats to prevent unnecessary re-renders

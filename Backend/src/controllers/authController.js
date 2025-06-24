@@ -10,6 +10,77 @@ const signToken = id => {
   });
 };
 
+// Register a super admin (only accessible without authentication)
+export const registerSuperAdmin = async (req, res) => {
+  try {
+    const { name, email, password, secretKey } = req.body;
+    
+    // Verify the secret key to ensure only authorized users can create super admins
+    if (!secretKey || secretKey !== process.env.SUPER_ADMIN_SECRET_KEY) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'Invalid secret key. Super admin registration is restricted.',
+      });
+    }
+
+    // Check if required fields are provided
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Please provide name, email, and password.',
+      });
+    }
+
+    // Check if a super admin already exists
+    const existingSuperAdmin = await User.findOne({ role: 'super-admin' });
+    if (existingSuperAdmin) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'A super admin already exists. Only one super admin is allowed.',
+      });
+    }
+
+    // Create the super admin user
+    const newSuperAdmin = await User.create({
+      name,
+      email,
+      password,
+      role: 'super-admin'
+    });
+
+    // Remove password from output
+    newSuperAdmin.password = undefined;
+
+    // Generate JWT token
+    const token = signToken(newSuperAdmin._id);
+
+    res.status(201).json({
+      status: 'success',
+      token,
+      data: {
+        user: newSuperAdmin,
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) { // Duplicate key error (e.g., email already exists)
+      return res.status(400).json({
+        status: 'fail',
+        message: 'An account with this email already exists.',
+      });
+    }
+    if (err.name === 'ValidationError') {
+      const errors = Object.values(err.errors).map(el => el.message);
+      const message = `Invalid input data. ${errors.join('. ')}`;
+      return res.status(400).json({ status: 'fail', message });
+    }
+    console.error('REGISTER SUPER ADMIN ERROR 💥', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Something went wrong while registering super admin. Please try again later.',
+    });
+  }
+};
+
 // Helper function to create a user with specific role
 const createUserWithRole = async (req, res, role) => {
   try {
