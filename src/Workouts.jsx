@@ -101,8 +101,14 @@ const WorkoutCard = React.memo(({ workout, formatDate }) => {
 });
 
 const Workouts = () => {
-  const { user, users, fetchUsers, isGymOwner, authFetch } = useAuth();
-  const userRole = user?.role || '';
+  const { user, users, fetchUsers, isGymOwner: isGymOwnerContext, authFetch, userRole: userRoleContext } = useAuth();
+  const userRole = user?.role || userRoleContext || '';
+  const isGymOwner = userRole === 'gym-owner' || isGymOwnerContext;
+  console.log("Is gym owner from context:", isGymOwnerContext);
+  console.log("Is gym owner calculated:", isGymOwner);
+  console.log("User role from context:", userRoleContext);
+  console.log("User role from user object:", user?.role);
+  console.log("Final user role used:", userRole);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGoal, setFilterGoal] = useState("all");
   const [filterDifficulty, setFilterDifficulty] = useState("all");
@@ -131,9 +137,30 @@ const Workouts = () => {
   // Check if user is a trainer
   const isTrainer = userRole === 'trainer';
   
+  // Fetch trainers associated with this gym owner
+  const fetchGymTrainers = useCallback(async () => {
+    if (isGymOwner && user?._id) {
+      try {
+        console.log("Fetching trainers for gym owner:", user._id);
+        const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
+        console.log("Gym trainers response:", response);
+        
+        if (response.success && response.data?.trainers) {
+          setTrainers(response.data.trainers);
+          console.log(`Found ${response.data.trainers.length} trainers for this gym owner`);
+        }
+      } catch (error) {
+        console.error("Error fetching gym trainers:", error);
+      }
+    }
+  }, [isGymOwner, user?._id, authFetch]);
+  
   // Define loadWorkouts as a memoized callback with caching
   const loadWorkouts = useCallback(async () => {
     if (!user || !user._id) return;
+    
+    console.log("Current user:", user);
+    console.log("User role:", userRole);
     
     setIsLoading(true);
     setError(null);
@@ -145,18 +172,41 @@ const Workouts = () => {
       if (userRole === 'gym-owner') {
         // Gym owners can see all workouts created by their trainers
         endpoint = `/workouts/gym/${user._id}`;
+        console.log("Gym owner fetching workouts from endpoint:", endpoint);
       } else if (userRole === 'trainer') {
         // Trainers can see workouts they created
         endpoint = `/workouts/trainer/${user._id}`;
+      } else if (userRole === 'member') {
+        // Members can see all workouts assigned to them or created by their trainer
+        endpoint = `/workouts/member/${user._id}`;
       } else {
-        // Other roles (like members) would have different endpoints
+        // Other roles would have different endpoints
         endpoint = `/workouts/user/${user._id}`;
       }
       
-      const response = await authFetch(endpoint);
+      console.log("Fetching workouts from endpoint:", endpoint);
+      
+      // For gym owners, we need to ensure we're getting all workouts from their trainers
+      let response;
+      if (userRole === 'gym-owner') {
+        // First, get all trainers associated with this gym owner if not already fetched
+        if (trainers.length === 0) {
+          await fetchGymTrainers();
+        }
+        
+        console.log(`Fetching workouts for gym owner with ${trainers.length} trainers`);
+        
+        // Now get workouts from the gym endpoint which should include all trainer workouts
+        response = await authFetch(endpoint);
+      } else {
+        // For other roles, just fetch workouts normally
+        response = await authFetch(endpoint);
+      }
+      console.log("Workout API response:", response);
       
       if (response.success || response.status === 'success') {
         const workoutsData = response.data?.workouts || [];
+        console.log("Workouts data received:", workoutsData);
         
         // Sort workouts by creation date (newest first)
         const sortedWorkouts = [...workoutsData].sort((a, b) => 
@@ -200,35 +250,27 @@ const Workouts = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user, userRole, authFetch]);
+  }, [user, userRole, authFetch, fetchGymTrainers, trainers.length]);
   
   // Load workouts data only when user is available and stable
   // Added a localStorage cache to prevent unnecessary API calls
   useEffect(() => {
     if (user && user._id) {
-      // Check if we have cached workouts data and it's not too old
-      const cachedWorkouts = localStorage.getItem('cached_workouts');
-      const cachedTimestamp = localStorage.getItem('cached_workouts_timestamp');
-      const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+      // For debugging purposes, always load fresh data
+      localStorage.removeItem('cached_workouts');
+      localStorage.removeItem('cached_workouts_timestamp');
       
-      if (cachedWorkouts && cachedTimestamp && 
-          (Date.now() - parseInt(cachedTimestamp) < CACHE_DURATION)) {
-        // Use cached data
-        try {
-          const parsedWorkouts = JSON.parse(cachedWorkouts);
-          setWorkouts(parsedWorkouts);
-          setIsLoading(false);
-          // Using cached workouts data
-        } catch (e) {
-          // If parsing fails, load from API
+      if (userRole === 'gym-owner') {
+        // For gym owners, first fetch their trainers, then load workouts
+        fetchGymTrainers().then(() => {
           loadWorkouts();
-        }
+        });
       } else {
-        // No valid cache, load from API
+        // For other roles, just load workouts directly
         loadWorkouts();
       }
     }
-  }, [user?._id, loadWorkouts]);
+  }, [user?._id, loadWorkouts, userRole, fetchGymTrainers]);
   
   // Load users data for gym owner to filter by trainer - with reduced frequency
   useEffect(() => {
@@ -243,21 +285,16 @@ const Workouts = () => {
     }
   }, [isGymOwner, fetchUsers, users.length]);
   
-  // Extract trainers from users for filtering using useMemo
-  const extractedTrainers = useMemo(() => {
-    const trainers = isGymOwner ? (users?.filter(u => u.role === 'trainer') || []) : [];
-    return trainers;
-  }, [users, isGymOwner]);
-  
-  // Update trainers state when extracted data changes
+  // Load gym trainers when component mounts
   useEffect(() => {
-    // Only update if there's a difference to avoid unnecessary re-renders
-    if (extractedTrainers.length > 0 && 
-        (trainers.length !== extractedTrainers.length || 
-         JSON.stringify(trainers.map(t => t._id)) !== JSON.stringify(extractedTrainers.map(t => t._id)))) {
-      setTrainers(extractedTrainers);
+    if (isGymOwner) {
+      fetchGymTrainers();
+    } else {
+      // For non-gym owners, use the filtered users
+      const filteredTrainers = users?.filter(u => u.role === 'trainer') || [];
+      setTrainers(filteredTrainers);
     }
-  }, [extractedTrainers, trainers]);
+  }, [isGymOwner, fetchGymTrainers, users]);
   
   // Filter workouts based on search and filter using useMemo
   const filteredWorkouts = useMemo(() => {
@@ -386,11 +423,13 @@ const Workouts = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">
-              {isTrainer ? "My Workout Plans" : "Trainer Workout Plans"}
+              {isTrainer ? "My Workout Plans" : userRole === 'member' ? "My Workout Plans" : "Trainer Workout Plans"}
             </h1>
             <p className="text-gray-400">
               {isTrainer ? 
                 "Create and manage workout plans for your gym members." :
+                userRole === 'member' ?
+                "View workout plans assigned to you by your trainer." :
                 `Monitor all workout plans created by your trainers for gym members. 
                 ${workouts.length > 0 ? 
                   `Currently showing ${workouts.length} workout plans from ${trainers.length} trainers.` : 
@@ -466,9 +505,13 @@ const Workouts = () => {
         {/* Search and Filters */}
         <Card className="bg-gray-800/50 border-gray-700">
           <CardHeader>
-            <CardTitle className="text-white">Trainer Workout Library</CardTitle>
+            <CardTitle className="text-white">
+              {userRole === 'member' ? "My Workout Library" : "Trainer Workout Library"}
+            </CardTitle>
             <CardDescription className="text-gray-400">
-              Browse and monitor all workout plans created by your trainers for gym members
+              {userRole === 'member' 
+                ? "Browse workout plans assigned to you by your trainer" 
+                : "Browse and monitor all workout plans created by your trainers for gym members"}
             </CardDescription>
           </CardHeader>
           <CardContent>

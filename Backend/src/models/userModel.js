@@ -73,6 +73,19 @@ const userSchema = new mongoose.Schema({
     enum: ['Active', 'Inactive', 'Expired', 'Pending'],
     default: 'Active'
   },
+  membershipStartDate: {
+    type: Date,
+    default: Date.now
+  },
+  membershipEndDate: Date,
+  membershipDuration: {
+    type: String,
+    default: '1'
+  },
+  membershipType: {
+    type: String,
+    default: 'Basic'
+  },
   // Trainer specific fields
   assignedMembers: {
     type: Number,

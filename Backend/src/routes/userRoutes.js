@@ -10,6 +10,7 @@ router.use(protect);
 // Routes accessible by all authenticated users
 router.get('/me', userController.getMe);
 router.patch('/update-me', userController.updateMe);
+router.get('/:id/details', userController.getUserDetails);
 
 // Routes restricted to super admin only
 router.get('/stats/new-gym-owners', restrictTo('super-admin'), userController.getNewGymOwnersCount);
@@ -17,6 +18,7 @@ router.get('/stats/monthly-gym-owners', restrictTo('super-admin'), userControlle
 
 // Trainer routes
 router.get('/trainer/:trainerId/members', userController.getTrainerMembers);
+router.get('/trainers-by-gym/:gymId', userController.getTrainersByGym);
 router.post('/trainers/update-member-counts', restrictTo('super-admin', 'gym-owner'), userController.updateAllTrainerMemberCounts);
 
 // Routes restricted to admin users

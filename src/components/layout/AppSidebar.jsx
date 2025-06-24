@@ -68,10 +68,9 @@ export function AppSidebar() {
       case 'member':
         return [
           ...baseItems,
-          { label: "My Workouts", icon: Dumbbell, href: "/my-workouts" },
-          { label: "Diet Plan", icon: UtensilsCrossed, href: "/my-diet" },
+          { label: "My Workouts", icon: Dumbbell, href: "/workouts" },
+          { label: "Diet Plan", icon: UtensilsCrossed, href: "/diet-plans" },
           { label: "Progress", icon: BarChart3, href: "/progress" },
-          { label: "Messages", icon: MessageSquare, href: "/messages" },
           { label: "Profile", icon: Settings, href: "/profile" }
         ];
       default:

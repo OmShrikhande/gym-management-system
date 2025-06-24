@@ -25,6 +25,13 @@ export const createWorkout = async (req, res) => {
       });
     }
     
+    // Get the gym owner ID from the trainer
+    const gymOwnerId = trainer.createdBy || trainer.gym || null;
+    console.log(`Creating workout for trainer ${req.user._id} (${req.user.name})`);
+    console.log(`Trainer's gym owner ID: ${gymOwnerId}`);
+    console.log(`Trainer's createdBy: ${trainer.createdBy}`);
+    console.log(`Trainer's gym: ${trainer.gym}`);
+    
     // Create the workout
     const workout = new Workout({
       title,
@@ -35,7 +42,7 @@ export const createWorkout = async (req, res) => {
       duration: duration || 30,
       trainer: req.user._id,
       trainerName: req.user.name,
-      gym: trainer.createdBy || trainer.gym || null, // Use createdBy (gym owner) or gym field if available
+      gym: gymOwnerId, // Use createdBy (gym owner) or gym field if available
       // Add exercises and notes if provided
       exercises: exercises || '',
       notes: notes || ''
@@ -115,6 +122,8 @@ export const getWorkoutsByGym = async (req, res) => {
     let workouts = [];
     
     if (req.user.role === 'gym-owner' && req.user._id.toString() === gymId) {
+      console.log(`Fetching workouts for gym owner: ${gymId}`);
+      
       // Find all trainers associated with this gym
       const trainers = await User.find({ 
         role: 'trainer',
@@ -124,9 +133,26 @@ export const getWorkoutsByGym = async (req, res) => {
         ]
       });
       
+      console.log(`Found ${trainers.length} trainers for gym owner ${gymId}`);
+      if (trainers.length > 0) {
+        console.log('Trainer IDs:', trainers.map(t => t._id.toString()));
+      } else {
+        console.log('No trainers found for this gym owner');
+      }
+      
       const trainerIds = trainers.map(trainer => trainer._id);
       
-      // Find all workouts created by these trainers
+      // First check if there are any workouts with this gym ID
+      const gymWorkouts = await Workout.find({ gym: gymId });
+      console.log(`Found ${gymWorkouts.length} workouts directly associated with gym ${gymId}`);
+      
+      // Then check if there are any workouts created by the trainers
+      if (trainerIds.length > 0) {
+        const trainerWorkouts = await Workout.find({ trainer: { $in: trainerIds } });
+        console.log(`Found ${trainerWorkouts.length} workouts created by trainers of gym ${gymId}`);
+      }
+      
+      // Find all workouts created by these trainers or associated with this gym
       workouts = await Workout.find({ 
         $or: [
           { gym: gymId },
@@ -136,6 +162,8 @@ export const getWorkoutsByGym = async (req, res) => {
         .populate('trainer', 'name email')
         .populate('assignedTo', 'name email')
         .sort({ createdAt: -1 });
+        
+      console.log(`Total: Found ${workouts.length} workouts for gym owner ${gymId}`);
     } else {
       // For other users, just find workouts directly associated with the gym
       workouts = await Workout.find({ gym: gymId })

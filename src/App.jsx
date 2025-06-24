@@ -111,7 +111,7 @@ const App = () => (
             </ProtectedRoute>
           } />
           <Route path="/messages" element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer']}>
               <Messages />
             </ProtectedRoute>
           } />

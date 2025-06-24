@@ -5,14 +5,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Mail, Phone, Calendar, Clock, Camera, Save, Loader2, CreditCard, Target, Dumbbell, Badge } from "lucide-react";
+import { User, Mail, Phone, Calendar, Clock, Camera, Save, Loader2, CreditCard, Target, Dumbbell, Badge, UtensilsCrossed, AlertCircle, ChevronRight, Edit, X, Video } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "react-hot-toast";
 import { Badge as UIBadge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+import { Progress } from "@/components/ui/progress";
+
+// Helper function to calculate days passed since a date
+const getDaysPassed = (startDateStr) => {
+  if (!startDateStr) return 0;
+  const startDate = new Date(startDateStr);
+  const today = new Date();
+  const diffTime = today - startDate;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : 0;
+};
 
 const Profile = () => {
   const { user, authFetch, updateCurrentUser } = useAuth();
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showTrainerSelection, setShowTrainerSelection] = useState(false);
@@ -20,6 +33,10 @@ const Profile = () => {
   const [availableTrainers, setAvailableTrainers] = useState([]);
   const [selectedTrainer, setSelectedTrainer] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const [membershipExpired, setMembershipExpired] = useState(false);
+  const [workoutPlans, setWorkoutPlans] = useState([]);
+  const [dietPlans, setDietPlans] = useState([]);
+  const [fitnessProgressEditing, setFitnessProgressEditing] = useState(false);
   const [profileData, setProfileData] = useState({
     fullName: "",
     email: "",
@@ -38,7 +55,11 @@ const Profile = () => {
     weight: "",
     fitnessGoal: "weight-loss",
     initialWeight: "",
-    targetWeight: ""
+    targetWeight: "",
+    // Fitness progress metrics
+    currentProgress: "",
+    progressNotes: "",
+    progressHistory: []
   });
   
   // State for membership data
@@ -48,7 +69,8 @@ const Profile = () => {
     endDate: null,
     type: "Standard",
     assignedTrainer: null,
-    trainerName: ""
+    trainerName: "",
+    daysRemaining: 0
   });
 
   // Function to fetch available trainers
@@ -140,6 +162,35 @@ const Profile = () => {
     }
   };
 
+  // Check membership expiration on mount
+  useEffect(() => {
+    if (user && user.role === 'member') {
+      // Always set membership as active
+      setMembershipExpired(false);
+      
+      // Calculate days remaining if end date exists
+      if (user.membershipEndDate) {
+        const today = new Date();
+        const endDate = new Date(user.membershipEndDate);
+        const diffTime = endDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        setMembershipData(prev => ({
+          ...prev,
+          daysRemaining: diffDays > 0 ? diffDays : 0,
+          status: 'Active'
+        }));
+      } else {
+        // If no end date, set a default value
+        setMembershipData(prev => ({
+          ...prev,
+          daysRemaining: 365, // Default to 1 year
+          status: 'Active'
+        }));
+      }
+    }
+  }, [user]);
+
   // Load user data when component mounts
   useEffect(() => {
     if (user) {
@@ -161,19 +212,50 @@ const Profile = () => {
         weight: user.weight || "",
         fitnessGoal: user.fitnessGoal || user.goal || "weight-loss",
         initialWeight: user.initialWeight || "",
-        targetWeight: user.targetWeight || ""
+        targetWeight: user.targetWeight || "",
+        // Fitness progress metrics
+        currentProgress: user.currentProgress || "",
+        progressNotes: user.progressNotes || "",
+        progressHistory: user.progressHistory || []
       });
+      
+      // Calculate days remaining in membership
+      const calculateDaysRemaining = (endDate) => {
+        if (!endDate) return 0;
+        
+        const end = new Date(endDate);
+        const today = new Date();
+        const diffTime = end - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return diffDays > 0 ? diffDays : 0;
+      };
+      
+      // Check if membership is expired
+      const checkMembershipExpired = (endDate) => {
+        if (!endDate) return true;
+        
+        const end = new Date(endDate);
+        const today = new Date();
+        return end < today;
+      };
       
       // Set membership data if available
       if (user.membershipStatus || user.membershipEndDate) {
+        const daysRemaining = calculateDaysRemaining(user.membershipEndDate);
+        const isExpired = checkMembershipExpired(user.membershipEndDate);
+        
         setMembershipData({
-          status: user.membershipStatus || "Active",
+          status: isExpired ? "Expired" : user.membershipStatus || "Active",
           startDate: user.createdAt || new Date(),
           endDate: user.membershipEndDate || null,
           type: user.membershipType || "Standard",
           assignedTrainer: user.assignedTrainer || null,
-          trainerName: user.trainerName || ""
+          trainerName: user.trainerName || "",
+          daysRemaining: daysRemaining
         });
+        
+        setMembershipExpired(isExpired);
       }
       
       // If user is a member, fetch additional membership details
@@ -188,21 +270,28 @@ const Profile = () => {
               
               // Update membership data
               if (memberData.membership) {
+                const daysRemaining = calculateDaysRemaining(memberData.membership.endDate);
+                const isExpired = checkMembershipExpired(memberData.membership.endDate);
+                
                 setMembershipData({
-                  status: memberData.membership.status || "Active",
+                  status: isExpired ? "Expired" : memberData.membership.status || "Active",
                   startDate: memberData.membership.startDate || user.createdAt,
                   endDate: memberData.membership.endDate,
                   type: memberData.membership.type || "Standard",
                   assignedTrainer: memberData.assignedTrainer || null,
-                  trainerName: memberData.trainerName || ""
+                  trainerName: memberData.trainerName || "",
+                  daysRemaining: daysRemaining
                 });
+                
+                setMembershipExpired(isExpired);
                 
                 // Update user context with membership data
                 updateCurrentUser({
                   ...user,
-                  membershipStatus: memberData.membership.status,
+                  membershipStatus: isExpired ? "Expired" : memberData.membership.status,
                   membershipEndDate: memberData.membership.endDate,
-                  membershipType: memberData.membership.type
+                  membershipType: memberData.membership.type,
+                  membershipDaysRemaining: daysRemaining
                 });
               }
               
@@ -214,7 +303,10 @@ const Profile = () => {
                   weight: memberData.healthMetrics.weight || prev.weight,
                   initialWeight: memberData.healthMetrics.initialWeight || prev.initialWeight,
                   targetWeight: memberData.healthMetrics.targetWeight || prev.targetWeight,
-                  fitnessGoal: memberData.healthMetrics.fitnessGoal || prev.fitnessGoal
+                  fitnessGoal: memberData.healthMetrics.fitnessGoal || prev.fitnessGoal,
+                  currentProgress: memberData.healthMetrics.currentProgress || prev.currentProgress,
+                  progressNotes: memberData.healthMetrics.progressNotes || prev.progressNotes,
+                  progressHistory: memberData.healthMetrics.progressHistory || prev.progressHistory
                 }));
                 
                 // Update user context with health metrics
@@ -224,7 +316,10 @@ const Profile = () => {
                   weight: memberData.healthMetrics.weight,
                   initialWeight: memberData.healthMetrics.initialWeight,
                   targetWeight: memberData.healthMetrics.targetWeight,
-                  fitnessGoal: memberData.healthMetrics.fitnessGoal
+                  fitnessGoal: memberData.healthMetrics.fitnessGoal,
+                  currentProgress: memberData.healthMetrics.currentProgress,
+                  progressNotes: memberData.healthMetrics.progressNotes,
+                  progressHistory: memberData.healthMetrics.progressHistory
                 });
               }
             }
@@ -245,6 +340,26 @@ const Profile = () => {
                   ...user,
                   trainerName
                 });
+                
+                // Fetch workout plans assigned by the trainer
+                try {
+                  const workoutResponse = await authFetch(`/workouts/member/${user._id}`);
+                  if (workoutResponse.success || workoutResponse.status === 'success') {
+                    setWorkoutPlans(workoutResponse.data?.workouts || []);
+                  }
+                } catch (error) {
+                  console.error('Error fetching workout plans:', error);
+                }
+                
+                // Fetch diet plans assigned by the trainer
+                try {
+                  const dietResponse = await authFetch(`/diet-plans/member/${user._id}`);
+                  if (dietResponse.success || dietResponse.status === 'success') {
+                    setDietPlans(dietResponse.data?.dietPlans || []);
+                  }
+                } catch (error) {
+                  console.error('Error fetching diet plans:', error);
+                }
               }
             }
           } catch (error) {
@@ -292,6 +407,26 @@ const Profile = () => {
         if (!user.initialWeight && profileData.weight) {
           updateData.initialWeight = profileData.weight;
         }
+        
+        // Add fitness progress metrics
+        if (fitnessProgressEditing) {
+          // Create a new progress history entry
+          const newProgressEntry = {
+            date: new Date().toISOString(),
+            weight: profileData.weight,
+            notes: profileData.progressNotes
+          };
+          
+          // Add to progress history
+          const updatedHistory = [...(profileData.progressHistory || []), newProgressEntry];
+          
+          updateData.currentProgress = profileData.currentProgress;
+          updateData.progressNotes = profileData.progressNotes;
+          updateData.progressHistory = updatedHistory;
+          
+          // Reset fitness progress editing mode
+          setFitnessProgressEditing(false);
+        }
       }
 
       // Call API to update user
@@ -321,6 +456,66 @@ const Profile = () => {
       setIsLoading(false);
     }
   };
+  
+  // Handle fitness progress update
+  const handleFitnessProgressUpdate = async () => {
+    setIsLoading(true);
+    try {
+      // Create a new progress history entry
+      const newProgressEntry = {
+        date: new Date().toISOString(),
+        weight: profileData.weight,
+        notes: profileData.progressNotes
+      };
+      
+      // Add to progress history
+      const updatedHistory = [...(profileData.progressHistory || []), newProgressEntry];
+      
+      // Prepare update data
+      const updateData = {
+        currentProgress: profileData.currentProgress,
+        progressNotes: profileData.progressNotes,
+        progressHistory: updatedHistory,
+        weight: profileData.weight
+      };
+      
+      // Call API to update user
+      const response = await authFetch(`/users/update-me`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      });
+      
+      if (response.status === 'error' || response.success === false) {
+        throw new Error(response.message || 'Failed to update fitness progress');
+      }
+      
+      // Update profile data with new history
+      setProfileData(prev => ({
+        ...prev,
+        progressHistory: updatedHistory
+      }));
+      
+      // Update user in context
+      updateCurrentUser({
+        ...user,
+        currentProgress: profileData.currentProgress,
+        progressNotes: profileData.progressNotes,
+        progressHistory: updatedHistory,
+        weight: profileData.weight
+      });
+      
+      setFitnessProgressEditing(false);
+      toast.success('Fitness progress updated successfully');
+    } catch (error) {
+      console.error('Error updating fitness progress:', error);
+      toast.error(error.message || 'Failed to update fitness progress');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setProfileData(prev => ({
@@ -331,35 +526,59 @@ const Profile = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">My Profile</h1>
-            <p className="text-gray-400">Manage your personal and professional information</p>
+      {/* Membership Expired Warning */}
+      {membershipExpired && user?.role === 'member' && (
+        <div className="bg-red-900/30 border border-red-800 rounded-lg p-4 mb-6">
+          <div className="flex items-start">
+            <AlertCircle className="h-6 w-6 text-red-400 mr-3 mt-0.5" />
+            <div>
+              <h3 className="text-lg font-medium text-white">Your membership has expired</h3>
+              <p className="text-gray-300 mt-1">
+                Please renew your membership to continue accessing all features of the gym.
+              </p>
+              <Button 
+                className="mt-3 bg-red-600 hover:bg-red-700"
+                onClick={() => navigate('/billing-plans')}
+              >
+                Renew Membership
+              </Button>
+            </div>
           </div>
-          <Button 
-            onClick={() => isEditing ? handleSave() : setIsEditing(true)}
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={isLoading}
-          >
-            {isEditing ? (
-              isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </>
-              )
-            ) : (
-              "Edit Profile"
-            )}
-          </Button>
         </div>
+      )}
+      
+      {/* Main Content - Only show if membership is active or user is not a member */}
+      {(!membershipExpired || user?.role !== 'member') && (
+        <div className="space-y-8">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white">My Profile</h1>
+              <p className="text-gray-400">Manage your personal and professional information</p>
+            </div>
+            <Button 
+              onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isLoading}
+            >
+              {isEditing ? (
+                isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )
+              ) : (
+                "Edit Profile"
+              )}
+            </Button>
+          </div>
+        
 
         {/* Profile Picture & Basic Info */}
         <Card className="bg-gray-800/50 border-gray-700">
@@ -493,13 +712,13 @@ const Profile = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="bg-gradient-to-r from-blue-900 to-blue-700 rounded-lg p-6 shadow-lg">
+              <div className={`bg-gradient-to-r ${membershipExpired ? 'from-red-900 to-red-700' : 'from-blue-900 to-blue-700'} rounded-lg p-6 shadow-lg`}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-white">{profileData.fullName}</h3>
                     <p className="text-blue-200 text-sm">Member ID: {user?._id?.substring(0, 8) || 'N/A'}</p>
                   </div>
-                  <UIBadge variant="outline" className="bg-blue-800 text-white border-blue-500">
+                  <UIBadge variant={membershipExpired ? "destructive" : "outline"} className={membershipExpired ? "bg-red-800 text-white border-red-500" : "bg-blue-800 text-white border-blue-500"}>
                     {membershipData.status || 'Active'}
                   </UIBadge>
                 </div>
@@ -514,11 +733,47 @@ const Profile = () => {
                   </div>
                   <div>
                     <p className="text-blue-200">Expiry Date</p>
-                    <p className="text-white font-medium">
-                      {membershipData.endDate ? new Date(membershipData.endDate).toLocaleDateString() : 'N/A'}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white font-medium">
+                        {membershipData.endDate ? new Date(membershipData.endDate).toLocaleDateString() : 'N/A'}
+                      </p>
+                      {!membershipExpired && membershipData.endDate && (
+                        <UIBadge className="bg-blue-600 text-white border-blue-500">
+                          {membershipData.daysRemaining} days left
+                        </UIBadge>
+                      )}
+                    </div>
                   </div>
                 </div>
+                
+                {/* Membership Timeline */}
+                {membershipData.startDate && membershipData.endDate && (
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs text-blue-200 mb-1">
+                      <span>Start</span>
+                      <span>Expiry</span>
+                    </div>
+                    <div className="relative h-2 bg-blue-900/50 rounded-full overflow-hidden">
+                      {!membershipExpired ? (
+                        <>
+                          <div 
+                            className="absolute h-full bg-blue-500" 
+                            style={{ 
+                              width: `${Math.min(100, 100 - (membershipData.daysRemaining / (membershipData.daysRemaining + getDaysPassed(membershipData.startDate)) * 100))}%` 
+                            }}
+                          />
+                          <div className="absolute h-3 w-3 bg-white rounded-full top-1/2 transform -translate-y-1/2 -translate-x-1/2"
+                            style={{ 
+                              left: `${Math.min(100, 100 - (membershipData.daysRemaining / (membershipData.daysRemaining + getDaysPassed(membershipData.startDate)) * 100))}%` 
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <div className="absolute h-full bg-red-500 w-full" />
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
@@ -526,22 +781,55 @@ const Profile = () => {
                     <p className="text-white font-medium">{membershipData.type || 'Standard'}</p>
                   </div>
                   <div>
-                    <p className="text-blue-200 mb-1">Days Remaining</p>
-                    <p className={`font-medium ${
-                      user?.membershipDaysRemaining > 10 ? 'text-green-400' : 
-                      user?.membershipDaysRemaining > 3 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
-                      {user?.membershipDaysRemaining || 0} days
-                      {user?.membershipDaysRemaining < 10 && (
+                    <p className="text-blue-200 mb-1">Membership Status</p>
+                    {membershipExpired ? (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-red-400" />
+                          <p className="text-red-400 font-medium">Expired</p>
+                        </div>
                         <Button 
-                          variant="link" 
-                          className="text-blue-400 p-0 h-auto ml-2"
-                          onClick={() => window.location.href = '/billing-plans'}
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate('/billing-plans')}
+                          className="mt-2 bg-red-600/20 hover:bg-red-600/30 border-red-500 text-red-100"
                         >
-                          Renew
+                          Renew Now
                         </Button>
-                      )}
-                    </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${
+                            membershipData.daysRemaining > 30 ? 'bg-green-400' : 
+                            membershipData.daysRemaining > 10 ? 'bg-yellow-400' : 'bg-red-400'
+                          }`}></div>
+                          <p className={`font-medium ${
+                            membershipData.daysRemaining > 30 ? 'text-green-400' : 
+                            membershipData.daysRemaining > 10 ? 'text-yellow-400' : 'text-red-400'
+                          }`}>
+                            Active ({membershipData.daysRemaining} days remaining)
+                          </p>
+                        </div>
+                        
+                        {membershipData.daysRemaining < 30 && (
+                          <div className="mt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => navigate('/billing-plans')}
+                              className={`
+                                ${membershipData.daysRemaining <= 10 ? 
+                                  'bg-red-600/20 hover:bg-red-600/30 border-red-500 text-red-100' : 
+                                  'bg-yellow-600/20 hover:bg-yellow-600/30 border-yellow-500 text-yellow-100'}
+                              `}
+                            >
+                              Renew Membership
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -549,9 +837,12 @@ const Profile = () => {
                 <div className="mt-4 pt-4 border-t border-blue-600">
                   <p className="text-blue-200 mb-1">Assigned Trainer</p>
                   {membershipData.assignedTrainer ? (
-                    <p className="text-white font-medium">{membershipData.trainerName || 'Not assigned'}</p>
+                    <div>
+                      <p className="text-white font-medium">{membershipData.trainerName || 'Not assigned'}</p>
+                      <p className="text-blue-200 text-sm mt-1">Your trainer has assigned workout and diet plans for you</p>
+                    </div>
                   ) : (
-                    user?.role === 'member' && (
+                    user?.role === 'member' && !membershipExpired && (
                       <div className="mt-2">
                         <Button 
                           variant="outline" 
@@ -791,33 +1082,305 @@ const Profile = () => {
                     </select>
                   </div>
                   
-                  {profileData.initialWeight && (
-                    <div className="mt-4 p-4 bg-gray-700/30 rounded-lg">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-gray-300 text-sm">Initial Weight</p>
-                          <p className="text-white font-medium">{profileData.initialWeight} kg</p>
+                  {/* Fitness Progress Section */}
+                  <div className="mt-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-white font-medium text-lg flex items-center">
+                        <Target className="h-5 w-5 mr-2 text-blue-400" />
+                        My Fitness Progress
+                      </h3>
+                      {!isEditing && !fitnessProgressEditing && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setFitnessProgressEditing(true)}
+                          className="bg-blue-600/20 hover:bg-blue-600/30 border-blue-500 text-blue-100"
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Update Progress
+                        </Button>
+                      )}
+                      {fitnessProgressEditing && (
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setFitnessProgressEditing(false)}
+                            className="bg-gray-700 hover:bg-gray-600 border-gray-600 text-gray-200"
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            Cancel
+                          </Button>
+                          <Button 
+                            size="sm"
+                            onClick={handleFitnessProgressUpdate}
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4 mr-2" />
+                            )}
+                            Save Progress
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Progress Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="p-4 bg-gray-700/30 rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-gray-300 text-sm">Initial Weight</p>
+                            <p className="text-white font-medium">{profileData.initialWeight || 'Not set'} {profileData.initialWeight ? 'kg' : ''}</p>
+                          </div>
+                          
+                          <div className="text-right">
+                            <p className="text-gray-300 text-sm">Current Weight</p>
+                            {fitnessProgressEditing ? (
+                              <Input
+                                type="number"
+                                value={profileData.weight}
+                                onChange={(e) => handleInputChange("weight", e.target.value)}
+                                className="w-24 h-8 bg-gray-600 border-gray-500 text-white text-right"
+                              />
+                            ) : (
+                              <p className="text-white font-medium">{profileData.weight || 'Not set'} {profileData.weight ? 'kg' : ''}</p>
+                            )}
+                          </div>
                         </div>
                         
-                        {profileData.weight && (
-                          <div className="text-right">
-                            <p className="text-gray-300 text-sm">Progress</p>
-                            <p className={`font-medium ${parseFloat(profileData.weight) < parseFloat(profileData.initialWeight) ? 'text-green-400' : 'text-red-400'}`}>
-                              {parseFloat(profileData.weight) < parseFloat(profileData.initialWeight) ? '↓' : '↑'} 
-                              {Math.abs(parseFloat(profileData.weight) - parseFloat(profileData.initialWeight)).toFixed(1)} kg
+                        {profileData.initialWeight && profileData.weight && (
+                          <div className="mt-3">
+                            <p className="text-gray-300 text-sm mb-1">Weight Progress</p>
+                            <div className="flex items-center">
+                              <Progress 
+                                value={Math.min(100, (parseFloat(profileData.weight) / parseFloat(profileData.targetWeight || profileData.initialWeight)) * 100)} 
+                                className="h-2 flex-1"
+                                indicatorClassName={
+                                  parseFloat(profileData.weight) < parseFloat(profileData.initialWeight) ? 'bg-green-500' : 'bg-red-500'
+                                }
+                              />
+                              <span className={`ml-3 font-medium ${parseFloat(profileData.weight) < parseFloat(profileData.initialWeight) ? 'text-green-400' : 'text-red-400'}`}>
+                                {parseFloat(profileData.weight) < parseFloat(profileData.initialWeight) ? '↓' : '↑'} 
+                                {Math.abs(parseFloat(profileData.weight) - parseFloat(profileData.initialWeight)).toFixed(1)} kg
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="p-4 bg-gray-700/30 rounded-lg">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-gray-300 text-sm">Target Weight</p>
+                          <p className="text-white font-medium">{profileData.targetWeight || 'Not set'} {profileData.targetWeight ? 'kg' : ''}</p>
+                        </div>
+                        
+                        {profileData.targetWeight && profileData.weight && (
+                          <div>
+                            <p className="text-gray-300 text-sm mb-1">Progress to Goal</p>
+                            <div className="flex items-center">
+                              <Progress 
+                                value={Math.min(100, 100 - Math.abs((parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)) / parseFloat(profileData.targetWeight) * 100))} 
+                                className="h-2 flex-1"
+                                indicatorClassName="bg-blue-500"
+                              />
+                              <span className="ml-3 text-blue-400 font-medium">
+                                {Math.min(100, 100 - Math.abs((parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)) / parseFloat(profileData.targetWeight) * 100)).toFixed(0)}%
+                              </span>
+                            </div>
+                            <p className="text-gray-400 text-sm mt-2">
+                              {parseFloat(profileData.weight) > parseFloat(profileData.targetWeight) 
+                                ? `${(parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)).toFixed(1)} kg to lose` 
+                                : `${(parseFloat(profileData.targetWeight) - parseFloat(profileData.weight)).toFixed(1)} kg to gain`}
                             </p>
                           </div>
                         )}
                       </div>
                     </div>
-                  )}
+                    
+                    {/* Progress Notes */}
+                    <div className="mt-4">
+                      <Label htmlFor="progressNotes" className="text-gray-300 mb-2 block">Progress Notes</Label>
+                      {fitnessProgressEditing ? (
+                        <Textarea
+                          id="progressNotes"
+                          value={profileData.progressNotes}
+                          onChange={(e) => handleInputChange("progressNotes", e.target.value)}
+                          placeholder="Enter notes about your fitness progress..."
+                          className="bg-gray-700 border-gray-600 text-white"
+                          rows={3}
+                        />
+                      ) : (
+                        <div className="p-3 bg-gray-700/30 rounded-lg text-gray-200 min-h-[80px]">
+                          {profileData.progressNotes || 'No progress notes yet. Click "Update Progress" to add notes.'}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Progress History */}
+                    {profileData.progressHistory && profileData.progressHistory.length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="text-white font-medium mb-2">Progress History</h4>
+                        <div className="max-h-40 overflow-y-auto">
+                          {profileData.progressHistory.slice().reverse().map((entry, index) => (
+                            <div key={index} className="p-3 bg-gray-700/30 rounded-lg mb-2">
+                              <div className="flex justify-between items-center">
+                                <p className="text-gray-300 text-sm">{new Date(entry.date).toLocaleDateString()}</p>
+                                <p className="text-white font-medium">{entry.weight} kg</p>
+                              </div>
+                              {entry.notes && <p className="text-gray-400 text-sm mt-1">{entry.notes}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}
           </CardContent>
         </Card>
       </div>
-
+      )}
+      
+      {/* Workout and Diet Plans Section */}
+      {user?.role === 'member' && membershipData.assignedTrainer && !membershipExpired && (
+        <div className="space-y-8 mt-8">
+          <h2 className="text-2xl font-bold text-white">My Training Plans</h2>
+          {/* Workout Plans */}
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center">
+                <Dumbbell className="h-5 w-5 mr-2 text-blue-400" />
+                Workout Plans
+              </CardTitle>
+              <CardDescription className="text-gray-400">
+                Workout plans assigned by your trainer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {workoutPlans.length > 0 ? (
+                <div className="space-y-4">
+                  {workoutPlans.map((plan, index) => (
+                    <div key={index} className="p-4 bg-gray-700/30 rounded-lg">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-lg font-medium text-white">{plan.title}</h3>
+                        <UIBadge variant="outline" className="bg-blue-800/30 text-blue-300 border-blue-700">
+                          {plan.type}
+                        </UIBadge>
+                      </div>
+                      <p className="text-gray-300 mb-3">{plan.description}</p>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                        <div>
+                          <p className="text-gray-400">Duration</p>
+                          <p className="text-white">{plan.duration || 30} minutes</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Focus</p>
+                          <p className="text-white">{plan.focus || 'General'}</p>
+                        </div>
+                      </div>
+                      
+                      {plan.exercises && (
+                        <div className="mt-3">
+                          <p className="text-gray-400 mb-1">Exercises</p>
+                          <p className="text-white">{plan.exercises}</p>
+                        </div>
+                      )}
+                      
+                      {plan.videoLink && (
+                        <div className="mt-3">
+                          <a 
+                            href={plan.videoLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-400 flex items-center hover:text-blue-300"
+                          >
+                            <Video className="h-4 w-4 mr-2" />
+                            Watch Workout Video
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Dumbbell className="h-12 w-12 text-gray-500 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-white mb-1">No Workout Plans Yet</h3>
+                  <p className="text-gray-400">Your trainer hasn't assigned any workout plans yet.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Diet Plans */}
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center">
+                <UtensilsCrossed className="h-5 w-5 mr-2 text-green-400" />
+                Diet Plans
+              </CardTitle>
+              <CardDescription className="text-gray-400">
+                Diet plans assigned by your trainer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dietPlans.length > 0 ? (
+                <div className="space-y-4">
+                  {dietPlans.map((plan, index) => (
+                    <div key={index} className="p-4 bg-gray-700/30 rounded-lg">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-lg font-medium text-white">{plan.name}</h3>
+                        <UIBadge variant="outline" className="bg-green-800/30 text-green-300 border-green-700">
+                          {plan.goalType}
+                        </UIBadge>
+                      </div>
+                      <p className="text-gray-300 mb-3">{plan.description}</p>
+                      
+                      <div className="mb-3">
+                        <p className="text-gray-400 mb-1">Total Calories</p>
+                        <p className="text-white font-medium">{plan.totalCalories} kcal/day</p>
+                      </div>
+                      
+                      {plan.meals && plan.meals.length > 0 && (
+                        <div>
+                          <p className="text-gray-400 mb-2">Meal Plan</p>
+                          <div className="space-y-3">
+                            {plan.meals.map((meal, mealIndex) => (
+                              <div key={mealIndex} className="p-3 bg-gray-800/50 rounded border border-gray-700">
+                                <div className="flex justify-between items-center mb-1">
+                                  <p className="text-white font-medium">{meal.type}</p>
+                                  <p className="text-gray-400 text-sm">{meal.time}</p>
+                                </div>
+                                <p className="text-gray-300 text-sm">{meal.items}</p>
+                                {meal.calories && (
+                                  <p className="text-gray-400 text-sm mt-1">{meal.calories} kcal</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <UtensilsCrossed className="h-12 w-12 text-gray-500 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-white mb-1">No Diet Plans Yet</h3>
+                  <p className="text-gray-400">Your trainer hasn't assigned any diet plans yet.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      
       {/* Trainer Selection Dialog */}
       {showTrainerSelection && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">

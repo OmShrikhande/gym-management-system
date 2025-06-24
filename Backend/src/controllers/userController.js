@@ -1,6 +1,7 @@
 import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
+import mongoose from 'mongoose';
 
 // Get new gym owners count for the current month
 export const getNewGymOwnersCount = catchAsync(async (req, res, next) => {
@@ -268,6 +269,119 @@ export const updateUser = async (req, res) => {
   }
 };
 
+// Get detailed user information including membership details
+export const getUserDetails = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'User not found'
+      });
+    }
+    
+    // Check if the requesting user has permission to view this user's details
+    // Users can view their own details, gym owners can view their members, trainers can view their assigned members
+    const isOwnProfile = req.user.id === req.params.id;
+    const isGymOwner = req.user.role === 'gym-owner' && user.createdBy && user.createdBy.toString() === req.user.id;
+    const isTrainer = req.user.role === 'trainer' && user.assignedTrainer && user.assignedTrainer.toString() === req.user.id;
+    
+    if (!isOwnProfile && !isGymOwner && !isTrainer && req.user.role !== 'super-admin') {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You do not have permission to view this user\'s details'
+      });
+    }
+    
+    // Calculate membership details for members
+    let membershipDetails = null;
+    if (user.role === 'member') {
+      // Calculate days remaining in membership
+      const calculateDaysRemaining = (endDate) => {
+        if (!endDate) return 0;
+        
+        const end = new Date(endDate);
+        const today = new Date();
+        const diffTime = end - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return diffDays > 0 ? diffDays : 0;
+      };
+      
+      // Check if membership is expired
+      const checkMembershipExpired = (endDate) => {
+        if (!endDate) return true;
+        
+        const end = new Date(endDate);
+        const today = new Date();
+        return end < today;
+      };
+      
+      const isExpired = checkMembershipExpired(user.membershipEndDate);
+      const daysRemaining = calculateDaysRemaining(user.membershipEndDate);
+      
+      membershipDetails = {
+        status: isExpired ? "Expired" : user.membershipStatus || "Active",
+        startDate: user.membershipStartDate || user.createdAt,
+        endDate: user.membershipEndDate,
+        type: user.membershipType || user.planType || "Standard",
+        daysRemaining: daysRemaining
+      };
+    }
+    
+    // Get trainer name if assigned
+    let trainerName = '';
+    if (user.role === 'member' && user.assignedTrainer) {
+      const trainer = await User.findById(user.assignedTrainer);
+      if (trainer) {
+        trainerName = trainer.name;
+      }
+    }
+    
+    // Prepare response data
+    const userData = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      gender: user.gender,
+      dob: user.dob,
+      goal: user.goal,
+      planType: user.planType,
+      address: user.address,
+      whatsapp: user.whatsapp,
+      height: user.height,
+      weight: user.weight,
+      emergencyContact: user.emergencyContact,
+      medicalConditions: user.medicalConditions,
+      notes: user.notes,
+      assignedTrainer: user.assignedTrainer,
+      trainerName: trainerName,
+      createdAt: user.createdAt
+    };
+    
+    // Add membership details if available
+    if (membershipDetails) {
+      userData.membership = membershipDetails;
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: userData
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching user details:', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching user details'
+    });
+  }
+};
+
 // Delete a user (admin only)
 export const deleteUser = catchAsync(async (req, res, next) => {
   // First find the user to check if they exist
@@ -427,6 +541,54 @@ export const getTrainerMembers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching trainer members'
+    });
+  }
+};
+
+// Get trainers by gym
+export const getTrainersByGym = async (req, res) => {
+  try {
+    const { gymId } = req.params;
+    
+    // Validate gym ID
+    if (!mongoose.Types.ObjectId.isValid(gymId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gym ID'
+      });
+    }
+    
+    // Check if the requesting user is authorized (only super-admin or the gym owner)
+    if (req.user.role !== 'super-admin' && 
+        (req.user.role !== 'gym-owner' || req.user._id.toString() !== gymId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view these trainers'
+      });
+    }
+    
+    // Find all trainers associated with this gym
+    const trainers = await User.find({ 
+      role: 'trainer',
+      $or: [
+        { gym: gymId },
+        { createdBy: gymId }
+      ]
+    }).select('name email _id');
+    
+    res.status(200).json({
+      success: true,
+      results: trainers.length,
+      data: {
+        trainers
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching trainers by gym:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching trainers',
+      error: error.message
     });
   }
 };

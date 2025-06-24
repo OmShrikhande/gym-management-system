@@ -136,6 +136,8 @@ export const AuthProvider = ({ children }) => {
     }
   }, [subscription, token]);
   
+  // We'll define checkMembershipExpiration after updateCurrentUser is defined
+  
   // Fetch notifications with caching - OPTIMIZED VERSION
   const fetchNotifications = useCallback(async (userId, authToken, unreadOnly = false, forceRefresh = false) => {
     // PERFORMANCE OPTIMIZATION: Return cached data immediately
@@ -317,6 +319,12 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for member
       if (userType === 'member') {
+        // Calculate membership end date based on duration
+        const membershipDuration = parseInt(userData.membershipDuration || '1');
+        const startDate = new Date();
+        const endDate = new Date(startDate);
+        endDate.setFullYear(endDate.getFullYear() + membershipDuration);
+        
         requestBody = {
           ...requestBody,
           phone: userData.phone || '',
@@ -331,7 +339,13 @@ export const AuthProvider = ({ children }) => {
           emergencyContact: userData.emergencyContact || '',
           medicalConditions: userData.medicalConditions || '',
           assignedTrainer: userData.assignedTrainer || null,
-          notes: userData.fitnessGoalDescription || ''
+          notes: userData.fitnessGoalDescription || '',
+          // Membership details
+          membershipStatus: 'Active',
+          membershipStartDate: startDate.toISOString(),
+          membershipEndDate: endDate.toISOString(),
+          membershipDuration: membershipDuration.toString(),
+          membershipType: userData.planType || 'Basic'
         };
       }
       
@@ -620,6 +634,44 @@ export const AuthProvider = ({ children }) => {
     // Update user in local storage
     setStorageItem(USER_STORAGE_KEY, updatedUser);
   };
+  
+  // Check if member's membership has expired - SIMPLIFIED LOGIC
+  const checkMembershipExpiration = useCallback((user) => {
+    if (!user || user.role !== 'member') return false;
+    
+    // If membershipStatus is explicitly set to 'Active', always return false (not expired)
+    if (user.membershipStatus === 'Active') {
+      return false;
+    }
+    
+    // If no membership end date, assume membership is active
+    if (!user.membershipEndDate) {
+      return false;
+    }
+    
+    // Compare end date with current date
+    const endDate = new Date(user.membershipEndDate);
+    const today = new Date();
+    
+    // Calculate days remaining
+    const diffTime = endDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Only update the days remaining, don't change the status
+    if (diffDays >= 0) {
+      updateCurrentUser({
+        ...user,
+        membershipDaysRemaining: diffDays
+      });
+      return false; // Not expired
+    } else {
+      updateCurrentUser({
+        ...user,
+        membershipDaysRemaining: 0
+      });
+      return true; // Expired
+    }
+  }, []);
 
   // Create a reusable authenticated fetch function
   const authFetch = async (url, options = {}) => {
@@ -647,6 +699,7 @@ export const AuthProvider = ({ children }) => {
     
     try {
       console.log(`Making ${options.method || 'GET'} request to: ${fullUrl}`);
+      console.log(`User role: ${userRole}, User ID: ${user?._id}`);
       const response = await fetch(fullUrl, authOptions);
       
       if (response.status === 401) {

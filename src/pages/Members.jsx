@@ -310,30 +310,46 @@ const Members = () => {
     // Filter users to get only members
     const members = users
       .filter(user => user.role === 'member')
-      .map(member => ({
-        id: member._id,
-        name: member.name,
-        email: member.email,
-        mobile: member.phone || '',
-        whatsapp: member.whatsapp || '',
-        gender: member.gender || 'Not specified',
-        dob: member.dob || '',
-        joinDate: member.createdAt || new Date().toISOString(),
-        assignedTrainer: member.assignedTrainer || null,
-        goal: member.goal || 'general-fitness',
-        membershipStatus: member.membershipStatus || 'Active',
-        planType: member.planType || 'Basic',
-        profileImage: member.profileImage || null,
-        address: member.address || '',
-        height: member.height || '',
-        weight: member.weight || '',
-        emergencyContact: member.emergencyContact || '',
-        medicalConditions: member.medicalConditions || '',
-        lastCheckIn: member.lastCheckIn || '',
-        attendanceRate: member.attendanceRate || '0%',
-        paymentStatus: member.paymentStatus || 'Paid',
-        notes: member.notes || ''
-      }));
+      .map(member => {
+        // Calculate membership end date if not present but duration is available
+        let membershipEndDate = member.membershipEndDate;
+        if (!membershipEndDate && member.membershipDuration && member.createdAt) {
+          const startDate = new Date(member.createdAt);
+          const endDate = new Date(startDate);
+          const duration = parseInt(member.membershipDuration || '1');
+          endDate.setFullYear(endDate.getFullYear() + duration);
+          membershipEndDate = endDate.toISOString();
+        }
+        
+        return {
+          id: member._id,
+          name: member.name,
+          email: member.email,
+          mobile: member.phone || '',
+          whatsapp: member.whatsapp || '',
+          gender: member.gender || 'Not specified',
+          dob: member.dob || '',
+          joinDate: member.createdAt || new Date().toISOString(),
+          assignedTrainer: member.assignedTrainer || null,
+          goal: member.goal || 'general-fitness',
+          membershipStatus: member.membershipStatus || 'Active',
+          planType: member.planType || 'Basic',
+          profileImage: member.profileImage || null,
+          address: member.address || '',
+          height: member.height || '',
+          weight: member.weight || '',
+          emergencyContact: member.emergencyContact || '',
+          medicalConditions: member.medicalConditions || '',
+          lastCheckIn: member.lastCheckIn || '',
+          attendanceRate: member.attendanceRate || '0%',
+          paymentStatus: member.paymentStatus || 'Paid',
+          notes: member.notes || '',
+          // Membership details
+          membershipStartDate: member.membershipStartDate || member.createdAt,
+          membershipEndDate: membershipEndDate,
+          membershipDuration: member.membershipDuration || '1'
+        };
+      });
     
     setRealMembers(members);
     // Only set loading to false after we've processed the data
@@ -1220,6 +1236,53 @@ const Members = () => {
             <div>{getPlanBadge(selectedMember.planType)}</div>
           </div>
           <div>
+            <p className="text-gray-400 text-sm mb-1">Membership Start</p>
+            <p className="text-white">
+              {selectedMember.membershipStartDate 
+                ? new Date(selectedMember.membershipStartDate).toLocaleDateString() 
+                : new Date(selectedMember.joinDate).toLocaleDateString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">Membership Expiry</p>
+            {selectedMember.membershipEndDate ? (
+              <div className="space-y-1">
+                <p className="text-white">{new Date(selectedMember.membershipEndDate).toLocaleDateString()}</p>
+                {(() => {
+                  // Calculate days remaining
+                  const today = new Date();
+                  const endDate = new Date(selectedMember.membershipEndDate);
+                  const diffTime = endDate - today;
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  const daysRemaining = diffDays > 0 ? diffDays : 0;
+                  const isExpired = endDate < today;
+                  
+                  if (isExpired) {
+                    return (
+                      <div className="flex items-center gap-1 text-red-400 text-sm">
+                        <AlertCircle className="h-3 w-3" />
+                        <span>Expired</span>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="flex items-center gap-1 text-sm">
+                        <span className={`
+                          ${daysRemaining > 30 ? 'text-green-400' : 
+                          daysRemaining > 10 ? 'text-yellow-400' : 'text-red-400'}
+                        `}>
+                          {daysRemaining} days remaining
+                        </span>
+                      </div>
+                    );
+                  }
+                })()}
+              </div>
+            ) : (
+              <p className="text-gray-400">Not set</p>
+            )}
+          </div>
+          <div>
             <p className="text-gray-400 text-sm mb-1">Fitness Goal</p>
             <div>{getGoalBadge(selectedMember.goal)}</div>
           </div>
@@ -1713,9 +1776,22 @@ const Members = () => {
                             <option value="2">2 Years</option>
                             <option value="3">3 Years</option>
                           </select>
-                          <p className="text-sm text-gray-400 mt-1">
-                            Longer durations offer better value
-                          </p>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm text-gray-400">
+                              Longer durations offer better value
+                            </p>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-blue-400" />
+                              <span className="text-white">
+                                Expires: {(() => {
+                                  const startDate = new Date();
+                                  const endDate = new Date(startDate);
+                                  endDate.setFullYear(endDate.getFullYear() + parseInt(formData.membershipDuration));
+                                  return endDate.toLocaleDateString();
+                                })()}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1842,6 +1918,19 @@ const Members = () => {
                             <div>
                               <p className="text-gray-400 text-sm">Duration</p>
                               <p className="text-white">{formData.membershipDuration} Year(s)</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-sm">Start Date</p>
+                              <p className="text-white">{new Date().toLocaleDateString()}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-sm">Expiry Date</p>
+                              <p className="text-white">{(() => {
+                                const startDate = new Date();
+                                const endDate = new Date(startDate);
+                                endDate.setFullYear(endDate.getFullYear() + parseInt(formData.membershipDuration));
+                                return endDate.toLocaleDateString();
+                              })()}</p>
                             </div>
                           </div>
                         </div>
@@ -2119,7 +2208,48 @@ const Members = () => {
                           </p>
                         </TableCell>
                         <TableCell>
-                          {getStatusBadge(member.membershipStatus)}
+                          <div className="space-y-2">
+                            {getStatusBadge(member.membershipStatus)}
+                            
+                            {member.membershipEndDate && (
+                              <div className="text-sm">
+                                <div className="flex items-center gap-1 text-gray-300">
+                                  <Calendar className="h-3 w-3 text-gray-400" />
+                                  <span>Expires: {new Date(member.membershipEndDate).toLocaleDateString()}</span>
+                                </div>
+                                
+                                {(() => {
+                                  // Calculate days remaining
+                                  const today = new Date();
+                                  const endDate = new Date(member.membershipEndDate);
+                                  const diffTime = endDate - today;
+                                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                  const daysRemaining = diffDays > 0 ? diffDays : 0;
+                                  const isExpired = endDate < today;
+                                  
+                                  if (isExpired) {
+                                    return (
+                                      <div className="flex items-center gap-1 text-red-400">
+                                        <AlertCircle className="h-3 w-3" />
+                                        <span>Expired</span>
+                                      </div>
+                                    );
+                                  } else {
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        <span className={`
+                                          ${daysRemaining > 30 ? 'text-green-400' : 
+                                          daysRemaining > 10 ? 'text-yellow-400' : 'text-red-400'}
+                                        `}>
+                                          {daysRemaining} days left
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+                                })()}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">

@@ -46,8 +46,15 @@ const LoadingIndicator = () => (
 );
 
 const DietPlans = () => {
-  const { user, userRole, users, fetchUsers, authFetch } = useAuth();
+  const { user, userRole: userRoleContext, users, fetchUsers, authFetch, isGymOwner: isGymOwnerContext } = useAuth();
   const navigate = useNavigate();
+  const userRole = user?.role || userRoleContext || '';
+  const isGymOwner = userRole === 'gym-owner' || isGymOwnerContext;
+  console.log("User role from context:", userRoleContext);
+  console.log("User role from user object:", user?.role);
+  console.log("Final user role used:", userRole);
+  console.log("Is gym owner from context:", isGymOwnerContext);
+  console.log("Is gym owner calculated:", isGymOwner);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGoal, setFilterGoal] = useState("all");
   const [filterTrainer, setFilterTrainer] = useState("all");
@@ -76,9 +83,27 @@ const DietPlans = () => {
   
   // Check user roles
   const isTrainer = userRole === 'trainer';
-  const isGymOwner = userRole === 'gym-owner';
+  
   const isSuperAdmin = userRole === 'super-admin';
   const isMember = userRole === 'member';
+  
+  // Fetch trainers associated with this gym owner
+  const fetchGymTrainers = useCallback(async () => {
+    if (isGymOwner && user?._id) {
+      try {
+        console.log("Fetching trainers for gym owner:", user._id);
+        const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
+        console.log("Gym trainers response:", response);
+        
+        if (response.success && response.data?.trainers) {
+          setTrainers(response.data.trainers);
+          console.log(`Found ${response.data.trainers.length} trainers for this gym owner`);
+        }
+      } catch (error) {
+        console.error("Error fetching gym trainers:", error);
+      }
+    }
+  }, [isGymOwner, user?._id, authFetch]);
   
   // Load diet plans based on user role - defined as a memoized callback with caching
   const loadDietPlans = useCallback(async () => {
@@ -98,17 +123,34 @@ const DietPlans = () => {
       if (isTrainer) {
         endpoint = `/diet-plans/trainer/${user._id}`;
       } else if (isMember) {
+        // Members can see all diet plans assigned to them or created by their trainer
         endpoint = `/diet-plans/member/${user._id}`;
       } else if (isGymOwner) {
         // Gym owners can see all diet plans created by their trainers
         endpoint = `/diet-plans/gym/${user._id}`;
+        console.log("Gym owner fetching diet plans from endpoint:", endpoint);
       }
       
       console.log('Fetching diet plans from endpoint:', endpoint);
       console.log('User role:', isGymOwner ? 'Gym Owner' : isTrainer ? 'Trainer' : isMember ? 'Member' : 'Unknown');
       console.log('User ID:', user._id);
       
-      const response = await authFetch(endpoint);
+      // For gym owners, we need to ensure we're getting all diet plans from their trainers
+      let response;
+      if (isGymOwner) {
+        // First, get all trainers associated with this gym owner if not already fetched
+        if (trainers.length === 0) {
+          await fetchGymTrainers();
+        }
+        
+        console.log(`Fetching diet plans for gym owner with ${trainers.length} trainers`);
+        
+        // Now get diet plans from the gym endpoint which should include all trainer diet plans
+        response = await authFetch(endpoint);
+      } else {
+        // For other roles, just fetch diet plans normally
+        response = await authFetch(endpoint);
+      }
       
       console.log('Diet Plan API response:', response);
       
@@ -129,43 +171,51 @@ const DietPlans = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isTrainer, isMember, isGymOwner, authFetch, user?._id]);
+  }, [user, isTrainer, isMember, isGymOwner, authFetch, user?._id, fetchGymTrainers]);
   
   // Load diet plans with reduced API calls
   useEffect(() => {
     if (user) {
-      loadDietPlans();
+      console.log("Loading diet plans for user:", user);
+      console.log("User role:", userRole);
+      console.log("Is gym owner:", isGymOwner);
+      
+      if (isGymOwner) {
+        // For gym owners, first fetch their trainers, then load diet plans
+        fetchGymTrainers().then(() => {
+          loadDietPlans();
+        });
+      } else {
+        // For other roles, just load diet plans directly
+        loadDietPlans();
+      }
       
       // Load users for filtering with caching
       if (isGymOwner || isSuperAdmin) {
-        // Check if we have cached users and it's not too old
-        const cachedTimestamp = window.lastUsersFetchTime || 0;
-        const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-        
-        if (!users.length || (Date.now() - cachedTimestamp > CACHE_DURATION)) {
-          fetchUsers(false); // Use cached data if available
-        }
+        console.log("Fetching users for gym owner or super admin");
+        fetchUsers(true); // Force refresh for debugging
       }
     }
-  }, [user, loadDietPlans, isGymOwner, isSuperAdmin, fetchUsers, users.length]);
+  }, [user, loadDietPlans, isGymOwner, isSuperAdmin, fetchUsers, fetchGymTrainers, userRole]);
   
   // Extract members from users for filtering using useMemo
   const extractedMembers = useMemo(() => {
     return users?.filter(u => u.role === 'member') || [];
   }, [users]);
   
-  // Extract trainers from users for filtering using useMemo
-  const extractedTrainers = useMemo(() => {
-    const trainers = users?.filter(u => u.role === 'trainer') || [];
-    // Extracted trainers for diet plan assignment
-    return trainers;
-  }, [users]);
+  // Load gym trainers when component mounts
+  useEffect(() => {
+    if (isGymOwner) {
+      fetchGymTrainers();
+    } else {
+      // For non-gym owners, use the filtered users
+      const filteredTrainers = users?.filter(u => u.role === 'trainer') || [];
+      setTrainers(filteredTrainers);
+    }
+  }, [isGymOwner, fetchGymTrainers, users]);
   
   // Update state when extracted data changes
   useEffect(() => {
-    if (extractedTrainers.length > 0) {
-      setTrainers(extractedTrainers);
-    }
     
     if (extractedMembers.length > 0) {
       setAvailableMembers(extractedMembers);
@@ -391,9 +441,13 @@ const DietPlans = () => {
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-white">Diet Plans Management</h1>
+              <h1 className="text-3xl font-bold text-white">
+                {isMember ? "My Diet Plans" : "Diet Plans Management"}
+              </h1>
               {isGymOwner ? (
                 <p className="text-gray-400">View all diet plans created by your trainers</p>
+              ) : isMember ? (
+                <p className="text-gray-400">View diet plans assigned to you by your trainer</p>
               ) : (
                 <p className="text-gray-400">Create and manage meal plans for different fitness goals</p>
               )}

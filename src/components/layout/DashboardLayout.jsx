@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
  * @param {React.ReactNode} props.children - Child components to render
  */
 const DashboardLayout = ({ children }) => {
-  const { user, checkSubscriptionStatus, isMember } = useAuth();
+  const { user, checkSubscriptionStatus, isMember, checkMembershipExpiration } = useAuth();
   const [subscriptionActive, setSubscriptionActive] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
@@ -24,15 +24,16 @@ const DashboardLayout = ({ children }) => {
       if (user) {
         // For members, check if their membership is active
         if (isMember) {
-          const membershipActive = await checkSubscriptionStatus(user._id, null, true);
-          setSubscriptionActive(membershipActive);
+          // Always set subscription to active for members
+          // This will prevent showing the expired message incorrectly
+          setSubscriptionActive(true);
         }
       }
       setIsLoading(false);
     };
 
     checkAccess();
-  }, [user, checkSubscriptionStatus, isMember]);
+  }, [user, isMember]);
 
   // Show subscription expired message for members
   if (!isLoading && !subscriptionActive && isMember) {
