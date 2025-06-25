@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CreditCard, AlertTriangle, Calendar, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-// API URL
+// API URL - this should match the one in AuthContext
 const API_URL = 'http://localhost:8081/api';
 
 const SubscriptionRequired = () => {
@@ -23,72 +23,92 @@ const SubscriptionRequired = () => {
     const fetchPlans = async () => {
       setIsLoadingPlans(true);
       try {
-        // Use authFetch instead of fetch to ensure proper authentication
-        const response = await authFetch('/subscription-plans');
+        // Log token for debugging
+        const token = localStorage.getItem('token');
+        console.log('Token available:', !!token);
+        if (!token) {
+          console.error('No token found in localStorage');
+          // Don't show error toast, just use default plans
+          setDefaultPlans();
+          return;
+        }
+        
+        // Try both methods to see which one works
+        console.log('Fetching subscription plans with authFetch...');
+        let response;
+        try {
+          response = await authFetch('/subscription-plans');
+          console.log('Subscription plans response from authFetch:', response);
+        } catch (error) {
+          console.error('Error with authFetch:', error);
+          
+          // Try direct fetch as fallback
+          console.log('Trying direct fetch as fallback...');
+          try {
+            const directResponse = await fetch(`${API_URL}/subscription-plans`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            const data = await directResponse.json();
+            console.log('Direct fetch response:', data);
+            
+            // Use the direct fetch response if authFetch failed
+            if (directResponse.ok && data.status === 'success') {
+              response = data;
+            }
+          } catch (directError) {
+            console.error('Error with direct fetch:', directError);
+          }
+        }
         
         if (response && (response.success || response.status === 'success') && response.data?.plans?.length > 0) {
           console.log('Fetched subscription plans:', response.data.plans);
           setPlans(response.data.plans);
         } else {
-          console.error('Failed to fetch plans or no plans returned:', data);
+          console.error('Failed to fetch plans or no plans returned');
           // Fallback to default plans
-          setPlans([
-            {
-              id: "basic",
-              name: "Basic",
-              price: 49,
-              features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
-              recommended: false
-            },
-            {
-              id: "premium",
-              name: "Premium",
-              price: 99,
-              features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
-              recommended: true
-            },
-            {
-              id: "enterprise",
-              name: "Enterprise",
-              price: 199,
-              features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
-              recommended: false
-            }
-          ]);
+          setDefaultPlans();
         }
       } catch (error) {
         console.error('Error fetching subscription plans:', error);
         // Fallback to default plans
-        setPlans([
-          {
-            id: "basic",
-            name: "Basic",
-            price: 49,
-            features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
-            recommended: false
-          },
-          {
-            id: "premium",
-            name: "Premium",
-            price: 99,
-            features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
-            recommended: true
-          },
-          {
-            id: "enterprise",
-            name: "Enterprise",
-            price: 199,
-            features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
-            recommended: false
-          }
-        ]);
+        setDefaultPlans();
       } finally {
         setIsLoadingPlans(false);
       }
     };
     
+    // Helper function to set default plans
+    const setDefaultPlans = () => {
+      console.log('Using default subscription plans');
+      setPlans([
+        {
+          id: "basic",
+          name: "Basic",
+          price: 49,
+          features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
+          recommended: false
+        },
+        {
+          id: "premium",
+          name: "Premium",
+          price: 99,
+          features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
+          recommended: true
+        },
+        {
+          id: "enterprise",
+          name: "Enterprise",
+          price: 199,
+          features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
+          recommended: false
+        }
+      ]);
+    };
+    
     fetchPlans();
-  }, []);
+  }, [authFetch]);
 
   // Handle plan selection
   const handlePlanSelection = (plan) => {
@@ -107,6 +127,14 @@ const SubscriptionRequired = () => {
     setIsProcessing(true);
     
     try {
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Authentication error. Please try logging in again.');
+        setIsProcessing(false);
+        return;
+      }
+      
       // Determine if this is a new subscription or renewal
       const isRenewal = subscription?.subscription?._id;
       
@@ -119,8 +147,6 @@ const SubscriptionRequired = () => {
       console.log('Price:', selectedPlan.price);
       
       // Create new subscription
-      const endpoint = `${API_URL}/subscriptions`;
-      const method = 'POST';
       const body = {
         gymOwnerId: user._id,
         plan: selectedPlan.name,
@@ -130,23 +156,36 @@ const SubscriptionRequired = () => {
         transactionId: mockTransactionId
       };
       
-      // Make API call using authFetch
-      const response = await authFetch('/subscriptions', {
+      // Always use direct fetch to ensure it works even when authFetch might fail
+      console.log('Making direct API call to create subscription...');
+      const directResponse = await fetch(`${API_URL}/subscriptions`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(body)
       });
       
-      if (response && (response.success || response.status === 'success')) {
+      const data = await directResponse.json();
+      console.log('Subscription creation response:', data);
+      
+      if (directResponse.ok && (data.success || data.status === 'success')) {
         toast.success(`Subscription purchased successfully in test mode!`);
         
         // Refresh subscription status
-        await checkSubscriptionStatus(user._id, null, true);
+        try {
+          await checkSubscriptionStatus(user._id, token, true);
+        } catch (refreshError) {
+          console.error('Error refreshing subscription status:', refreshError);
+          // Continue anyway since the subscription was created successfully
+        }
         
-        // Navigate to dashboard
-        navigate("/dashboard");
+        // Reload the page to reflect the new subscription status
+        window.location.href = '/dashboard';
       } else {
-        console.error('Subscription error response:', response);
-        toast.error(response?.message || 'Subscription failed. Please try again.');
+        console.error('Subscription error response:', data);
+        toast.error(data?.message || 'Subscription failed. Please try again.');
       }
     } catch (err) {
       console.error('Test mode subscription error:', err);
@@ -428,7 +467,15 @@ const SubscriptionRequired = () => {
                     className="w-full border-amber-600 text-amber-500 hover:bg-amber-900/20"
                     onClick={() => {
                       setSelectedPlan(plan);
-                      setTimeout(() => handleTestModePayment(), 100);
+                      // Use a longer timeout to ensure the state is updated
+                      setTimeout(() => {
+                        try {
+                          handleTestModePayment();
+                        } catch (error) {
+                          console.error('Error in quick subscribe:', error);
+                          toast.error('Failed to subscribe. Please try again.');
+                        }
+                      }, 300);
                     }}
                     disabled={isProcessing}
                   >

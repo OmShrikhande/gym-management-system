@@ -501,6 +501,13 @@ const GymOwnerPlans = () => {
   const currentSubscription = subscription?.subscription;
   const hasActiveSubscription = subscription?.hasActiveSubscription;
   const daysRemaining = subscription?.daysRemaining || 0;
+  
+  // If subscription has expired, show a message
+  useEffect(() => {
+    if (isGymOwner && !hasActiveSubscription) {
+      toast.warning("Your subscription has expired. Please renew to continue using all features.");
+    }
+  }, [isGymOwner, hasActiveSubscription]);
 
   // Mock data for member subscriptions
   const memberSubscriptions = [

@@ -76,7 +76,7 @@ const App = () => (
           }
           />
           <Route path="/gym-owner-plans" element={
-            <ProtectedRoute allowedRoles={['gym-owner']}>
+            <ProtectedRoute allowedRoles={['gym-owner', 'super-admin']}>
               <GymOwnerPlans />
             </ProtectedRoute>
           } />
