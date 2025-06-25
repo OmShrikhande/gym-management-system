@@ -1551,3 +1551,5 @@ const Index = () => {
 };
 
 export default Index;
+
+// edited this file for checking connection with the server
