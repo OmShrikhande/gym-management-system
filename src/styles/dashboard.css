@@ -1,0 +1,64 @@
+/* Dashboard-specific styles */
+
+/* Define default values for dashboard variables */
+:root {
+  --dashboard-primary: #3B82F6;
+  --dashboard-secondary: #8B5CF6;
+  --dashboard-background: linear-gradient(to bottom right, #111827, #1F2937, #111827);
+  --dashboard-text: #FFFFFF;
+}
+
+/* Apply user-specific styles only to dashboard elements */
+.dashboard-container {
+  /* Use dashboard-specific variables */
+  --primary-color: var(--dashboard-primary);
+  --secondary-color: var(--dashboard-secondary);
+}
+
+.dashboard-content {
+  /* Apply user-specific styles to dashboard content */
+}
+
+/* Style dashboard cards with user colors */
+.dashboard-content .card {
+  border-color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+.dashboard-content .button-primary {
+  background-color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+.dashboard-content .button-secondary {
+  background-color: var(--user-secondary-color, var(--dashboard-secondary));
+}
+
+/* Apply user colors to dashboard elements */
+.dashboard-content .text-primary {
+  color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+.dashboard-content .text-secondary {
+  color: var(--user-secondary-color, var(--dashboard-secondary));
+}
+
+.dashboard-content .border-primary {
+  border-color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+.dashboard-content .border-secondary {
+  border-color: var(--user-secondary-color, var(--dashboard-secondary));
+}
+
+/* Apply user colors to progress bars */
+.dashboard-content .progress-bar {
+  background-color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+/* Apply user colors to badges */
+.dashboard-content .badge-primary {
+  background-color: var(--user-primary-color, var(--dashboard-primary));
+}
+
+.dashboard-content .badge-secondary {
+  background-color: var(--user-secondary-color, var(--dashboard-secondary));
+}

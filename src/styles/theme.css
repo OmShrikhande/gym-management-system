@@ -1,0 +1,59 @@
+/* Theme CSS Variables */
+:root {
+  --primary: #3B82F6;
+  --primary-rgb: 59, 130, 246;
+  --secondary: #8B5CF6;
+  --secondary-rgb: 139, 92, 246;
+  --background: #111827;
+  --background-rgb: 17, 24, 39;
+  --card: #1F2937;
+  --card-rgb: 31, 41, 55;
+  --sidebar: #1F2937;
+  --sidebar-rgb: 31, 41, 55;
+  --text: #FFFFFF;
+  --text-rgb: 255, 255, 255;
+}
+
+/* Apply theme to components */
+.bg-card {
+  background-color: var(--card) !important;
+}
+
+.bg-sidebar {
+  background-color: var(--sidebar) !important;
+}
+
+.text-theme {
+  color: var(--text) !important;
+}
+
+/* Override card styles */
+.card {
+  background-color: var(--card);
+  color: var(--text);
+  border-color: rgba(var(--text-rgb), 0.1);
+}
+
+/* Override button styles */
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--text);
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  color: var(--text);
+}
+
+/* Apply theme to dashboard */
+body {
+  background-color: var(--background);
+  color: var(--text);
+}
+
+/* Custom card styles */
+.card-themed {
+  background-color: var(--card);
+  border: 1px solid rgba(var(--text-rgb), 0.1);
+  color: var(--text);
+}
