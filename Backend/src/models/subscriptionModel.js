@@ -8,8 +8,7 @@ const subscriptionSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['Basic', 'Premium', 'Enterprise'],
-    default: 'Basic'
+    required: [true, 'Subscription must have a plan name']
   },
   price: {
     type: Number,
@@ -39,7 +38,11 @@ const subscriptionSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
       },
-      method: String,
+      method: {
+        type: String,
+        enum: ['razorpay', 'credit_card', 'netbanking', 'qr_scanner', 'test_mode', 'manual'],
+        default: 'razorpay'
+      },
       status: {
         type: String,
         enum: ['Success', 'Failed', 'Pending'],

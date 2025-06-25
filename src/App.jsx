@@ -25,6 +25,7 @@ import Messages from "./pages/Messages.jsx";
 import MyMembers from "./pages/MyMembers.jsx";
 import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
+import SuperAdminRegistration from "./components/auth/SuperAdminRegistration.jsx";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
           <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/register-super-admin" element={<SuperAdminRegistration />} />
           
           {/* Super Admin & Gym Owner Routes */}
           <Route path="/gyms" element={

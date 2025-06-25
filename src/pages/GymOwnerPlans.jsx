@@ -58,11 +58,12 @@ const GymOwnerPlans = () => {
     fetchGymOwnerPlans();
   }, [user, checkSubscriptionStatus, isGymOwner]);
   
-  // Fetch gym owner plans from API
+  // Fetch subscription plans from API
   const fetchGymOwnerPlans = async () => {
     setIsLoading(true);
     try {
-      const response = await authFetch('/gym-owner-plans');
+      // Use the subscription-plans endpoint to get plans created by super admin
+      const response = await authFetch('/subscription-plans');
       
       if (response.success || response.status === 'success') {
         setPlans(response.data.plans);
@@ -298,6 +299,42 @@ const GymOwnerPlans = () => {
     } catch (error) {
       console.error('Error adding member subscription:', error);
       toast.error('An error occurred while adding the member subscription');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle subscribing to a plan
+  const handleSubscribeToPlan = async (plan) => {
+    try {
+      setIsProcessing(true);
+      
+      // Generate a mock transaction ID
+      const mockTransactionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      
+      // Create a new subscription with test mode payment
+      const subscriptionResponse = await authFetch('/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          gymOwnerId: user._id,
+          plan: plan.name,
+          price: plan.price,
+          durationMonths: plan.duration === 'monthly' ? 1 : (plan.duration === 'quarterly' ? 3 : 12),
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        })
+      });
+      
+      if (subscriptionResponse.success || subscriptionResponse.status === 'success') {
+        toast.success('Subscription created successfully in test mode!');
+        // Refresh subscription status
+        await checkSubscriptionStatus(user._id, null, true);
+      } else {
+        toast.error(subscriptionResponse.message || 'Failed to create subscription');
+      }
+    } catch (error) {
+      console.error('Error creating subscription in test mode:', error);
+      toast.error('Failed to create subscription');
     } finally {
       setIsProcessing(false);
     }
@@ -688,22 +725,34 @@ const GymOwnerPlans = () => {
                         </ul>
                       </div>
                     </CardContent>
-                    <CardFooter className="flex justify-between border-t border-gray-600 pt-4">
-                      <Button 
-                        variant="outline" 
-                        className="border-gray-600 text-gray-300 hover:bg-gray-600"
-                        onClick={() => handleEditPlan(plan)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="destructive"
-                        onClick={() => handleDeletePlan(plan._id || plan.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
+                    <CardFooter className="flex flex-col gap-3 border-t border-gray-600 pt-4">
+                      {/* Add Subscribe button for gym owners without subscription */}
+                      {!subscription?.hasActiveSubscription && (
+                        <Button 
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          onClick={() => handleSubscribeToPlan(plan)}
+                        >
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Subscribe to Plan
+                        </Button>
+                      )}
+                      <div className="flex justify-between w-full">
+                        <Button 
+                          variant="outline" 
+                          className="border-gray-600 text-gray-300 hover:bg-gray-600"
+                          onClick={() => handleEditPlan(plan)}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                        <Button 
+                          variant="destructive"
+                          onClick={() => handleDeletePlan(plan._id || plan.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      </div>
                     </CardFooter>
                   </Card>
                 ))}

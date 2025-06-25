@@ -6,6 +6,8 @@ const router = express.Router();
 
 // Public routes
 router.post('/login', authController.login);
+router.post('/register-super-admin', authController.registerSuperAdmin);
+router.get('/super-admin-count', authController.getSuperAdminCount);
 
 // Super Admin routes - can ONLY create gym owners
 router.post('/create-gym-owner', protect, restrictTo('super-admin'), authController.createGymOwner);

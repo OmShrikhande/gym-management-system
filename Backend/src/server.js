@@ -15,7 +15,7 @@ import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
 import connectDB from './config/database.js';
-import setupSuperAdmin from './config/setupAdmin.js';
+// Super admin creation is now handled through a secure registration endpoint
 
 // Load environment variables
 dotenv.config();
@@ -61,8 +61,7 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 connectDB().then(async () => {
-  // Create super admin user if it doesn't exist
-  await setupSuperAdmin();
+  // Super admin creation is now handled through a secure registration endpoint
   
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
