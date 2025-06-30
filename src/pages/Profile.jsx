@@ -247,7 +247,7 @@ const Profile = () => {
         
         setMembershipData({
           status: isExpired ? "Expired" : user.membershipStatus || "Active",
-          startDate: user.createdAt || new Date(),
+          startDate: user.membershipStartDate || user.createdAt,
           endDate: user.membershipEndDate || null,
           type: user.membershipType || "Standard",
           assignedTrainer: user.assignedTrainer || null,
@@ -275,7 +275,7 @@ const Profile = () => {
                 
                 setMembershipData({
                   status: isExpired ? "Expired" : memberData.membership.status || "Active",
-                  startDate: memberData.membership.startDate || user.createdAt,
+                  startDate: memberData.membership.startDate || user.membershipStartDate || user.createdAt,
                   endDate: memberData.membership.endDate,
                   type: memberData.membership.type || "Standard",
                   assignedTrainer: memberData.assignedTrainer || null,

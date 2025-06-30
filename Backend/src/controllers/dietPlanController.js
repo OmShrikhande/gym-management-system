@@ -54,10 +54,50 @@ export const createDietPlan = async (req, res) => {
   }
 };
 
-// Get all diet plans
+// Get all diet plans (admin, gym-owner, and trainer)
 export const getAllDietPlans = async (req, res) => {
   try {
-    const dietPlans = await DietPlan.find();
+    let dietPlans = [];
+    
+    if (req.user.role === 'super-admin') {
+      // Super admin can see all diet plans
+      dietPlans = await DietPlan.find()
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else if (req.user.role === 'gym-owner') {
+      // Gym owner can see diet plans from their trainers
+      const trainers = await User.find({ 
+        role: 'trainer',
+        $or: [
+          { gym: req.user._id },
+          { createdBy: req.user._id }
+        ]
+      });
+      
+      const trainerIds = trainers.map(trainer => trainer._id);
+      
+      dietPlans = await DietPlan.find({ 
+        $or: [
+          { gym: req.user._id },
+          { trainer: { $in: trainerIds } }
+        ]
+      })
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else if (req.user.role === 'trainer') {
+      // Trainer can only see their own diet plans
+      dietPlans = await DietPlan.find({ trainer: req.user._id })
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
     
     res.status(200).json({
       success: true,
@@ -339,6 +379,106 @@ export const deleteDietPlan = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting diet plan'
+    });
+  }
+};
+
+// Assign diet plan to members
+export const assignDietPlan = async (req, res) => {
+  try {
+    const { dietPlanId } = req.params;
+    const { memberIds } = req.body;
+    
+    // Validate diet plan ID
+    if (!mongoose.Types.ObjectId.isValid(dietPlanId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid diet plan ID'
+      });
+    }
+    
+    // Validate member IDs
+    if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide valid member IDs'
+      });
+    }
+    
+    // Find the diet plan
+    const dietPlan = await DietPlan.findById(dietPlanId);
+    
+    if (!dietPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Diet plan not found'
+      });
+    }
+    
+    // Check if user is authorized to assign this diet plan
+    if (req.user.role !== 'super-admin' && 
+        req.user.role !== 'gym-owner' && 
+        req.user._id.toString() !== dietPlan.trainer.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+    
+    // Verify all member IDs are valid
+    const validMemberIds = [];
+    for (const memberId of memberIds) {
+      if (mongoose.Types.ObjectId.isValid(memberId)) {
+        const member = await User.findById(memberId);
+        if (member && member.role === 'member') {
+          validMemberIds.push(memberId);
+        }
+      }
+    }
+    
+    if (validMemberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid members found'
+      });
+    }
+    
+    // Create individual diet plan assignments for each member
+    const assignedDietPlans = [];
+    
+    for (const memberId of validMemberIds) {
+      // Create a copy of the diet plan for each member
+      const assignedDietPlan = new DietPlan({
+        name: dietPlan.name,
+        goalType: dietPlan.goalType,
+        totalCalories: dietPlan.totalCalories,
+        description: dietPlan.description,
+        meals: dietPlan.meals,
+        trainer: dietPlan.trainer,
+        trainerName: dietPlan.trainerName,
+        gym: dietPlan.gym,
+        assignedTo: memberId,
+        createdAt: new Date()
+      });
+      
+      const savedDietPlan = await assignedDietPlan.save();
+      assignedDietPlans.push(savedDietPlan);
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: `Diet plan assigned to ${validMemberIds.length} member${validMemberIds.length !== 1 ? 's' : ''}`,
+      data: { 
+        assignedDietPlans,
+        assignedCount: validMemberIds.length
+      }
+    });
+  } catch (error) {
+    console.error('Error assigning diet plan:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to assign diet plan',
+      error: error.message
     });
   }
 };

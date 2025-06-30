@@ -23,9 +23,11 @@ import WorkoutPage from "./pages/WorkoutPage.jsx";
 import DietPlans from "./pages/DietPlans.jsx";
 import Messages from "./pages/Messages.jsx";
 import MyMembers from "./pages/MyMembers.jsx";
+import MyWorkouts from "./pages/MyWorkouts.jsx";
+import MyDiet from "./pages/MyDiet.jsx";
 import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
-import SuperAdminRegistration from "./components/auth/SuperAdminRegistration.jsx";
+import Enquiries from "./pages/Enquiries.jsx";
 
 const queryClient = new QueryClient();
 
@@ -39,7 +41,6 @@ const App = () => (
           <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/register-super-admin" element={<SuperAdminRegistration />} />
           
           {/* Super Admin & Gym Owner Routes */}
           <Route path="/gyms" element={
@@ -76,7 +77,7 @@ const App = () => (
           }
           />
           <Route path="/gym-owner-plans" element={
-            <ProtectedRoute allowedRoles={['gym-owner', 'super-admin']}>
+            <ProtectedRoute allowedRoles={['gym-owner']}>
               <GymOwnerPlans />
             </ProtectedRoute>
           } />
@@ -119,6 +120,11 @@ const App = () => (
               <DietPlans />
             </ProtectedRoute>
           } />
+          <Route path="/enquiries" element={
+            <ProtectedRoute allowedRoles={['gym-owner', 'trainer']}>
+              <Enquiries />
+            </ProtectedRoute>
+          } />
           <Route path="/messages" element={
             <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer']}>
               <Messages />
@@ -131,6 +137,19 @@ const App = () => (
               <MyMembers />
             </ProtectedRoute>
           } />
+          
+          {/* Member Routes */}
+          <Route path="/my-workouts" element={
+            <ProtectedRoute allowedRoles={['member']}>
+              <MyWorkouts />
+            </ProtectedRoute>
+          } />
+          <Route path="/my-diet" element={
+            <ProtectedRoute allowedRoles={['member']}>
+              <MyDiet />
+            </ProtectedRoute>
+          } />
+          
           <Route path="/schedule" element={
             <ProtectedRoute>
               <Schedule />

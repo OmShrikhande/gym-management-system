@@ -168,3 +168,123 @@ export const updateGymSettings = catchAsync(async (req, res) => {
     message: 'Gym settings updated successfully'
   });
 });
+
+/**
+ * Get user-specific settings
+ * @route GET /api/settings/user/:userId
+ * @access Private (Own settings only)
+ */
+export const getUserSettings = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+
+  // Users can only access their own settings (except super admin)
+  if (req.user.role !== 'super-admin' && req.user._id.toString() !== userId) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. You can only access your own settings.'
+    });
+  }
+
+  // Verify user exists
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found'
+    });
+  }
+
+  // Find user settings or create default based on role
+  let settings = await Setting.findOne({ userId });
+  
+  if (!settings) {
+    // Get appropriate default settings based on user role
+    let defaultSettings = {};
+    
+    if (user.role === 'gym-owner') {
+      // For gym owners, try to get their gym settings first, then global
+      const gymSettings = await Setting.findOne({ gymId: userId });
+      if (gymSettings) {
+        defaultSettings = gymSettings.toObject();
+      } else {
+        const globalSettings = await Setting.findOne({ isGlobal: true });
+        defaultSettings = globalSettings ? globalSettings.toObject() : {};
+      }
+    } else {
+      // For members and trainers, get global settings as default
+      const globalSettings = await Setting.findOne({ isGlobal: true });
+      defaultSettings = globalSettings ? globalSettings.toObject() : {};
+    }
+    
+    // Remove fields that shouldn't be copied
+    delete defaultSettings._id;
+    delete defaultSettings.gymId;
+    delete defaultSettings.userId;
+    delete defaultSettings.isGlobal;
+    
+    // Create user-specific settings
+    settings = await Setting.create({
+      ...defaultSettings,
+      userId,
+      isGlobal: false
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { settings }
+  });
+});
+
+/**
+ * Update user-specific settings
+ * @route POST /api/settings/user/:userId
+ * @access Private (Own settings only)
+ */
+export const updateUserSettings = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const { settings } = req.body;
+
+  // Users can only update their own settings (except super admin)
+  if (req.user.role !== 'super-admin' && req.user._id.toString() !== userId) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. You can only update your own settings.'
+    });
+  }
+
+  // Verify user exists
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'User not found'
+    });
+  }
+
+  if (!settings) {
+    return res.status(400).json({
+      success: false,
+      message: 'Settings data is required'
+    });
+  }
+
+  // Find and update user settings, or create if not exists
+  let updatedSettings = await Setting.findOneAndUpdate(
+    { userId },
+    { 
+      ...settings,
+      userId, // Ensure userId is set
+      isGlobal: false // Ensure it's not marked as global
+    },
+    { new: true, upsert: true }
+  );
+
+  res.status(200).json({
+    success: true,
+    data: { settings: updatedSettings },
+    message: 'User settings updated successfully'
+  });
+});

@@ -7,7 +7,8 @@ import {
   getDietPlansByMember, 
   getDietPlanById, 
   updateDietPlan, 
-  deleteDietPlan 
+  deleteDietPlan,
+  assignDietPlan 
 } from '../controllers/dietPlanController.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
@@ -20,10 +21,10 @@ router.post('/',
   createDietPlan
 );
 
-// Get all diet plans (admin and gym owner only)
+// Get all diet plans (admin, gym owner, and trainer)
 router.get('/', 
   protect, 
-  restrictTo('super-admin', 'gym-owner'), 
+  restrictTo('super-admin', 'gym-owner', 'trainer'), 
   getAllDietPlans
 );
 
@@ -61,6 +62,13 @@ router.put('/:dietPlanId',
 router.delete('/:dietPlanId', 
   protect, 
   deleteDietPlan
+);
+
+// Assign diet plan to members (trainer only)
+router.post('/:dietPlanId/assign', 
+  protect, 
+  restrictTo('trainer', 'gym-owner'), 
+  assignDietPlan
 );
 
 export default router;

@@ -4,111 +4,42 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import { CreditCard, AlertTriangle, Calendar, CheckCircle, Loader2 } from "lucide-react";
+import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
-// API URL - this should match the one in AuthContext
+// API URL
 const API_URL = 'http://localhost:8081/api';
 
 const SubscriptionRequired = () => {
   const { user, subscription, logout, authFetch, checkSubscriptionStatus } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
-  const [plans, setPlans] = useState([]);
   const navigate = useNavigate();
   
-  // Fetch subscription plans from API
-  useEffect(() => {
-    const fetchPlans = async () => {
-      setIsLoadingPlans(true);
-      try {
-        // Log token for debugging
-        const token = localStorage.getItem('token');
-        console.log('Token available:', !!token);
-        if (!token) {
-          console.error('No token found in localStorage');
-          // Don't show error toast, just use default plans
-          setDefaultPlans();
-          return;
-        }
-        
-        // Try both methods to see which one works
-        console.log('Fetching subscription plans with authFetch...');
-        let response;
-        try {
-          response = await authFetch('/subscription-plans');
-          console.log('Subscription plans response from authFetch:', response);
-        } catch (error) {
-          console.error('Error with authFetch:', error);
-          
-          // Try direct fetch as fallback
-          console.log('Trying direct fetch as fallback...');
-          try {
-            const directResponse = await fetch(`${API_URL}/subscription-plans`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            const data = await directResponse.json();
-            console.log('Direct fetch response:', data);
-            
-            // Use the direct fetch response if authFetch failed
-            if (directResponse.ok && data.status === 'success') {
-              response = data;
-            }
-          } catch (directError) {
-            console.error('Error with direct fetch:', directError);
-          }
-        }
-        
-        if (response && (response.success || response.status === 'success') && response.data?.plans?.length > 0) {
-          console.log('Fetched subscription plans:', response.data.plans);
-          setPlans(response.data.plans);
-        } else {
-          console.error('Failed to fetch plans or no plans returned');
-          // Fallback to default plans
-          setDefaultPlans();
-        }
-      } catch (error) {
-        console.error('Error fetching subscription plans:', error);
-        // Fallback to default plans
-        setDefaultPlans();
-      } finally {
-        setIsLoadingPlans(false);
-      }
-    };
-    
-    // Helper function to set default plans
-    const setDefaultPlans = () => {
-      console.log('Using default subscription plans');
-      setPlans([
-        {
-          id: "basic",
-          name: "Basic",
-          price: 49,
-          features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
-          recommended: false
-        },
-        {
-          id: "premium",
-          name: "Premium",
-          price: 99,
-          features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
-          recommended: true
-        },
-        {
-          id: "enterprise",
-          name: "Enterprise",
-          price: 199,
-          features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
-          recommended: false
-        }
-      ]);
-    };
-    
-    fetchPlans();
-  }, [authFetch]);
+  // Mock plans data (this would come from your backend in a real app)
+  const plans = [
+    {
+      id: "basic",
+      name: "Basic",
+      price: 49,
+      features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
+      recommended: false
+    },
+    {
+      id: "premium",
+      name: "Premium",
+      price: 99,
+      features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
+      recommended: true
+    },
+    {
+      id: "enterprise",
+      name: "Enterprise",
+      price: 199,
+      features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
+      recommended: false
+    }
+  ];
 
   // Handle plan selection
   const handlePlanSelection = (plan) => {
@@ -127,65 +58,56 @@ const SubscriptionRequired = () => {
     setIsProcessing(true);
     
     try {
-      // Get token from localStorage
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Authentication error. Please try logging in again.');
-        setIsProcessing(false);
-        return;
-      }
-      
       // Determine if this is a new subscription or renewal
       const isRenewal = subscription?.subscription?._id;
       
       // Generate a mock transaction ID
       const mockTransactionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
       
-      console.log('Creating subscription with test mode payment');
-      console.log('User ID:', user._id);
-      console.log('Plan:', selectedPlan.name);
-      console.log('Price:', selectedPlan.price);
+      let endpoint, method, body;
       
-      // Create new subscription
-      const body = {
-        gymOwnerId: user._id,
-        plan: selectedPlan.name,
-        price: selectedPlan.price,
-        durationMonths: 1,
-        paymentMethod: 'test_mode',
-        transactionId: mockTransactionId
-      };
+      if (isRenewal) {
+        // Renew existing subscription
+        endpoint = `${API_URL}/subscriptions/${subscription.subscription._id}/renew`;
+        method = 'POST';
+        body = {
+          durationMonths: 1,
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        };
+      } else {
+        // Create new subscription
+        endpoint = `${API_URL}/subscriptions`;
+        method = 'POST';
+        body = {
+          gymOwnerId: user._id,
+          plan: selectedPlan.name,
+          price: selectedPlan.price,
+          durationMonths: 1,
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        };
+      }
       
-      // Always use direct fetch to ensure it works even when authFetch might fail
-      console.log('Making direct API call to create subscription...');
-      const directResponse = await fetch(`${API_URL}/subscriptions`, {
-        method: 'POST',
+      // Make API call
+      const response = await authFetch(endpoint, {
+        method,
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(body)
       });
       
-      const data = await directResponse.json();
-      console.log('Subscription creation response:', data);
-      
-      if (directResponse.ok && (data.success || data.status === 'success')) {
-        toast.success(`Subscription purchased successfully in test mode!`);
+      if (response.success || response.status === 'success') {
+        toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully in test mode!`);
         
         // Refresh subscription status
-        try {
-          await checkSubscriptionStatus(user._id, token, true);
-        } catch (refreshError) {
-          console.error('Error refreshing subscription status:', refreshError);
-          // Continue anyway since the subscription was created successfully
-        }
+        await checkSubscriptionStatus(user._id, null, true);
         
-        // Reload the page to reflect the new subscription status
-        window.location.href = '/dashboard';
+        // Navigate to dashboard
+        navigate("/dashboard");
       } else {
-        console.error('Subscription error response:', data);
-        toast.error(data?.message || 'Subscription failed. Please try again.');
+        toast.error(response.message || 'Subscription failed. Please try again.');
       }
     } catch (err) {
       console.error('Test mode subscription error:', err);
@@ -400,92 +322,52 @@ const SubscriptionRequired = () => {
           </Card>
         )}
 
-        {isLoadingPlans ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 text-blue-500 animate-spin" />
-            <span className="ml-2 text-gray-400">Loading subscription plans...</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-            {plans.map((plan) => (
-              <Card 
-                key={plan._id || plan.id}
-                className={`bg-gray-800/50 border-gray-700 relative ${
-                  selectedPlan?._id === plan._id || selectedPlan?.id === plan.id ? "ring-2 ring-blue-500" : ""
-                }`}
-              >
-                {plan.recommended && (
-                  <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                    <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
-                      Recommended
-                    </span>
-                  </div>
-                )}
-                <CardHeader>
-                  <CardTitle className="text-white">{plan.name}</CardTitle>
-                  <CardDescription className="text-gray-400">
-                    <span className="text-2xl font-bold text-white">${plan.price}</span> / month
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {plan.maxMembers && (
-                      <li className="flex items-start">
-                        <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                        <span className="text-gray-300">Up to {plan.maxMembers} members</span>
-                      </li>
-                    )}
-                    {plan.maxTrainers && (
-                      <li className="flex items-start">
-                        <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                        <span className="text-gray-300">{plan.maxTrainers} trainers</span>
-                      </li>
-                    )}
-                    {Array.isArray(plan.features) && plan.features.map((feature, index) => (
-                      <li key={index} className="flex items-start">
-                        <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                        <span className="text-gray-300">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-                <CardFooter className="flex flex-col gap-3">
-                  <Button 
-                    className={`w-full ${
-                      (selectedPlan?._id === plan._id || selectedPlan?.id === plan.id)
-                        ? "bg-blue-600 hover:bg-blue-700" 
-                        : "bg-gray-700 hover:bg-gray-600"
-                    }`}
-                    onClick={() => handlePlanSelection(plan)}
-                  >
-                    {(selectedPlan?._id === plan._id || selectedPlan?.id === plan.id) ? "Selected" : "Select Plan"}
-                  </Button>
-                  
-                  {/* Quick subscribe button with test mode */}
-                  <Button 
-                    variant="outline"
-                    className="w-full border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                    onClick={() => {
-                      setSelectedPlan(plan);
-                      // Use a longer timeout to ensure the state is updated
-                      setTimeout(() => {
-                        try {
-                          handleTestModePayment();
-                        } catch (error) {
-                          console.error('Error in quick subscribe:', error);
-                          toast.error('Failed to subscribe. Please try again.');
-                        }
-                      }, 300);
-                    }}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? 'Processing...' : 'Quick Subscribe (Test Mode)'}
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          {plans.map((plan) => (
+            <Card 
+              key={plan.id}
+              className={`bg-gray-800/50 border-gray-700 relative ${
+                selectedPlan?.id === plan.id ? "ring-2 ring-blue-500" : ""
+              }`}
+            >
+              {plan.recommended && (
+                <div className="absolute -top-3 left-0 right-0 flex justify-center">
+                  <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
+                    Recommended
+                  </span>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle className="text-white">{plan.name}</CardTitle>
+                <CardDescription className="text-gray-400">
+                  <span className="text-2xl font-bold text-white">${plan.price}</span> / month
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-start">
+                      <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                      <span className="text-gray-300">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+              <CardFooter>
+                <Button 
+                  className={`w-full ${
+                    selectedPlan?.id === plan.id 
+                      ? "bg-blue-600 hover:bg-blue-700" 
+                      : "bg-gray-700 hover:bg-gray-600"
+                  }`}
+                  onClick={() => handlePlanSelection(plan)}
+                >
+                  {selectedPlan?.id === plan.id ? "Selected" : "Select Plan"}
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
 
         {/* Payment Section */}
         {selectedPlan && (

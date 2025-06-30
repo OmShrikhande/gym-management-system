@@ -5,68 +5,7 @@ import AppError from '../utils/appError.js';
 
 // Get all subscription plans
 export const getAllPlans = catchAsync(async (req, res, next) => {
-  // Only return active plans by default, unless specifically requested
-  const filter = req.query.includeInactive ? {} : { status: 'Active' };
-  
-  const plans = await SubscriptionPlan.find(filter);
-  
-  // Log the number of plans found
-  console.log(`Found ${plans.length} subscription plans with filter:`, filter);
-  
-  // If no plans are found and we're not including inactive plans, create default plans
-  if (plans.length === 0 && !req.query.includeInactive) {
-    console.log('No active plans found. Creating default plans...');
-    
-    // Create default plans if none exist
-    const defaultPlans = [
-      {
-        name: "Basic",
-        price: 49,
-        duration: "monthly",
-        maxMembers: 200,
-        maxTrainers: 5,
-        features: ["Member Management", "Basic Reports", "Email Support"],
-        status: "Active"
-      },
-      {
-        name: "Premium",
-        price: 99,
-        duration: "monthly",
-        maxMembers: 500,
-        maxTrainers: 15,
-        features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support"],
-        status: "Active",
-        recommended: true
-      },
-      {
-        name: "Enterprise",
-        price: 199,
-        duration: "monthly",
-        maxMembers: 1000,
-        maxTrainers: 50,
-        features: ["All Premium Features", "Custom Branding", "API Access", "Dedicated Support"],
-        status: "Active"
-      }
-    ];
-    
-    try {
-      // Create the default plans
-      await SubscriptionPlan.create(defaultPlans);
-      
-      // Fetch the newly created plans
-      const newPlans = await SubscriptionPlan.find({ status: 'Active' });
-      
-      return res.status(200).json({
-        status: 'success',
-        results: newPlans.length,
-        data: {
-          plans: newPlans
-        }
-      });
-    } catch (error) {
-      console.error('Error creating default plans:', error);
-    }
-  }
+  const plans = await SubscriptionPlan.find();
   
   res.status(200).json({
     status: 'success',

@@ -3,9 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User } from "lucide-react";
+import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import QRCodeGenerator from "@/components/qr/QRCodeGenerator";
+import QRCodeScanner from "@/components/qr/QRCodeScanner";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
@@ -41,6 +43,9 @@ const Index = () => {
   const [trainerGymName, setTrainerGymName] = useState('');
   const [trainerWorkoutPlans, setTrainerWorkoutPlans] = useState([]);
   const [trainerDietPlans, setTrainerDietPlans] = useState([]);
+  
+  // QR Scanner state for members
+  const [showQRScanner, setShowQRScanner] = useState(false);
   
   // We don't need these state variables anymore as we're using dedicated pages
 
@@ -380,55 +385,73 @@ const Index = () => {
         
       } else if (userRole === 'member') {
         // 1. Get workout plans assigned to this member
-        const workoutsResponse = await authFetch(`/workouts`);
+        const workoutsResponse = await authFetch(`/workouts/member/${user._id}`);
         if (workoutsResponse.success || workoutsResponse.status === 'success') {
-          const allWorkouts = workoutsResponse.data?.workouts || [];
+          const assignedWorkouts = workoutsResponse.data?.workouts || [];
           
-          // Filter for workouts assigned to this member
-          const assignedWorkouts = allWorkouts
-            .filter(workout => 
-              workout.members && 
-              workout.members.includes(user._id)
-            )
+          // Get the latest 3 workouts
+          const recentWorkouts = assignedWorkouts
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedWorkouts.forEach((workout) => {
+          // Add trainer info to workout activities
+          for (const workout of recentWorkouts) {
+            let trainerName = 'Unknown Trainer';
+            if (workout.createdBy) {
+              try {
+                const trainerResponse = await authFetch(`/users/${workout.createdBy}`);
+                if (trainerResponse.success || trainerResponse.status === 'success') {
+                  trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+                }
+              } catch (error) {
+                console.log('Error fetching trainer info:', error);
+              }
+            }
+            
             activities.push({
               id: `workout-${workout._id}`,
               type: 'workout',
               icon: <Dumbbell className="h-4 w-4 text-white" />,
               iconBg: 'bg-blue-500',
-              message: `Workout plan assigned to you: ${workout.title}`,
+              message: `Workout plan "${workout.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(workout.createdAt)
             });
-          });
+          }
         }
         
         // 2. Get diet plans assigned to this member
-        const dietPlansResponse = await authFetch(`/diet-plans`);
+        const dietPlansResponse = await authFetch(`/diet-plans/member/${user._id}`);
         if (dietPlansResponse.success || dietPlansResponse.status === 'success') {
-          const allDietPlans = dietPlansResponse.data?.dietPlans || [];
+          const assignedDietPlans = dietPlansResponse.data?.dietPlans || [];
           
-          // Filter for diet plans assigned to this member
-          const assignedDietPlans = allDietPlans
-            .filter(plan => 
-              plan.members && 
-              plan.members.includes(user._id)
-            )
+          // Get the latest 3 diet plans
+          const recentDietPlans = assignedDietPlans
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedDietPlans.forEach((plan) => {
+          // Add trainer info to diet plan activities
+          for (const plan of recentDietPlans) {
+            let trainerName = 'Unknown Trainer';
+            if (plan.createdBy) {
+              try {
+                const trainerResponse = await authFetch(`/users/${plan.createdBy}`);
+                if (trainerResponse.success || trainerResponse.status === 'success') {
+                  trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+                }
+              } catch (error) {
+                console.log('Error fetching trainer info:', error);
+              }
+            }
+            
             activities.push({
               id: `diet-${plan._id}`,
               type: 'diet',
               icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
               iconBg: 'bg-orange-500',
-              message: `Diet plan assigned to you: ${plan.title}`,
+              message: `Diet plan "${plan.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(plan.createdAt)
             });
-          });
+          }
         }
         
         // 3. Get notifications for this member
@@ -1220,6 +1243,14 @@ const Index = () => {
               </CardContent>
             </Card>
           )}
+
+          {/* QR Code Generator for Gym Owners */}
+          {userRole === 'gym-owner' && user && (
+            <QRCodeGenerator 
+              gymOwnerId={user._id} 
+              gymName={user.gymName || user.name + "'s Gym"} 
+            />
+          )}
           
           {/* Member Membership Status - Only shown for members */}
           {userRole === 'member' && (
@@ -1344,6 +1375,47 @@ const Index = () => {
                     })()}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* QR Code Scanner for Members */}
+          {userRole === 'member' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center">
+                  <Scan className="h-5 w-5 mr-2" />
+                  Join a Gym
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Scan a gym's QR code to join their membership
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!showQRScanner ? (
+                  <div className="text-center py-6">
+                    <Scan className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+                    <p className="text-gray-300 mb-4">
+                      Use your camera to scan a gym's QR code and join their membership program.
+                    </p>
+                    <Button
+                      onClick={() => setShowQRScanner(true)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Scan className="h-4 w-4 mr-2" />
+                      Start QR Scanner
+                    </Button>
+                  </div>
+                ) : (
+                  <QRCodeScanner
+                    onScanSuccess={(data) => {
+                      console.log('QR Code scanned:', data);
+                      toast.success(`Scanned gym: ${data.gymName}`);
+                      // Handle the scanned data here
+                    }}
+                    onClose={() => setShowQRScanner(false)}
+                  />
+                )}
               </CardContent>
             </Card>
           )}
@@ -1551,5 +1623,3 @@ const Index = () => {
 };
 
 export default Index;
-
-// edited this file for checking connection with the server

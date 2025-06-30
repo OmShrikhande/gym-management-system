@@ -7,41 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Dependencies
 node_modules
-/.pnp
-.pnp.js
-
-# Build outputs
 dist
 dist-ssr
-build
-coverage
 *.local
-
-# Environment variables and secrets
-.env
-.env.*
-!.env.example
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Package manager files
-package-lock.json
-yarn.lock
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
 .idea
 .DS_Store
 *.suo
@@ -49,34 +22,3 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
-
-# Cache and temporary files
-.cache
-.temp
-.tmp
-tmp/
-temp/
-.eslintcache
-.stylelintcache
-
-# Testing
-/coverage
-/.nyc_output
-/cypress/videos/
-/cypress/screenshots/
-
-# Database files
-*.sqlite
-*.sqlite3
-*.db
-
-# Compiled output
-/out-tsc
-/bazel-out
-
-# Miscellaneous
-.sass-cache
-connect.lock
-libpeerconnection.log
-testem.log
-typings/

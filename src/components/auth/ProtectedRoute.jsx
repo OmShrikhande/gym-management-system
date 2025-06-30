@@ -38,10 +38,8 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   // Check if user is a gym owner and needs an active subscription
   if (isGymOwner && requiresSubscription && !hasActiveSubscription) {
-    // If the route is the billing plans page or gym-owner-plans, allow access
-    if (window.location.pathname === '/billing-plans' || 
-        window.location.pathname === '/billing' ||
-        window.location.pathname === '/gym-owner-plans') {
+    // If the route is the billing plans page, allow access
+    if (window.location.pathname === '/billing-plans' || window.location.pathname === '/billing') {
       return <>{children}</>;
     }
     

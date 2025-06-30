@@ -206,10 +206,22 @@ export const getUser = async (req, res) => {
                              user.assignedTrainer && 
                              user.assignedTrainer.toString() === req.user.id;
     
+    // Members can view their assigned trainer
+    const isMyTrainer = req.user.role === 'member' && 
+                       user.role === 'trainer' && 
+                       req.user.assignedTrainer && 
+                       req.user.assignedTrainer.toString() === req.params.id;
+    
+    // Members can view gym owner who created them (for gym info)
+    const isMyGymOwner = req.user.role === 'member' && 
+                        user.role === 'gym-owner' && 
+                        req.user.createdBy && 
+                        req.user.createdBy.toString() === req.params.id;
+    
     // Super admin can view all users
     const isSuperAdmin = req.user.role === 'super-admin';
     
-    if (!isOwnProfile && !isGymOwnerCreator && !isAssignedTrainer && !isSuperAdmin) {
+    if (!isOwnProfile && !isGymOwnerCreator && !isAssignedTrainer && !isMyTrainer && !isMyGymOwner && !isSuperAdmin) {
       return res.status(403).json({
         status: 'fail',
         message: 'You do not have permission to view this user'

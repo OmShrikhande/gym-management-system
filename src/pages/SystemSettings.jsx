@@ -67,8 +67,8 @@ const SystemSettings = () => {
     }
   });
   
-  // Allow all users to access their personal settings
-  const hasPermission = true; // All users can access settings
+  // Access control: Only super admins and gym owners can access settings
+  const hasPermission = isSuperAdmin || isGymOwner;
   
   // Load settings from the server
   useEffect(() => {
@@ -83,8 +83,11 @@ const SystemSettings = () => {
         if (isSuperAdmin) {
           // Super admins can access global settings
           endpoint = '/settings';
+        } else if (isGymOwner) {
+          // Gym owners get their gym-specific settings
+          endpoint = `/settings/gym/${user._id}`;
         } else {
-          // All other users (gym owners, trainers, members) get their user-specific settings
+          // Other users get their user-specific settings (though they shouldn't reach here due to hasPermission)
           endpoint = `/settings/user/${user._id}`;
         }
         
@@ -165,8 +168,11 @@ const SystemSettings = () => {
       if (isSuperAdmin) {
         // Super admins can save global settings
         endpoint = '/settings';
+      } else if (isGymOwner) {
+        // Gym owners save their gym-specific settings
+        endpoint = `/settings/gym/${user._id}`;
       } else {
-        // All other users (gym owners, trainers, members) save to their user-specific settings
+        // Other users save their user-specific settings (though they shouldn't reach here due to hasPermission)
         endpoint = `/settings/user/${user._id}`;
       }
       
@@ -228,8 +234,7 @@ const SystemSettings = () => {
           <div className="text-center">
             <h2 className="text-2xl font-bold text-red-500 mb-2">{t('accessDenied')}</h2>
             <p className="text-gray-400 mb-6">
-              {t('noPermission')}
-              {t('adminOnlyAccess')}
+              You don't have permission to access system settings. Only Super Admins and Gym Owners can access this page.
             </p>
             <Button 
               className="bg-blue-600 hover:bg-blue-700"

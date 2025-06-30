@@ -67,29 +67,18 @@ const Members = () => {
   // State for gym owner plans
   const [gymOwnerPlans, setGymOwnerPlans] = useState([
     {
-      id: "basic-member",
-      name: "Basic Member",
-      price: 19,
-      duration: "monthly",
-      features: ["Member Management", "Basic Attendance Tracking", "Email Support"],
-      status: "Active"
+      id: 'default-1',
+      name: 'Basic Member',
+      price: 500,
+      duration: 'month',
+      features: ['Standard gym access', 'Basic equipment usage']
     },
     {
-      id: "premium-member",
-      name: "Premium Member",
-      price: 39,
-      duration: "monthly",
-      features: ["All Basic Features", "Fitness Progress Tracking", "Workout Plans", "Priority Support"],
-      status: "Active",
-      recommended: true
-    },
-    {
-      id: "elite-member",
-      name: "Elite Member",
-      price: 79,
-      duration: "monthly",
-      features: ["All Premium Features", "Nutrition Planning", "Personal Training Sessions", "24/7 Support"],
-      status: "Active"
+      id: 'default-2', 
+      name: 'Premium Member',
+      price: 1000,
+      duration: 'month',
+      features: ['Full gym access', 'All equipment', 'Group classes']
     }
   ]);
   
@@ -388,8 +377,8 @@ const Members = () => {
         .map(member => {
           // Calculate membership end date if not present but duration is available
           let membershipEndDate = member.membershipEndDate;
-          if (!membershipEndDate && member.membershipDuration && member.createdAt) {
-            const startDate = new Date(member.createdAt);
+          if (!membershipEndDate && member.membershipDuration && (member.membershipStartDate || member.createdAt)) {
+            const startDate = new Date(member.membershipStartDate || member.createdAt);
             const endDate = new Date(startDate);
             const duration = parseInt(member.membershipDuration || '1');
             endDate.setFullYear(endDate.getFullYear() + duration);
@@ -723,6 +712,8 @@ const Members = () => {
       // Add payment information to the member data
       const memberDataWithPayment = {
         ...pendingMemberData,
+        // Map mobile to phone for backend compatibility
+        phone: pendingMemberData.mobile || pendingMemberData.phone,
         paymentStatus: 'Paid',
         paymentId: paymentData.paymentId,
         paymentAmount: paymentData.amount || pendingMemberData.calculatedFee,
@@ -734,8 +725,13 @@ const Members = () => {
         fitnessGoalDescription: pendingMemberData.fitnessGoalDescription || ''
       };
       
+      // Remove mobile field to avoid confusion
+      delete memberDataWithPayment.mobile;
+      
       // Create the member
+      console.log('Creating member with data:', memberDataWithPayment);
       const result = await createMember(memberDataWithPayment);
+      console.log('Member creation result:', result);
       
       if (result.success) {
         setMessage({ type: 'success', text: result.message });

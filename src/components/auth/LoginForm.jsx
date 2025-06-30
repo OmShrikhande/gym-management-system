@@ -122,9 +122,6 @@ const LoginForm = () => {
               <p className="text-gray-400 text-sm">
                 Contact your administrator if you need an account
               </p>
-              <p className="text-gray-400 text-sm mt-2">
-                Need to register as a super admin? <a href="/register-super-admin" className="text-blue-400 hover:underline">Register here</a>
-              </p>
             </div>
           </CardContent>
         </Card>

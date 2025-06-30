@@ -361,118 +361,6 @@ function UserManagement() {
     return true;
   };
   
-  // Function to handle test mode payment (direct gym owner creation)
-  const handleTestModePayment = async () => {
-    setIsProcessingPayment(true);
-    setMessage({ type: 'info', text: 'Creating gym owner in test mode...' });
-    
-    try {
-      // Get the selected plan details
-      const selectedPlan = plans.find(p => (p._id || p.id) === formData.subscriptionPlan);
-      
-      if (!selectedPlan) {
-        setMessage({ type: 'error', text: 'Invalid subscription plan selected' });
-        setIsProcessingPayment(false);
-        return;
-      }
-      
-      console.log('Creating gym owner with plan:', selectedPlan);
-      
-      // Create gym owner directly
-      const result = await createGymOwner({
-        ...formData,
-        subscriptionPlan: selectedPlan.name
-      });
-      
-      if (result.success) {
-        setMessage({ type: 'info', text: 'Gym owner created. Setting up subscription...' });
-        console.log('Gym owner created successfully:', result.user);
-        
-        // Try to create subscription using the payment controller first
-        try {
-          // Create a mock payment response
-          const mockPaymentResponse = {
-            razorpay_order_id: `order_test_${Date.now()}`,
-            razorpay_payment_id: `pay_test_${Date.now()}`,
-            razorpay_signature: `sig_test_${Date.now()}`
-          };
-          
-          // Use the payment verification endpoint which handles both user and subscription
-          const verifyResponse = await authFetch('/payments/razorpay/verify', {
-            method: 'POST',
-            body: JSON.stringify({
-              ...mockPaymentResponse,
-              gymOwnerId: result.user._id,
-              gymOwnerData: {
-                formData: {
-                  ...formData,
-                  subscriptionPlan: selectedPlan.name
-                },
-                planId: selectedPlan.id || selectedPlan._id
-              }
-            })
-          });
-          
-          if (verifyResponse.success || verifyResponse.status === 'success') {
-            toast.success('Gym owner created successfully with subscription');
-            setMessage({ type: 'success', text: 'Gym owner created successfully with subscription' });
-            resetForm();
-            fetchUsers();
-            return;
-          }
-        } catch (verifyError) {
-          console.error('Error using payment verification endpoint:', verifyError);
-          // Continue to fallback method
-        }
-        
-        // Fallback: Create subscription directly
-        try {
-          console.log('Creating subscription directly for gym owner:', result.user._id);
-          
-          const subscriptionResult = await authFetch('/subscriptions', {
-            method: 'POST',
-            body: JSON.stringify({
-              gymOwnerId: result.user._id,
-              plan: selectedPlan.name,
-              price: selectedPlan.price,
-              durationMonths: selectedPlan.duration === 'monthly' ? 1 : (selectedPlan.duration === 'quarterly' ? 3 : 12),
-              paymentMethod: 'test_mode',
-              transactionId: `test_${Date.now()}`
-            })
-          });
-          
-          console.log('Subscription creation result:', subscriptionResult);
-          
-          if (subscriptionResult.success || subscriptionResult.status === 'success') {
-            toast.success('Gym owner created successfully with test subscription');
-            setMessage({ type: 'success', text: 'Gym owner created successfully with test subscription' });
-            resetForm();
-            fetchUsers();
-          } else {
-            console.error('Subscription creation failed:', subscriptionResult);
-            toast.warning('Gym owner created but subscription setup failed. The user will need to set up a subscription.');
-            setMessage({ type: 'warning', text: 'Gym owner created but subscription setup failed. The user will need to set up a subscription.' });
-            resetForm();
-            fetchUsers();
-          }
-        } catch (subscriptionError) {
-          console.error('Error creating subscription:', subscriptionError);
-          toast.warning('Gym owner created but subscription setup failed. The user will need to set up a subscription.');
-          setMessage({ type: 'warning', text: 'Gym owner created but subscription setup failed. The user will need to set up a subscription.' });
-          resetForm();
-          fetchUsers();
-        }
-      } else {
-        setMessage({ type: 'error', text: result.message || 'Failed to create gym owner' });
-      }
-    } catch (error) {
-      console.error('Error creating gym owner in test mode:', error);
-      setMessage({ type: 'error', text: 'An error occurred while creating gym owner' });
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
   // Function to initialize Razorpay payment
   const initializeRazorpayPayment = async () => {
     setIsProcessingPayment(true);
@@ -643,110 +531,30 @@ function UserManagement() {
       const pendingGymOwnerData = JSON.parse(pendingGymOwnerDataStr);
       console.log('Retrieved pending gym owner data:', pendingGymOwnerData);
       
-      // First, create the gym owner account
-      setMessage({ type: 'info', text: 'Creating gym owner account...' });
-      
-      // Get the selected plan details
-      const selectedPlan = plans.find(p => (p._id || p.id) === pendingGymOwnerData.subscriptionPlan);
-      
-      if (!selectedPlan) {
-        setMessage({ type: 'error', text: 'Invalid subscription plan selected' });
-        setIsProcessingPayment(false);
-        return;
-      }
-      
-      // Create gym owner directly
-      const result = await createGymOwner({
-        ...pendingGymOwnerData,
-        subscriptionPlan: selectedPlan.name
-      });
-      
-      if (!result || !result.success) {
-        throw new Error(result?.message || 'Failed to create gym owner account');
-      }
-      
-      setMessage({ type: 'info', text: 'Account created. Setting up subscription...' });
-      
-      // Now verify the payment and create subscription
       const requestBody = {
         ...paymentResponse,
-        gymOwnerData: pendingGymOwnerData,
-        gymOwnerId: result.user._id
+        gymOwnerData: pendingGymOwnerData
       };
       
       console.log('Sending payment verification request:', requestBody);
       
-      try {
-        const verifyResponse = await authFetch(`/payments/razorpay/verify`, {
-          method: 'POST',
-          body: JSON.stringify(requestBody)
-        });
-        
-        if (verifyResponse.success || verifyResponse.status === 'success') {
-          // Show success message
-          toast.success('Payment successful! Gym owner account created.');
-          setMessage({ 
-            type: 'success', 
-            text: `Gym owner created successfully with ${verifyResponse.data?.subscription?.plan || selectedPlan.name} subscription plan.` 
-          });
-        } else {
-          // If payment verification fails, create subscription manually
-          console.warn('Payment verification failed, creating subscription manually');
-          
-          // Create subscription for the gym owner
-          const subscriptionResult = await authFetch('/subscriptions', {
-            method: 'POST',
-            body: JSON.stringify({
-              gymOwnerId: result.user._id,
-              plan: selectedPlan.name,
-              price: selectedPlan.price,
-              durationMonths: selectedPlan.duration === 'monthly' ? 1 : (selectedPlan.duration === 'quarterly' ? 3 : 12),
-              paymentMethod: 'razorpay',
-              transactionId: paymentResponse.razorpay_payment_id || `manual_${Date.now()}`
-            })
-          });
-          
-          if (subscriptionResult.success || subscriptionResult.status === 'success') {
-            toast.success('Gym owner created with subscription successfully!');
-            setMessage({ 
-              type: 'success', 
-              text: `Gym owner created successfully with ${selectedPlan.name} subscription plan.` 
-            });
-          } else {
-            toast.warning('Gym owner created but subscription setup failed. The user will need to set up a subscription.');
-            setMessage({ 
-              type: 'warning', 
-              text: 'Gym owner created but subscription setup failed. The user will need to set up a subscription.' 
-            });
-          }
-        }
-      } catch (verifyError) {
-        console.error('Error during payment verification:', verifyError);
-        
-        // Create subscription manually as fallback
-        try {
-          const subscriptionResult = await authFetch('/subscriptions', {
-            method: 'POST',
-            body: JSON.stringify({
-              gymOwnerId: result.user._id,
-              plan: selectedPlan.name,
-              price: selectedPlan.price,
-              durationMonths: selectedPlan.duration === 'monthly' ? 1 : (selectedPlan.duration === 'quarterly' ? 3 : 12),
-              paymentMethod: 'razorpay',
-              transactionId: paymentResponse.razorpay_payment_id || `manual_${Date.now()}`
-            })
-          });
-          
-          if (subscriptionResult.success || subscriptionResult.status === 'success') {
-            toast.success('Gym owner created with subscription successfully!');
-          } else {
-            toast.warning('Gym owner created but subscription setup failed. The user will need to set up a subscription.');
-          }
-        } catch (subscriptionError) {
-          console.error('Error creating subscription:', subscriptionError);
-          toast.warning('Gym owner created but subscription setup failed. The user will need to set up a subscription.');
-        }
+      const verifyResponse = await authFetch(`/payments/razorpay/verify`, {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!verifyResponse.success && !verifyResponse.status === 'success') {
+        setMessage({ type: 'error', text: verifyResponse.message || 'Payment verification failed' });
+        setIsProcessingPayment(false);
+        return;
       }
+      
+      // Show success message
+      toast.success('Payment successful! Gym owner account created.');
+      setMessage({ 
+        type: 'success', 
+        text: `Gym owner created successfully with ${verifyResponse.data.subscription.plan} subscription plan.` 
+      });
       
       // Clear session storage
       sessionStorage.removeItem('pendingOrderId');
@@ -759,15 +567,8 @@ function UserManagement() {
       fetchUsers();
       
     } catch (error) {
-      console.error('Error in account creation process:', error);
-      setMessage({ type: 'error', text: `Error: ${error.message || 'An error occurred during the process'}` });
-      
-      // Try to fetch users anyway in case the gym owner was created
-      try {
-        await fetchUsers();
-      } catch (e) {
-        console.error('Failed to refresh user list:', e);
-      }
+      console.error('Error verifying payment:', error);
+      setMessage({ type: 'error', text: 'An error occurred during payment verification' });
     } finally {
       setIsProcessingPayment(false);
     }
@@ -1307,22 +1108,6 @@ function UserManagement() {
                                 </div>
                                 <span className="text-white">QR Code / Scanner</span>
                               </div>
-                              
-                              <div 
-                                className={`flex items-center p-3 rounded-lg cursor-pointer ${
-                                  formData.paymentMethod === 'test_mode' 
-                                    ? 'bg-blue-900/30 border border-blue-500' 
-                                    : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'
-                                }`}
-                                onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'test_mode' }))}
-                              >
-                                <div className="h-5 w-5 rounded-full border border-gray-400 flex items-center justify-center mr-3">
-                                  {formData.paymentMethod === 'test_mode' && (
-                                    <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                                  )}
-                                </div>
-                                <span className="text-white">Test Mode (Skip Payment)</span>
-                              </div>
                             </div>
                           </div>
                           
@@ -1482,24 +1267,18 @@ function UserManagement() {
                                 disabled={isProcessingPayment || (formData.paymentMethod === 'qr_scanner' && qrCodeUrl)}
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  if (formData.paymentMethod === 'test_mode') {
-                                    handleTestModePayment();
-                                  } else {
-                                    initializeRazorpayPayment();
-                                  }
+                                  initializeRazorpayPayment();
                                 }}
                               >
                                 {isProcessingPayment ? (
-                                  <>{formData.paymentMethod === 'test_mode' ? 'Creating Account...' : 'Processing Payment...'}</>
+                                  <>Processing Payment...</>
                                 ) : (
                                   <>
-                                    {formData.paymentMethod === 'test_mode'
-                                      ? 'Create with Test Subscription'
-                                      : formData.paymentMethod === 'qr_scanner' 
-                                        ? (qrCodeUrl ? 'Verify Payment & Create Account' : 'Generate Payment QR') 
-                                        : formData.paymentMethod === 'netbanking'
-                                          ? 'Proceed to Net Banking'
-                                          : 'Complete Payment & Create Account'
+                                    {formData.paymentMethod === 'qr_scanner' 
+                                      ? (qrCodeUrl ? 'Verify Payment & Create Account' : 'Generate Payment QR') 
+                                      : formData.paymentMethod === 'netbanking'
+                                        ? 'Proceed to Net Banking'
+                                        : 'Complete Payment & Create Account'
                                     }
                                   </>
                                 )}

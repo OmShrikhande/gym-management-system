@@ -87,159 +87,64 @@ export const createSubscription = catchAsync(async (req, res, next) => {
 
   // Check if gym owner exists
   const gymOwner = await User.findById(gymOwnerId);
-  if (!gymOwner) {
-    return next(new AppError('No user found with that ID', 404));
-  }
-  
-  // If the user exists but is not a gym owner, update their role
-  if (gymOwner.role !== 'gym-owner') {
-    console.log(`User ${gymOwner.name} exists but is not a gym owner. Updating role.`);
-    gymOwner.role = 'gym-owner';
-    await gymOwner.save();
+  if (!gymOwner || gymOwner.role !== 'gym-owner') {
+    return next(new AppError('No gym owner found with that ID', 404));
   }
   
   // Check if user is authorized to create this subscription
   // Super-admin can create any subscription
   // Gym owners can create their own subscription in test mode
-  // For test_mode, we'll allow any authenticated user to create subscriptions
   const isAuthorized = 
     req.user.role === 'super-admin' || 
-    paymentMethod === 'test_mode' ||
     (req.user.role === 'gym-owner' && 
-     gymOwnerId === req.user.id);
+     gymOwnerId === req.user.id && 
+     paymentMethod === 'test_mode');
   
   if (!isAuthorized) {
     return next(new AppError('You are not authorized to create subscriptions', 403));
-  }
-  
-  // Log the subscription creation attempt
-  console.log(`Creating subscription for gym owner ${gymOwnerId} with plan ${plan} and payment method ${paymentMethod}`);
-  
-  // For test mode payments, ensure they always succeed
-  const paymentStatus = 'Success';
-  
-  // If payment method is test_mode, ensure we have a transaction ID
-  if (paymentMethod === 'test_mode' && !transactionId) {
-    // Generate a mock transaction ID if not provided
-    transactionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
   }
 
   // Calculate end date
   const startDate = new Date();
   const endDate = calculateEndDate(startDate, durationMonths);
 
-  // Check if a subscription already exists for this gym owner
-  let subscription;
-  
-  try {
-    console.log(`Looking for existing active subscription for gym owner ${gymOwnerId}`);
-    const existingSubscription = await Subscription.findOne({ 
-      gymOwner: gymOwnerId,
-      isActive: true
-    });
-    
-    if (existingSubscription) {
-      console.log('Active subscription already exists for this gym owner, updating it');
-      
-      // Update the existing subscription
-      existingSubscription.plan = plan;
-      existingSubscription.price = price;
-      existingSubscription.startDate = startDate;
-      existingSubscription.endDate = endDate;
-      existingSubscription.isActive = true;
-      existingSubscription.paymentStatus = 'Paid';
-      
-      // Add new payment to history
-      existingSubscription.paymentHistory.push({
+  // Create subscription
+  const subscription = await Subscription.create({
+    gymOwner: gymOwnerId,
+    plan,
+    price,
+    startDate,
+    endDate,
+    isActive: true,
+    paymentStatus: 'Paid',
+    paymentHistory: [
+      {
         amount: price,
         date: startDate,
         method: paymentMethod,
         status: 'Success',
         transactionId
-      });
-      
-      subscription = await existingSubscription.save();
-    } else {
-      // Check for any inactive subscriptions
-      const inactiveSubscription = await Subscription.findOne({ 
-        gymOwner: gymOwnerId,
-        isActive: false
-      });
-      
-      if (inactiveSubscription) {
-        console.log('Inactive subscription found, reactivating it');
-        
-        // Reactivate the subscription
-        inactiveSubscription.plan = plan;
-        inactiveSubscription.price = price;
-        inactiveSubscription.startDate = startDate;
-        inactiveSubscription.endDate = endDate;
-        inactiveSubscription.isActive = true;
-        inactiveSubscription.paymentStatus = 'Paid';
-        
-        // Add new payment to history
-        inactiveSubscription.paymentHistory.push({
-          amount: price,
-          date: startDate,
-          method: paymentMethod,
-          status: 'Success',
-          transactionId
-        });
-        
-        subscription = await inactiveSubscription.save();
-      } else {
-        // Create a new subscription
-        subscription = await Subscription.create({
-          gymOwner: gymOwnerId,
-          plan,
-          price,
-          startDate,
-          endDate,
-          isActive: true,
-          paymentStatus: 'Paid',
-          paymentHistory: [
-            {
-              amount: price,
-              date: startDate,
-              method: paymentMethod,
-              status: 'Success',
-              transactionId
-            }
-          ],
-          autoRenew: true
-        });
       }
-    }
-    
-    // Create notification for successful payment
-    try {
-      await Notification.create({
-        recipient: gymOwnerId,
-        type: 'payment_success',
-        title: 'Subscription Payment Successful',
-        message: `Your payment of $${price} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
-        actionLink: '/billing-plans'
-      });
-      console.log('Payment success notification created');
-    } catch (notificationError) {
-      console.error('Error creating notification:', notificationError);
-      // Don't fail if notification creation fails
-    }
+    ],
+    autoRenew: true
+  });
 
-    console.log('Subscription created/updated successfully:', subscription);
-    
-    res.status(201).json({
-      status: 'success',
-      data: {
-        subscription
-      }
-    });
-  } catch (error) {
-    console.error('Error in subscription creation/update:', error);
-    return next(new AppError(`Failed to create/update subscription: ${error.message}`, 500));
-  }
+  // Create notification for successful payment
+  await Notification.create({
+    recipient: gymOwnerId,
+    type: 'payment_success',
+    title: 'Subscription Payment Successful',
+    message: `Your payment of $${price} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
+    actionLink: '/billing-plans'
+  });
+
+  res.status(201).json({
+    status: 'success',
+    data: {
+      subscription
+    }
+  });
 });
-
 
 // Get subscription by ID
 export const getSubscription = catchAsync(async (req, res, next) => {
@@ -259,18 +164,19 @@ export const getSubscription = catchAsync(async (req, res, next) => {
 
 // Get subscription by gym owner ID
 export const getGymOwnerSubscription = catchAsync(async (req, res, next) => {
-  const { gymOwnerId } = req.params;
+  const { userId, gymOwnerId } = req.params;
+  const targetUserId = userId || gymOwnerId;
   
   // Check if the user is authorized to view this subscription
   // Allow super-admin or the gym owner who owns the subscription
   console.log('User ID:', req.user.id, 'Type:', typeof req.user.id);
-  console.log('Gym Owner ID:', gymOwnerId, 'Type:', typeof gymOwnerId);
+  console.log('Target User ID:', targetUserId, 'Type:', typeof targetUserId);
   
   const isAuthorized = 
     req.user.role === 'super-admin' || 
     (req.user.role === 'gym-owner' && 
-     (req.user.id.toString() === gymOwnerId || 
-      req.user.id === gymOwnerId));
+     (req.user.id.toString() === targetUserId || 
+      req.user.id === targetUserId));
 
   if (!isAuthorized) {
     return next(new AppError('You are not authorized to view this subscription', 403));
@@ -278,7 +184,7 @@ export const getGymOwnerSubscription = catchAsync(async (req, res, next) => {
 
   // Find the most recent subscription for this gym owner (active or not)
   const subscription = await Subscription.findOne({ 
-    gymOwner: gymOwnerId
+    gymOwner: targetUserId
   }).sort({ createdAt: -1 });
 
   if (!subscription) {

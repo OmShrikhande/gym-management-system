@@ -14,8 +14,14 @@ import workoutRoutes from './routes/workoutRoutes.js';
 import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
+import memberRoutes from './routes/memberRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
+import nodeMcuRoutes from './routes/nodeMcuRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
+import statsRoutes from './routes/statsRoutes.js';
+import enquiryRoutes from './routes/enquiryRoutes.js';
 import connectDB from './config/database.js';
-// Super admin creation is now handled through a secure registration endpoint
+import setupSuperAdmin from './config/setupAdmin.js';
 
 // Load environment variables
 dotenv.config();
@@ -42,6 +48,12 @@ app.use('/api/workouts', workoutRoutes);
 app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/members', memberRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/nodemcu', nodeMcuRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/enquiries', enquiryRoutes);
 
 // Default route
 app.get('/', (req, res) => {
@@ -61,7 +73,8 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 connectDB().then(async () => {
-  // Super admin creation is now handled through a secure registration endpoint
+  // Create super admin user if it doesn't exist
+  await setupSuperAdmin();
   
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

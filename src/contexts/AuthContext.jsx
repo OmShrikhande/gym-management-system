@@ -272,10 +272,10 @@ export const AuthProvider = ({ children }) => {
     }
     
     // Validate password length
-    if (userData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (userData.password.length < 8) {
+      setError('Password must be at least 8 characters');
       setIsLoading(false);
-      return { success: false, message: 'Password must be at least 6 characters' };
+      return { success: false, message: 'Password must be at least 8 characters' };
     }
     
     try {

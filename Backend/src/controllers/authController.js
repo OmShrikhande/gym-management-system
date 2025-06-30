@@ -131,79 +131,6 @@ export const createUser = async (req, res) => {
   return createUserWithRole(req, res, 'member');
 };
 
-// Register Super Admin with secret key
-export const registerSuperAdmin = async (req, res) => {
-  try {
-    const { name, email, password, secretKey } = req.body;
-
-    // Validate required fields
-    if (!name || !email || !password || !secretKey) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Please provide name, email, password, and secret key.',
-      });
-    }
-
-    // Verify the secret key
-    if (secretKey !== process.env.SUPER_ADMIN_SECRET_KEY) {
-      return res.status(403).json({
-        status: 'fail',
-        message: 'Invalid secret key. Super admin registration denied.',
-      });
-    }
-
-    // Check if we've reached the maximum number of super admins (5)
-    const superAdminCount = await User.countDocuments({ role: 'super-admin' });
-    if (superAdminCount >= 5) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Maximum number of super admins (5) has been reached.',
-      });
-    }
-
-    // Create the super admin
-    const superAdmin = await User.create({
-      name,
-      email,
-      password,
-      role: 'super-admin'
-    });
-
-    // Generate token
-    const token = signToken(superAdmin._id);
-    
-    // Remove password from output
-    superAdmin.password = undefined;
-
-    console.log('Super admin created successfully:', superAdmin.email);
-
-    res.status(201).json({
-      status: 'success',
-      token,
-      data: {
-        user: superAdmin,
-      },
-    });
-  } catch (err) {
-    if (err.code === 11000) { // Duplicate key error
-      return res.status(400).json({
-        status: 'fail',
-        message: 'An account with this email already exists.',
-      });
-    }
-    if (err.name === 'ValidationError') {
-      const errors = Object.values(err.errors).map(el => el.message);
-      const message = `Invalid input data. ${errors.join('. ')}`;
-      return res.status(400).json({ status: 'fail', message });
-    }
-    console.error('REGISTER SUPER ADMIN ERROR 💥', err);
-    res.status(500).json({
-      status: 'error',
-      message: 'Something went wrong while registering super admin. Please try again later.',
-    });
-  }
-};
-
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -299,28 +226,6 @@ export const getMe = (req, res) => {
       user: req.user
     }
   });
-};
-
-// Get super admin count - public endpoint
-export const getSuperAdminCount = async (req, res) => {
-  try {
-    const superAdminCount = await User.countDocuments({ role: 'super-admin' });
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        count: superAdminCount,
-        maxCount: 5,
-        available: 5 - superAdminCount
-      }
-    });
-  } catch (err) {
-    console.error('GET SUPER ADMIN COUNT ERROR 💥', err);
-    res.status(500).json({
-      status: 'error',
-      message: 'Error fetching super admin count. Please try again later.'
-    });
-  }
 };
 
 // Get users based on role hierarchy

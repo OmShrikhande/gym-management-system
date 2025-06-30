@@ -9,7 +9,8 @@ import {
   Settings,
   Home,
   Building2,
-  UserCheck
+  UserCheck,
+  HelpCircle
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
 import { useTranslation } from "@/contexts/TranslationContext";
@@ -56,6 +57,7 @@ export function AppSidebar() {
           { label: t('trainers'), icon: UserCheck, href: "/trainers" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
+          { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },
           { label: t('messages'), icon: MessageSquare, href: "/messages" },
           { label: t('reports'), icon: BarChart3, href: "/reports" },
           { label: t('settings'), icon: Settings, href: "/settings" }
@@ -71,9 +73,7 @@ export function AppSidebar() {
         return [
           ...baseItems,
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
-          { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
-          { label: t('reports'), icon: BarChart3, href: "/progress" },
-          { label: t('settings'), icon: Settings, href: "/profile" }
+          { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       default:
         return baseItems;
