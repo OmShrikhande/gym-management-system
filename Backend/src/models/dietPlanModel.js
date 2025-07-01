@@ -75,6 +75,13 @@ dietPlanSchema.pre('save', function(next) {
   next();
 });
 
+// Add indexes for better query performance
+dietPlanSchema.index({ trainer: 1, createdAt: -1 });
+dietPlanSchema.index({ gym: 1, createdAt: -1 });
+dietPlanSchema.index({ assignedTo: 1, createdAt: -1 });
+dietPlanSchema.index({ goalType: 1 });
+dietPlanSchema.index({ createdAt: -1 });
+
 const DietPlan = mongoose.model('DietPlan', dietPlanSchema);
 
 export default DietPlan;

@@ -57,41 +57,39 @@ export const createDietPlan = async (req, res) => {
 // Get all diet plans (admin, gym-owner, and trainer)
 export const getAllDietPlans = async (req, res) => {
   try {
+    // Add pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    let query = {};
     let dietPlans = [];
+    let totalCount = 0;
     
     if (req.user.role === 'super-admin') {
       // Super admin can see all diet plans
-      dietPlans = await DietPlan.find()
-        .populate('trainer', 'name email')
-        .populate('assignedTo', 'name email')
-        .sort({ createdAt: -1 });
+      query = {};
     } else if (req.user.role === 'gym-owner') {
-      // Gym owner can see diet plans from their trainers
-      const trainers = await User.find({ 
+      // Optimized query: get trainer IDs first using lean query for better performance
+      const trainerIds = await User.find({ 
         role: 'trainer',
         $or: [
           { gym: req.user._id },
           { createdBy: req.user._id }
         ]
-      });
+      }).select('_id').lean();
       
-      const trainerIds = trainers.map(trainer => trainer._id);
+      const trainerIdArray = trainerIds.map(trainer => trainer._id);
       
-      dietPlans = await DietPlan.find({ 
+      query = {
         $or: [
           { gym: req.user._id },
-          { trainer: { $in: trainerIds } }
+          { trainer: { $in: trainerIdArray } }
         ]
-      })
-        .populate('trainer', 'name email')
-        .populate('assignedTo', 'name email')
-        .sort({ createdAt: -1 });
+      };
     } else if (req.user.role === 'trainer') {
       // Trainer can only see their own diet plans
-      dietPlans = await DietPlan.find({ trainer: req.user._id })
-        .populate('trainer', 'name email')
-        .populate('assignedTo', 'name email')
-        .sort({ createdAt: -1 });
+      query = { trainer: req.user._id };
     } else {
       return res.status(403).json({
         success: false,
@@ -99,9 +97,24 @@ export const getAllDietPlans = async (req, res) => {
       });
     }
     
+    // Get total count for pagination
+    totalCount = await DietPlan.countDocuments(query);
+    
+    // Fetch diet plans with optimized population and lean queries for better performance
+    dietPlans = await DietPlan.find(query)
+      .populate('trainer', 'name email', null, { lean: true })
+      .populate('assignedTo', 'name email', null, { lean: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(); // Use lean() for better performance
+    
     res.status(200).json({
       success: true,
       results: dietPlans.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
       data: {
         dietPlans
       }
@@ -120,8 +133,13 @@ export const getDietPlansByGym = async (req, res) => {
   try {
     const { gymId } = req.params;
     
-    // Verify the gym exists
-    const gym = await User.findById(gymId);
+    // Add pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    // Use lean query to verify gym exists (faster than full document)
+    const gym = await User.findById(gymId).select('role').lean();
     if (!gym || gym.role !== 'gym-owner') {
       return res.status(404).json({
         success: false,
@@ -139,42 +157,49 @@ export const getDietPlansByGym = async (req, res) => {
       });
     }
     
-    // If the user is a gym owner, find all trainers associated with this gym
-    let dietPlans = [];
+    let query = {};
+    let totalCount = 0;
     
     if (req.user.role === 'gym-owner' && req.user._id.toString() === gymId) {
-      // Find all trainers associated with this gym
-      const trainers = await User.find({ 
+      // Optimized: Get trainer IDs using lean query
+      const trainerIds = await User.find({ 
         role: 'trainer',
         $or: [
           { gym: gymId },
           { createdBy: gymId }
         ]
-      });
+      }).select('_id').lean();
       
-      const trainerIds = trainers.map(trainer => trainer._id);
+      const trainerIdArray = trainerIds.map(trainer => trainer._id);
       
-      // Find all diet plans created by these trainers
-      dietPlans = await DietPlan.find({ 
+      query = {
         $or: [
           { gym: gymId },
-          { trainer: { $in: trainerIds } }
+          { trainer: { $in: trainerIdArray } }
         ]
-      })
-        .populate('trainer', 'name email')
-        .populate('assignedTo', 'name email')
-        .sort({ createdAt: -1 });
+      };
     } else {
-      // For other users, just find diet plans directly associated with the gym
-      dietPlans = await DietPlan.find({ gym: gymId })
-        .populate('trainer', 'name email')
-        .populate('assignedTo', 'name email')
-        .sort({ createdAt: -1 });
+      query = { gym: gymId };
     }
+    
+    // Get total count
+    totalCount = await DietPlan.countDocuments(query);
+    
+    // Fetch diet plans with pagination and lean queries
+    const dietPlans = await DietPlan.find(query)
+      .populate('trainer', 'name email', null, { lean: true })
+      .populate('assignedTo', 'name email', null, { lean: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
     
     res.status(200).json({
       success: true,
       results: dietPlans.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
       data: {
         dietPlans
       }
@@ -193,8 +218,13 @@ export const getDietPlansByTrainer = async (req, res) => {
   try {
     const { trainerId } = req.params;
     
-    // Verify the trainer exists
-    const trainer = await User.findById(trainerId);
+    // Add pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    // Use lean query to verify trainer exists (faster)
+    const trainer = await User.findById(trainerId).select('role').lean();
     if (!trainer || trainer.role !== 'trainer') {
       return res.status(404).json({
         success: false,
@@ -202,12 +232,23 @@ export const getDietPlansByTrainer = async (req, res) => {
       });
     }
     
-    // Find all diet plans created by this trainer
-    const dietPlans = await DietPlan.find({ trainer: trainerId });
+    // Get total count
+    const totalCount = await DietPlan.countDocuments({ trainer: trainerId });
+    
+    // Find all diet plans created by this trainer with pagination and lean queries
+    const dietPlans = await DietPlan.find({ trainer: trainerId })
+      .populate('assignedTo', 'name email', null, { lean: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
     
     res.status(200).json({
       success: true,
       results: dietPlans.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
       data: {
         dietPlans
       }
@@ -226,8 +267,13 @@ export const getDietPlansByMember = async (req, res) => {
   try {
     const { memberId } = req.params;
     
-    // Verify the member exists
-    const member = await User.findById(memberId);
+    // Add pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    // Use lean query to verify member exists (faster)
+    const member = await User.findById(memberId).select('role').lean();
     if (!member || member.role !== 'member') {
       return res.status(404).json({
         success: false,
@@ -235,12 +281,23 @@ export const getDietPlansByMember = async (req, res) => {
       });
     }
     
-    // Find all diet plans assigned to this member
-    const dietPlans = await DietPlan.find({ assignedTo: memberId });
+    // Get total count
+    const totalCount = await DietPlan.countDocuments({ assignedTo: memberId });
+    
+    // Find all diet plans assigned to this member with pagination and lean queries
+    const dietPlans = await DietPlan.find({ assignedTo: memberId })
+      .populate('trainer', 'name email', null, { lean: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
     
     res.status(200).json({
       success: true,
       results: dietPlans.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
       data: {
         dietPlans
       }

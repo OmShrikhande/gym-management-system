@@ -32,7 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Edit, Trash2, Users, Clock, Target, Calendar, Loader2, UtensilsCrossed, TrendingDown, Dumbbell } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Users, Clock, Target, Calendar, Loader2, UtensilsCrossed, TrendingDown, Dumbbell, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -50,11 +50,6 @@ const DietPlans = () => {
   const navigate = useNavigate();
   const userRole = user?.role || userRoleContext || '';
   const isGymOwner = userRole === 'gym-owner' || isGymOwnerContext;
-  console.log("User role from context:", userRoleContext);
-  console.log("User role from user object:", user?.role);
-  console.log("Final user role used:", userRole);
-  console.log("Is gym owner from context:", isGymOwnerContext);
-  console.log("Is gym owner calculated:", isGymOwner);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGoal, setFilterGoal] = useState("all");
   const [filterTrainer, setFilterTrainer] = useState("all");
@@ -87,48 +82,78 @@ const DietPlans = () => {
   const isSuperAdmin = userRole === 'super-admin';
   const isMember = userRole === 'member';
   
-  // Fetch trainers associated with this gym owner
+  // Fetch trainers associated with this gym owner - optimized with caching
   const fetchGymTrainers = useCallback(async () => {
-    if (isGymOwner && user?._id) {
-      // Don't fetch if we already have trainers
-      if (trainers.length > 0) {
-        return;
+    if (!isGymOwner || !user?._id) return;
+    
+    // Don't fetch if we already have trainers
+    if (trainers.length > 0) {
+      return trainers;
+    }
+    
+    try {
+      // Check cache first
+      const cacheKey = `gym_trainers_${user._id}`;
+      const cachedTrainers = sessionStorage.getItem(cacheKey);
+      
+      if (cachedTrainers) {
+        try {
+          const parsedTrainers = JSON.parse(cachedTrainers);
+          setTrainers(parsedTrainers);
+          return parsedTrainers;
+        } catch (e) {
+          sessionStorage.removeItem(cacheKey);
+        }
       }
       
-      try {
-        const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
+      const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
+      
+      if (response.success && response.data?.trainers) {
+        const trainersData = response.data.trainers;
+        setTrainers(trainersData);
         
-        if (response.success && response.data?.trainers) {
-          setTrainers(response.data.trainers);
-        }
-      } catch (error) {
-        console.error("Error fetching gym trainers:", error);
+        // Cache for session
+        sessionStorage.setItem(cacheKey, JSON.stringify(trainersData));
+        
+        return trainersData;
       }
+    } catch (error) {
+      console.error("Error fetching gym trainers:", error);
     }
+    
+    return [];
   }, [isGymOwner, user?._id, authFetch, trainers.length]);
   
-  // Load diet plans based on user role - defined as a memoized callback with caching
+  // Load diet plans based on user role - stable function with proper dependencies
   const loadDietPlans = useCallback(async (forceRefresh = false) => {
-    if (!user) return;
+    if (!user?._id || !userRole) {
+      setIsLoading(false);
+      return;
+    }
     
     // Check cache first unless force refresh is requested
     if (!forceRefresh) {
-      const cachedData = localStorage.getItem('cached_diet_plans');
-      const cachedTimestamp = localStorage.getItem('cached_diet_plans_timestamp');
+      const cacheKey = `cached_diet_plans_${user._id}_${userRole}`;
+      const timestampKey = `cached_diet_plans_timestamp_${user._id}_${userRole}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      const cachedTimestamp = localStorage.getItem(timestampKey);
       
-      // Use cache if it's less than 5 minutes old
+      // Use cache if it's less than 1 minute old for faster loading
       if (cachedData && cachedTimestamp) {
         const now = new Date().getTime();
         const cacheTime = parseInt(cachedTimestamp);
-        const fiveMinutes = 5 * 60 * 1000;
+        const oneMinute = 60 * 1000;
         
-        if (now - cacheTime < fiveMinutes) {
+        if (now - cacheTime < oneMinute) {
           try {
             const parsedData = JSON.parse(cachedData);
             setDietPlans(parsedData);
+            setIsLoading(false);
             return;
           } catch (e) {
-            // If parsing fails, continue with API fetch
+            // Clear invalid cache
+            localStorage.removeItem(cacheKey);
+            localStorage.removeItem(timestampKey);
           }
         }
       }
@@ -138,93 +163,96 @@ const DietPlans = () => {
     setError(null);
     
     try {
-      // Fetch diet plans based on user role
-      let endpoint = '/diet-plans';
+      // Determine endpoint based on user role
+      let endpoint;
+      const queryParams = new URLSearchParams({
+        page: '1',
+        limit: '50'
+      });
       
-      if (isTrainer) {
-        endpoint = `/diet-plans/trainer/${user._id}`;
-      } else if (isMember) {
-        endpoint = `/diet-plans/member/${user._id}`;
-      } else if (isGymOwner) {
-        endpoint = `/diet-plans/gym/${user._id}`;
+      switch (userRole) {
+        case 'trainer':
+          endpoint = `/diet-plans/trainer/${user._id}?${queryParams}`;
+          break;
+        case 'member':
+          endpoint = `/diet-plans/member/${user._id}?${queryParams}`;
+          break;
+        case 'gym-owner':
+          endpoint = `/diet-plans/gym/${user._id}?${queryParams}`;
+          break;
+        case 'super-admin':
+          endpoint = `/diet-plans?${queryParams}`;
+          break;
+        default:
+          setError('Invalid user role');
+          setIsLoading(false);
+          return;
       }
       
-      // For gym owners, we need to ensure we're getting all diet plans from their trainers
-      let response;
-      if (isGymOwner) {
-        // First, get all trainers associated with this gym owner if not already fetched
-        if (trainers.length === 0) {
-          await fetchGymTrainers();
-        }
-        
-        // Now get diet plans from the gym endpoint which should include all trainer diet plans
-        response = await authFetch(endpoint);
-      } else {
-        // For other roles, just fetch diet plans normally
-        response = await authFetch(endpoint);
-      }
+      const response = await authFetch(endpoint);
       
       if (response.success || response.status === 'success') {
         const dietPlansData = response.data?.dietPlans || [];
-        
-        // Update state
         setDietPlans(dietPlansData);
         
         // Cache the data
-        localStorage.setItem('cached_diet_plans', JSON.stringify(dietPlansData));
-        localStorage.setItem('cached_diet_plans_timestamp', new Date().getTime().toString());
+        const cacheKey = `cached_diet_plans_${user._id}_${userRole}`;
+        const timestampKey = `cached_diet_plans_timestamp_${user._id}_${userRole}`;
+        localStorage.setItem(cacheKey, JSON.stringify(dietPlansData));
+        localStorage.setItem(timestampKey, new Date().getTime().toString());
       } else {
-        setError(response.message || 'Failed to load diet plans');
-        toast.error(response.message || 'Failed to load diet plans');
+        const errorMessage = response.message || 'Failed to load diet plans';
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error('Error loading diet plans:', error);
-      setError('Failed to load diet plans. Please try again later.');
-      toast.error('Failed to load diet plans. Please try again later.');
+      const errorMessage = 'Failed to load diet plans. Please try again later.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [user, isTrainer, isMember, isGymOwner, authFetch, fetchGymTrainers, trainers.length]);
+  }, [user?._id, userRole, authFetch]);
   
-  // Load diet plans with reduced API calls - using a ref to prevent multiple fetches
+  // Initialize data loading - simplified and stable
   const hasInitializedRef = React.useRef(false);
+  const userIdRef = React.useRef(null);
   
   useEffect(() => {
-    // Only run this effect once when the component mounts with a user
-    if (user && !hasInitializedRef.current) {
+    // Only initialize once per user
+    if (user?._id && userRole && user._id !== userIdRef.current) {
+      userIdRef.current = user._id;
+      hasInitializedRef.current = false; // Reset when user changes
+    }
+    
+    if (user?._id && userRole && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
       
-      // Load diet plans based on user role
-      loadDietPlans();
+      // Load diet plans immediately
+      loadDietPlans().catch(console.error);
       
-      // Load users for filtering if needed
-      if (isGymOwner || isSuperAdmin) {
-        fetchUsers();
+      // Load additional data for specific roles
+      if (userRole === 'gym-owner' || userRole === 'super-admin') {
+        fetchUsers().catch(console.error);
       }
     }
-  }, [user, loadDietPlans, isGymOwner, isSuperAdmin, fetchUsers]);
+  }, [user?._id, userRole, loadDietPlans, fetchUsers]);
   
   // Extract members from users for filtering using useMemo
   const extractedMembers = useMemo(() => {
     return users?.filter(u => u.role === 'member') || [];
   }, [users]);
   
-  // Load gym trainers when component mounts - only once
-  const trainersLoadedRef = React.useRef(false);
-  
+  // Load trainers data when needed
   useEffect(() => {
-    if (!trainersLoadedRef.current && users) {
-      trainersLoadedRef.current = true;
-      
-      if (isGymOwner) {
-        fetchGymTrainers();
-      } else {
-        // For non-gym owners, use the filtered users
-        const filteredTrainers = users?.filter(u => u.role === 'trainer') || [];
-        setTrainers(filteredTrainers);
-      }
+    if (userRole === 'gym-owner' && user?._id && trainers.length === 0) {
+      fetchGymTrainers().catch(console.error);
+    } else if ((userRole === 'super-admin') && users?.length > 0 && trainers.length === 0) {
+      const filteredTrainers = users.filter(u => u.role === 'trainer');
+      setTrainers(filteredTrainers);
     }
-  }, [isGymOwner, fetchGymTrainers, users]);
+  }, [userRole, user?._id, users, trainers.length, fetchGymTrainers]);
   
   // Update state when extracted members data changes
   useEffect(() => {
@@ -233,29 +261,7 @@ const DietPlans = () => {
     }
   }, [extractedMembers]);
   
-  // Memoize filtered diet plans to prevent unnecessary re-renders
-  const filteredDietPlans = useMemo(() => {
-    return dietPlans
-      .filter(plan => {
-        // Filter by search term
-        if (searchTerm && !plan.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-          return false;
-        }
-        
-        // Filter by goal type
-        if (filterGoal !== 'all' && plan.goalType !== filterGoal) {
-          return false;
-        }
-        
-        // Filter by trainer
-        if (filterTrainer !== 'all' && plan.trainer !== filterTrainer) {
-          return false;
-        }
-        
-        return true;
-      })
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  }, [dietPlans, searchTerm, filterGoal, filterTrainer]);
+
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -822,6 +828,20 @@ const DietPlans = () => {
                     ))}
                   </select>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadDietPlans(true)}
+                  disabled={isLoading}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-600 whitespace-nowrap"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">Refresh</span>
+                </Button>
               </div>
 
               {isLoading ? (
