@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,9 @@ const Index = () => {
   
   // QR Scanner state for members
   const [showQRScanner, setShowQRScanner] = useState(false);
+  
+  // Ref to prevent multiple simultaneous API calls
+  const isLoadingActivitiesRef = useRef(false);
   
   // We don't need these state variables anymore as we're using dedicated pages
 
@@ -113,7 +116,13 @@ const Index = () => {
   
   // Separate effect for revenue to avoid unnecessary re-renders
   // Fetch recent activities
-  const fetchRecentActivities = async () => {
+  const fetchRecentActivities = useCallback(async () => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingActivitiesRef.current) {
+      return;
+    }
+    
+    isLoadingActivitiesRef.current = true;
     setIsActivitiesLoading(true);
     
     try {
@@ -415,13 +424,13 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedWorkouts.forEach((workout) => {
+          recentWorkouts.forEach((workout) => {
             activities.push({
               id: `workout-${workout._id}`,
               type: 'workout',
               icon: <Dumbbell className="h-4 w-4 text-white" />,
               iconBg: 'bg-blue-500',
-              message: `Workout plan "${workout.title}" assigned by trainer ${trainerName}`,
+              message: `Workout plan "${workout.title}" assigned by trainer ${workout.trainerName || 'Unknown Trainer'}`,
               timestamp: new Date(workout.createdAt)
             });
           });
@@ -437,13 +446,13 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedDietPlans.forEach((plan) => {
+          recentDietPlans.forEach((plan) => {
             activities.push({
               id: `diet-${plan._id}`,
               type: 'diet',
               icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
               iconBg: 'bg-orange-500',
-              message: `Diet plan "${plan.title}" assigned by trainer ${trainerName}`,
+              message: `Diet plan "${plan.title || plan.name}" assigned by trainer ${plan.trainerName || 'Unknown Trainer'}`,
               timestamp: new Date(plan.createdAt)
             });
           });
@@ -521,8 +530,9 @@ const Index = () => {
       setRecentActivities(fallbackActivity);
     } finally {
       setIsActivitiesLoading(false);
+      isLoadingActivitiesRef.current = false;
     }
-  };
+  }, [user, userRole, authFetch]);
 
   // Fetch trainer dashboard stats
   const fetchTrainerStats = async () => {
@@ -705,27 +715,6 @@ const Index = () => {
         } else if (userRole === 'trainer') {
           await fetchTrainerStats();
         } else if (userRole === 'member') {
-          // For members, calculate membership data directly
-          // This ensures we have accurate information even if API calls fail
-          if (user.membershipEndDate) {
-            const endDate = new Date(user.membershipEndDate);
-            const today = new Date();
-            const diffTime = endDate - today;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            // Update user with calculated values if they're different
-            if (!user.membershipDaysRemaining || user.membershipDaysRemaining !== Math.max(0, diffDays)) {
-              const updatedUser = {
-                ...user,
-                membershipDaysRemaining: Math.max(0, diffDays),
-                membershipStatus: diffDays > 0 ? 'Active' : 'Expired'
-              };
-              
-              // Update user in context
-              updateCurrentUser(updatedUser);
-            }
-          }
-          
           // Try to fetch additional member data, but don't fail if it doesn't work
           try {
             await fetchMemberStats();
@@ -746,7 +735,29 @@ const Index = () => {
     };
     
     loadDashboardData();
-  }, [user, userRole, location.pathname, updateCurrentUser]);
+  }, [user, userRole, location.pathname]);
+
+  // Separate useEffect for member data calculation to prevent infinite loops
+  useEffect(() => {
+    if (userRole === 'member' && user && user.membershipEndDate) {
+      const endDate = new Date(user.membershipEndDate);
+      const today = new Date();
+      const diffTime = endDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      // Update user with calculated values if they're different
+      if (!user.membershipDaysRemaining || user.membershipDaysRemaining !== Math.max(0, diffDays)) {
+        const updatedUser = {
+          ...user,
+          membershipDaysRemaining: Math.max(0, diffDays),
+          membershipStatus: diffDays > 0 ? 'Active' : 'Expired'
+        };
+        
+        // Update user in context
+        updateCurrentUser(updatedUser);
+      }
+    }
+  }, [user?.membershipEndDate, userRole]); // Only depend on membershipEndDate and userRole
 
   useEffect(() => {
     // Count users based on role
@@ -1583,7 +1594,9 @@ const Index = () => {
                     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                     
                     let timeAgo;
-                    if (diffMins < 60) {
+                    if (diffMins < 1) {
+                      timeAgo = 'Just now';
+                    } else if (diffMins < 60) {
                       timeAgo = `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
                     } else if (diffHours < 24) {
                       timeAgo = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
