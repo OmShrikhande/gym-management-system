@@ -182,6 +182,18 @@ export const getAllUsers = async (req, res) => {
 // Get a single user by ID (admin only)
 export const getUser = async (req, res) => {
   try {
+    // Debug: Log the received ID parameter
+    console.log('getUser - Received ID:', req.params.id, 'Type:', typeof req.params.id);
+    
+    // Validate that the ID is a valid ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log('getUser - Invalid ObjectId format:', req.params.id);
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid user ID format'
+      });
+    }
+    
     const user = await User.findById(req.params.id);
     
     if (!user) {

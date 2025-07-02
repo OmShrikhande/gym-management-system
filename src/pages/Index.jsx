@@ -11,6 +11,7 @@ import QRCodeScanner from "@/components/qr/QRCodeScanner";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { extractId } from "@/utils/idUtils";
 
 // Loading indicator component
 const LoadingIndicator = () => (
@@ -176,7 +177,17 @@ const Index = () => {
             const latestPayment = sub.paymentHistory[sub.paymentHistory.length - 1];
             
             // Get gym owner details
-            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            // Handle case where gymOwner might be an object or a string ID
+            const gymOwnerId = extractId(sub.gymOwner);
+            console.log('fetchRecentActivities - gymOwner:', sub.gymOwner, 'gymOwnerId:', gymOwnerId);
+            
+            // Skip if gymOwnerId is null or invalid
+            if (!gymOwnerId) {
+              console.warn('Invalid or missing gymOwner ID for subscription:', sub._id);
+              continue;
+            }
+            
+            const gymOwnerResponse = await authFetch(`/users/${gymOwnerId}`);
             const gymOwnerName = gymOwnerResponse.success ? 
               (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
               'a gym owner';
@@ -213,7 +224,17 @@ const Index = () => {
             const daysRemaining = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24));
             
             // Get gym owner details
-            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            // Handle case where gymOwner might be an object or a string ID
+            const gymOwnerId = extractId(sub.gymOwner);
+            console.log('fetchRecentActivities - expiring gymOwner:', sub.gymOwner, 'gymOwnerId:', gymOwnerId);
+            
+            // Skip if gymOwnerId is null or invalid
+            if (!gymOwnerId) {
+              console.warn('Invalid or missing gymOwner ID for expiring subscription:', sub._id);
+              continue;
+            }
+            
+            const gymOwnerResponse = await authFetch(`/users/${gymOwnerId}`);
             const gymOwnerName = gymOwnerResponse.success ? 
               (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
               'A gym';
@@ -394,20 +415,7 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          // Add trainer info to workout activities
-          for (const workout of recentWorkouts) {
-            let trainerName = 'Unknown Trainer';
-            if (workout.createdBy) {
-              try {
-                const trainerResponse = await authFetch(`/users/${workout.createdBy}`);
-                if (trainerResponse.success || trainerResponse.status === 'success') {
-                  trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
-                }
-              } catch (error) {
-                console.log('Error fetching trainer info:', error);
-              }
-            }
-            
+          assignedWorkouts.forEach((workout) => {
             activities.push({
               id: `workout-${workout._id}`,
               type: 'workout',
@@ -416,7 +424,7 @@ const Index = () => {
               message: `Workout plan "${workout.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(workout.createdAt)
             });
-          }
+          });
         }
         
         // 2. Get diet plans assigned to this member
@@ -429,20 +437,7 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          // Add trainer info to diet plan activities
-          for (const plan of recentDietPlans) {
-            let trainerName = 'Unknown Trainer';
-            if (plan.createdBy) {
-              try {
-                const trainerResponse = await authFetch(`/users/${plan.createdBy}`);
-                if (trainerResponse.success || trainerResponse.status === 'success') {
-                  trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
-                }
-              } catch (error) {
-                console.log('Error fetching trainer info:', error);
-              }
-            }
-            
+          assignedDietPlans.forEach((plan) => {
             activities.push({
               id: `diet-${plan._id}`,
               type: 'diet',
@@ -451,8 +446,9 @@ const Index = () => {
               message: `Diet plan "${plan.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(plan.createdAt)
             });
-          }
+          });
         }
+      
         
         // 3. Get notifications for this member
         const notificationsResponse = await authFetch(`/notifications/user/${user._id}`);
@@ -656,11 +652,22 @@ const Index = () => {
         
         // If there's an assigned trainer, fetch trainer details
         if (user.assignedTrainer) {
-          const trainerResponse = await authFetch(`/users/${user.assignedTrainer}`);
-          if (trainerResponse.success || trainerResponse.status === 'success') {
-            updatedUserData.trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+          // Handle case where assignedTrainer might be an object or a string ID
+          const trainerId = extractId(user.assignedTrainer);
+          
+          // Skip if trainerId is null or invalid
+          if (!trainerId) {
+            console.warn('Invalid or missing assignedTrainer ID for user:', user._id);
+          } else {
+            const trainerResponse = await authFetch(`/users/${trainerId}`);
+            if (trainerResponse.success || trainerResponse.status === 'success') {
+              updatedUserData.trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+            }
           }
         }
+        
+        // Update user context with the new data
+        updateCurrentUser(updatedUserData);
       }
     } catch (error) {
       console.error('Error fetching member stats:', error);

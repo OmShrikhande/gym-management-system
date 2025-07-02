@@ -280,9 +280,42 @@ export const getWorkoutsByMember = async (req, res) => {
       });
     }
     
-    const workouts = await Workout.find({ assignedTo: memberId })
-      .populate('trainer', 'name email')
-      .sort({ createdAt: -1 });
+    // Get the member details to find their assigned trainer
+    const member = await User.findById(memberId);
+    if (!member || member.role !== 'member') {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found'
+      });
+    }
+    
+    let workouts = [];
+    
+    // If member has an assigned trainer, show all workouts from that trainer
+    if (member.assignedTrainer) {
+      workouts = await Workout.find({ trainer: member.assignedTrainer })
+        .populate('trainer', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
+      // If no assigned trainer, show workouts from all trainers in the same gym
+      const gymOwnerId = member.createdBy || member.gym;
+      if (gymOwnerId) {
+        // Find all trainers in the same gym
+        const trainers = await User.find({ 
+          role: 'trainer',
+          $or: [
+            { gym: gymOwnerId },
+            { createdBy: gymOwnerId }
+          ]
+        });
+        
+        const trainerIds = trainers.map(trainer => trainer._id);
+        
+        workouts = await Workout.find({ trainer: { $in: trainerIds } })
+          .populate('trainer', 'name email')
+          .sort({ createdAt: -1 });
+      }
+    }
     
     res.status(200).json({
       success: true,

@@ -267,13 +267,32 @@ export const getDietPlansByMember = async (req, res) => {
   try {
     const { memberId } = req.params;
     
+    // Validate member ID
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid member ID'
+      });
+    }
+    
+    // Check if user is authorized to view member diet plans
+    if (req.user.role !== 'super-admin' && 
+        req.user.role !== 'gym-owner' && 
+        req.user.role !== 'trainer' && 
+        req.user._id.toString() !== memberId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+    
     // Add pagination support
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
     
-    // Use lean query to verify member exists (faster)
-    const member = await User.findById(memberId).select('role').lean();
+    // Get the member details to find their assigned trainer
+    const member = await User.findById(memberId);
     if (!member || member.role !== 'member') {
       return res.status(404).json({
         success: false,
@@ -281,16 +300,42 @@ export const getDietPlansByMember = async (req, res) => {
       });
     }
     
-    // Get total count
-    const totalCount = await DietPlan.countDocuments({ assignedTo: memberId });
+    let dietPlans = [];
+    let totalCount = 0;
     
-    // Find all diet plans assigned to this member with pagination and lean queries
-    const dietPlans = await DietPlan.find({ assignedTo: memberId })
-      .populate('trainer', 'name email', null, { lean: true })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    // If member has an assigned trainer, show all diet plans from that trainer
+    if (member.assignedTrainer) {
+      totalCount = await DietPlan.countDocuments({ trainer: member.assignedTrainer });
+      dietPlans = await DietPlan.find({ trainer: member.assignedTrainer })
+        .populate('trainer', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+    } else {
+      // If no assigned trainer, show diet plans from all trainers in the same gym
+      const gymOwnerId = member.createdBy || member.gym;
+      if (gymOwnerId) {
+        // Find all trainers in the same gym
+        const trainers = await User.find({ 
+          role: 'trainer',
+          $or: [
+            { gym: gymOwnerId },
+            { createdBy: gymOwnerId }
+          ]
+        }).select('_id').lean();
+        
+        const trainerIds = trainers.map(trainer => trainer._id);
+        
+        totalCount = await DietPlan.countDocuments({ trainer: { $in: trainerIds } });
+        dietPlans = await DietPlan.find({ trainer: { $in: trainerIds } })
+          .populate('trainer', 'name email')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean();
+      }
+    }
     
     res.status(200).json({
       success: true,

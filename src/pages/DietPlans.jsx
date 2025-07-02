@@ -857,7 +857,7 @@ const DietPlans = () => {
                 <div className="text-center py-10 bg-gray-800/30 rounded-lg border border-gray-700">
                   <UtensilsCrossed className="h-12 w-12 text-gray-600 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-white mb-2">No Diet Plans Found</h3>
-                  <p className="text-gray-400 max-w-md mx-auto content-grid">
+                  <p className="text-gray-400 max-w-md mx-auto">
                     {isTrainer ? 
                       "You haven't created any diet plans yet. Click the 'Create New Diet Plan' button to get started." : 
                       "No diet plans match your search criteria. Try adjusting your filters."}

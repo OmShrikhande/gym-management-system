@@ -12,6 +12,7 @@ import { toast } from "react-hot-toast";
 import { Badge as UIBadge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
+import { extractId } from "@/utils/idUtils";
 
 // Helper function to calculate days passed since a date
 const getDaysPassed = (startDateStr) => {
@@ -193,190 +194,210 @@ const Profile = () => {
 
   // Load user data when component mounts
   useEffect(() => {
-    if (user) {
-      setProfileData({
-        fullName: user.name || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        gender: user.gender || "Male",
-        specialization: user.specialization || "",
-        experience: user.experience || "",
-        bio: user.bio || "",
-        availability: user.availability || "",
-        certifications: user.certifications || "",
-        gymName: user.gymName || "",
-        address: user.address || "",
-        whatsapp: user.whatsapp || "",
-        // Health metrics
-        height: user.height || "",
-        weight: user.weight || "",
-        fitnessGoal: user.fitnessGoal || user.goal || "weight-loss",
-        initialWeight: user.initialWeight || "",
-        targetWeight: user.targetWeight || "",
-        // Fitness progress metrics
-        currentProgress: user.currentProgress || "",
-        progressNotes: user.progressNotes || "",
-        progressHistory: user.progressHistory || []
+  if (user) {
+    setProfileData({
+      fullName: user.name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+      gender: user.gender || "Male",
+      specialization: user.specialization || "",
+      experience: user.experience || "",
+      bio: user.bio || "",
+      availability: user.availability || "",
+      certifications: user.certifications || "",
+      gymName: user.gymName || "",
+      address: user.address || "",
+      whatsapp: user.whatsapp || "",
+      height: user.height || "",
+      weight: user.weight || "",
+      fitnessGoal: user.fitnessGoal || user.goal || "weight-loss",
+      initialWeight: user.initialWeight || "",
+      targetWeight: user.targetWeight || "",
+      currentProgress: user.currentProgress || "",
+      progressNotes: user.progressNotes || "",
+      progressHistory: user.progressHistory || []
+    });
+
+    // Calculate days remaining in membership
+    const calculateDaysRemaining = (endDate) => {
+      if (!endDate) return 0;
+      const end = new Date(endDate);
+      const today = new Date();
+      const diffTime = end - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays > 0 ? diffDays : 0;
+    };
+
+    // Check if membership is expired
+    const checkMembershipExpired = (endDate) => {
+      if (!endDate) return true;
+      const end = new Date(endDate);
+      const today = new Date();
+      return end < today;
+    };
+
+    // Set membership data if available
+    if (user.membershipStatus || user.membershipEndDate) {
+      const daysRemaining = calculateDaysRemaining(user.membershipEndDate);
+      const isExpired = checkMembershipExpired(user.membershipEndDate);
+
+      setMembershipData({
+        status: isExpired ? "Expired" : user.membershipStatus || "Active",
+        startDate: user.membershipStartDate || user.createdAt,
+        endDate: user.membershipEndDate || null,
+        type: user.membershipType || "Standard",
+        assignedTrainer: user.assignedTrainer || null,
+        trainerName: user.trainerName || "",
+        daysRemaining: daysRemaining
       });
-      
-      // Calculate days remaining in membership
-      const calculateDaysRemaining = (endDate) => {
-        if (!endDate) return 0;
-        
-        const end = new Date(endDate);
-        const today = new Date();
-        const diffTime = end - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        return diffDays > 0 ? diffDays : 0;
-      };
-      
-      // Check if membership is expired
-      const checkMembershipExpired = (endDate) => {
-        if (!endDate) return true;
-        
-        const end = new Date(endDate);
-        const today = new Date();
-        return end < today;
-      };
-      
-      // Set membership data if available
-      if (user.membershipStatus || user.membershipEndDate) {
-        const daysRemaining = calculateDaysRemaining(user.membershipEndDate);
-        const isExpired = checkMembershipExpired(user.membershipEndDate);
-        
-        setMembershipData({
-          status: isExpired ? "Expired" : user.membershipStatus || "Active",
-          startDate: user.membershipStartDate || user.createdAt,
-          endDate: user.membershipEndDate || null,
-          type: user.membershipType || "Standard",
-          assignedTrainer: user.assignedTrainer || null,
-          trainerName: user.trainerName || "",
-          daysRemaining: daysRemaining
-        });
-        
-        setMembershipExpired(isExpired);
-      }
-      
-      // If user is a member, fetch additional membership details
-      if (user.role === 'member') {
-        const fetchMemberDetails = async () => {
-          try {
-            // Fetch member details including subscription info
-            const response = await authFetch(`/users/${user._id}/details`);
-            
-            if (response.success || response.status === 'success') {
-              const memberData = response.data?.user || {};
-              
-              // Update membership data
-              if (memberData.membership) {
-                const daysRemaining = calculateDaysRemaining(memberData.membership.endDate);
-                const isExpired = checkMembershipExpired(memberData.membership.endDate);
-                
-                setMembershipData({
-                  status: isExpired ? "Expired" : memberData.membership.status || "Active",
-                  startDate: memberData.membership.startDate || user.membershipStartDate || user.createdAt,
-                  endDate: memberData.membership.endDate,
-                  type: memberData.membership.type || "Standard",
-                  assignedTrainer: memberData.assignedTrainer || null,
-                  trainerName: memberData.trainerName || "",
-                  daysRemaining: daysRemaining
-                });
-                
-                setMembershipExpired(isExpired);
-                
-                // Update user context with membership data
-                updateCurrentUser({
-                  ...user,
-                  membershipStatus: isExpired ? "Expired" : memberData.membership.status,
-                  membershipEndDate: memberData.membership.endDate,
-                  membershipType: memberData.membership.type,
-                  membershipDaysRemaining: daysRemaining
-                });
-              }
-              
-              // Update health metrics if available
-              if (memberData.healthMetrics) {
-                setProfileData(prev => ({
-                  ...prev,
-                  height: memberData.healthMetrics.height || prev.height,
-                  weight: memberData.healthMetrics.weight || prev.weight,
-                  initialWeight: memberData.healthMetrics.initialWeight || prev.initialWeight,
-                  targetWeight: memberData.healthMetrics.targetWeight || prev.targetWeight,
-                  fitnessGoal: memberData.healthMetrics.fitnessGoal || prev.fitnessGoal,
-                  currentProgress: memberData.healthMetrics.currentProgress || prev.currentProgress,
-                  progressNotes: memberData.healthMetrics.progressNotes || prev.progressNotes,
-                  progressHistory: memberData.healthMetrics.progressHistory || prev.progressHistory
-                }));
-                
-                // Update user context with health metrics
-                updateCurrentUser({
-                  ...user,
-                  height: memberData.healthMetrics.height,
-                  weight: memberData.healthMetrics.weight,
-                  initialWeight: memberData.healthMetrics.initialWeight,
-                  targetWeight: memberData.healthMetrics.targetWeight,
-                  fitnessGoal: memberData.healthMetrics.fitnessGoal,
-                  currentProgress: memberData.healthMetrics.currentProgress,
-                  progressNotes: memberData.healthMetrics.progressNotes,
-                  progressHistory: memberData.healthMetrics.progressHistory
-                });
-              }
+
+      setMembershipExpired(isExpired);
+    }
+
+    // If user is a member, fetch additional membership details
+    if (user.role === 'member') {
+      const fetchMemberDetails = async () => {
+        try {
+          // Fetch member details including subscription info
+          const response = await authFetch(`/users/${user._id}/details`);
+
+          if (response.success || response.status === 'success') {
+            const memberData = response.data?.user || {};
+
+            // Update membership data
+            if (memberData.membership) {
+              const daysRemaining = calculateDaysRemaining(memberData.membership.endDate);
+              const isExpired = checkMembershipExpired(memberData.membership.endDate);
+
+              setMembershipData({
+                status: isExpired ? "Expired" : memberData.membership.status || "Active",
+                startDate: memberData.membership.startDate || user.membershipStartDate || user.createdAt,
+                endDate: memberData.membership.endDate,
+                type: memberData.membership.type || "Standard",
+                assignedTrainer: memberData.assignedTrainer || null,
+                trainerName: memberData.trainerName || "",
+                daysRemaining: daysRemaining
+              });
+
+              setMembershipExpired(isExpired);
+
+              // Update user context with membership data
+              updateCurrentUser({
+                ...user,
+                membershipStatus: isExpired ? "Expired" : memberData.membership.status,
+                membershipEndDate: memberData.membership.endDate,
+                membershipType: memberData.membership.type,
+                membershipDaysRemaining: daysRemaining
+              });
             }
-            
-            // If there's an assigned trainer, fetch trainer details
-            if (user.assignedTrainer) {
-              const trainerResponse = await authFetch(`/users/${user.assignedTrainer}`);
-              if (trainerResponse.success || trainerResponse.status === 'success') {
-                const trainerName = trainerResponse.data?.user?.name || "Unknown Trainer";
-                
-                setMembershipData(prev => ({
-                  ...prev,
-                  trainerName
-                }));
-                
-                // Update user context with trainer name
-                updateCurrentUser({
-                  ...user,
-                  trainerName
-                });
-                
+
+            // Update health metrics if available
+            if (memberData.healthMetrics) {
+              setProfileData(prev => ({
+                ...prev,
+                height: memberData.healthMetrics.height || prev.height,
+                weight: memberData.healthMetrics.weight || prev.weight,
+                initialWeight: memberData.healthMetrics.initialWeight || prev.initialWeight,
+                targetWeight: memberData.healthMetrics.targetWeight || prev.targetWeight,
+                fitnessGoal: memberData.healthMetrics.fitnessGoal || prev.fitnessGoal,
+                currentProgress: memberData.healthMetrics.currentProgress || prev.currentProgress,
+                progressNotes: memberData.healthMetrics.progressNotes || prev.progressNotes,
+                progressHistory: memberData.healthMetrics.progressHistory || prev.progressHistory
+              }));
+
+              // Update user context with health metrics
+              updateCurrentUser({
+                ...user,
+                height: memberData.healthMetrics.height,
+                weight: memberData.healthMetrics.weight,
+                initialWeight: memberData.healthMetrics.initialWeight,
+                targetWeight: memberData.healthMetrics.targetWeight,
+                fitnessGoal: memberData.healthMetrics.fitnessGoal,
+                currentProgress: memberData.healthMetrics.currentProgress,
+                progressNotes: memberData.healthMetrics.progressNotes,
+                progressHistory: memberData.healthMetrics.progressHistory
+              });
+            }
+          } else {
+            console.warn('Failed to fetch member details:', response.message);
+          }
+
+          // If there's an assigned trainer, fetch trainer details
+          if (user.assignedTrainer) {
+            // Handle case where assignedTrainer might be an object or a string ID
+            const trainerId = extractId(user.assignedTrainer);
+
+            // Skip if trainerId is null or invalid
+            if (!trainerId) {
+              console.warn('Invalid or missing assignedTrainer ID for user:', user._id);
+            } else {
+              try {
+                // Fetch trainer details
+                const trainerResponse = await authFetch(`/users/${trainerId}`);
+                if (trainerResponse.success || trainerResponse.status === 'success') {
+                  const trainerName = trainerResponse.data?.user?.name || "Unknown Trainer";
+
+                  // Update membership data with trainer name
+                  setMembershipData(prev => ({
+                    ...prev,
+                    trainerName
+                  }));
+
+                  // Update user context with trainer name
+                  updateCurrentUser({
+                    ...user,
+                    trainerName
+                  });
+                } else {
+                  console.warn('Failed to fetch trainer details:', trainerResponse.message);
+                }
+
                 // Fetch workout plans assigned by the trainer
                 try {
                   const workoutResponse = await authFetch(`/workouts/member/${user._id}`);
                   if (workoutResponse.success || workoutResponse.status === 'success') {
                     setWorkoutPlans(workoutResponse.data?.workouts || []);
+                  } else {
+                    console.warn('Failed to fetch workout plans:', workoutResponse.message);
+                    setWorkoutPlans([]);
                   }
                 } catch (error) {
                   console.error('Error fetching workout plans:', error);
+                  setWorkoutPlans([]);
                 }
-                
+
                 // Fetch diet plans assigned by the trainer
                 try {
                   const dietResponse = await authFetch(`/diet-plans/member/${user._id}`);
                   if (dietResponse.success || dietResponse.status === 'success') {
                     setDietPlans(dietResponse.data?.dietPlans || []);
+                  } else {
+                    console.warn('Failed to fetch diet plans:', dietResponse.message);
+                    setDietPlans([]);
                   }
                 } catch (error) {
                   console.error('Error fetching diet plans:', error);
+                  setDietPlans([]);
                 }
+              } catch (error) {
+                console.error('Error fetching trainer details:', error);
               }
             }
-          } catch (error) {
-            console.error('Error fetching member details:', error);
           }
-        };
-        
-        fetchMemberDetails();
-        
-        // If member doesn't have a trainer yet, fetch available trainers
-        if (!user.assignedTrainer) {
-          fetchAvailableTrainers();
+        } catch (error) {
+          console.error('Error fetching member details:', error);
         }
+      };
+
+      fetchMemberDetails();
+
+      // If member doesn't have a trainer yet, fetch available trainers
+      if (!user.assignedTrainer) {
+        fetchAvailableTrainers();
       }
     }
-  }, [user, authFetch, updateCurrentUser]);
-
+  }
+}, [user, authFetch, updateCurrentUser]);
   const handleSave = async () => {
     setIsLoading(true);
     try {
@@ -1085,21 +1106,6 @@ const Profile = () => {
                   {/* Fitness Progress Section */}
                   <div className="mt-6">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-white font-medium text-lg flex items-center">
-                        <Target className="h-5 w-5 mr-2 text-blue-400" />
-                        My Fitness Progress
-                      </h3>
-                      {!isEditing && !fitnessProgressEditing && (
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setFitnessProgressEditing(true)}
-                          className="bg-blue-600/20 hover:bg-blue-600/30 border-blue-500 text-blue-100"
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Update Progress
-                        </Button>
-                      )}
                       {fitnessProgressEditing && (
                         <div className="flex gap-2">
                           <Button 
@@ -1171,74 +1177,10 @@ const Profile = () => {
                           </div>
                         )}
                       </div>
-                      
-                      <div className="p-4 bg-gray-700/30 rounded-lg">
-                        <div className="flex justify-between items-center mb-2">
-                          <p className="text-gray-300 text-sm">Target Weight</p>
-                          <p className="text-white font-medium">{profileData.targetWeight || 'Not set'} {profileData.targetWeight ? 'kg' : ''}</p>
-                        </div>
-                        
-                        {profileData.targetWeight && profileData.weight && (
-                          <div>
-                            <p className="text-gray-300 text-sm mb-1">Progress to Goal</p>
-                            <div className="flex items-center">
-                              <Progress 
-                                value={Math.min(100, 100 - Math.abs((parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)) / parseFloat(profileData.targetWeight) * 100))} 
-                                className="h-2 flex-1"
-                                indicatorClassName="bg-blue-500"
-                              />
-                              <span className="ml-3 text-blue-400 font-medium">
-                                {Math.min(100, 100 - Math.abs((parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)) / parseFloat(profileData.targetWeight) * 100)).toFixed(0)}%
-                              </span>
-                            </div>
-                            <p className="text-gray-400 text-sm mt-2">
-                              {parseFloat(profileData.weight) > parseFloat(profileData.targetWeight) 
-                                ? `${(parseFloat(profileData.weight) - parseFloat(profileData.targetWeight)).toFixed(1)} kg to lose` 
-                                : `${(parseFloat(profileData.targetWeight) - parseFloat(profileData.weight)).toFixed(1)} kg to gain`}
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </div>
                     
-                    {/* Progress Notes */}
-                    <div className="mt-4">
-                      <Label htmlFor="progressNotes" className="text-gray-300 mb-2 block">Progress Notes</Label>
-                      {fitnessProgressEditing ? (
-                        <Textarea
-                          id="progressNotes"
-                          value={profileData.progressNotes}
-                          onChange={(e) => handleInputChange("progressNotes", e.target.value)}
-                          placeholder="Enter notes about your fitness progress..."
-                          className="bg-gray-700 border-gray-600 text-white"
-                          rows={3}
-                        />
-                      ) : (
-                        <div className="p-3 bg-gray-700/30 rounded-lg text-gray-200 min-h-[80px]">
-                          {profileData.progressNotes || 'No progress notes yet. Click "Update Progress" to add notes.'}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Progress History */}
-                    {profileData.progressHistory && profileData.progressHistory.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="text-white font-medium mb-2">Progress History</h4>
-                        <div className="max-h-40 overflow-y-auto">
-                          {profileData.progressHistory.slice().reverse().map((entry, index) => (
-                            <div key={index} className="p-3 bg-gray-700/30 rounded-lg mb-2">
-                              <div className="flex justify-between items-center">
-                                <p className="text-gray-300 text-sm">{new Date(entry.date).toLocaleDateString()}</p>
-                                <p className="text-white font-medium">{entry.weight} kg</p>
-                              </div>
-                              {entry.notes && <p className="text-gray-400 text-sm mt-1">{entry.notes}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                </div>
               </>
             )}
           </CardContent>
