@@ -64,11 +64,14 @@ router.delete('/:dietPlanId',
   deleteDietPlan
 );
 
+
 // Assign diet plan to members (trainer only) - DISABLED: All members can now see all trainer diet plans
-// router.post('/:dietPlanId/assign', 
-//   protect, 
-//   restrictTo('trainer', 'gym-owner'), 
-//   assignDietPlan
-// );
+router.post('/:dietPlanId/assign', 
+  protect, 
+  restrictTo('trainer', 'gym-owner'), 
+  assignDietPlan
+);
+
+
 
 export default router;

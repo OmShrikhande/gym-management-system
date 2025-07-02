@@ -72,11 +72,4 @@ router.patch('/:workoutId/complete',
   markWorkoutCompleted
 );
 
-// Assign workout to members (trainer only) - DISABLED: All members can now see all trainer workouts
-// router.post('/:workoutId/assign', 
-//   protect, 
-//   restrictTo('trainer', 'gym-owner'), 
-//   assignWorkout
-// );
-
 export default router;

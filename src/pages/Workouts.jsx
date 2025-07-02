@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,15 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Video, Calendar, Dumbbell, Plus, Users, Edit, Trash2 } from "lucide-react";
+import { Search, Video, Calendar, Dumbbell, Plus, Edit, Trash2, Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-// import AssignmentDialog from "@/components/AssignmentDialog"; // REMOVED: No longer needed
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-// Memoized Workout Card component to prevent unnecessary re-renders
 const WorkoutCard = React.memo(({ workout, formatDate, isTrainer, onEdit, onDelete }) => {
-  // Get badge variant based on workout type
   const getTypeBadge = (type) => {
     const typeMap = {
       'beginner': { variant: 'outline', color: 'text-blue-400' },
@@ -83,26 +81,26 @@ const WorkoutCard = React.memo(({ workout, formatDate, isTrainer, onEdit, onDele
             </a>
           </div>
         )}
-
-        {/* Action buttons for trainers */}
+        
         {isTrainer && (
-          <div className="flex gap-2 mt-4">
-            {/* Assignment removed - all members can now see all trainer workouts */}
+          <div className="flex gap-2">
             <Button
-              size="sm"
               variant="outline"
+              size="sm"
               onClick={() => onEdit(workout)}
-              className="border-gray-600 text-gray-400 hover:bg-gray-600 hover:text-white"
+              className="border-gray-600 text-gray-300 hover:bg-gray-700"
             >
-              <Edit className="h-4 w-4" />
+              <Edit className="h-4 w-4 mr-1" />
+              Edit
             </Button>
             <Button
-              size="sm"
               variant="outline"
+              size="sm"
               onClick={() => onDelete(workout)}
-              className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+              className="border-gray-600 text-gray-300 hover:bg-gray-700"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
             </Button>
           </div>
         )}
@@ -125,123 +123,84 @@ const WorkoutCard = React.memo(({ workout, formatDate, isTrainer, onEdit, onDele
 });
 
 const Workouts = () => {
-  const { user, users, fetchUsers, isGymOwner: isGymOwnerContext, authFetch, userRole: userRoleContext } = useAuth();
-  const userRole = user?.role || userRoleContext || '';
-  const isGymOwner = userRole === 'gym-owner' || isGymOwnerContext;
-  console.log("Is gym owner from context:", isGymOwnerContext);
-  console.log("Is gym owner calculated:", isGymOwner);
-  console.log("User role from context:", userRoleContext);
-  console.log("User role from user object:", user?.role);
-  console.log("Final user role used:", userRole);
+  const { user, users, fetchUsers, authFetch } = useAuth();
+  const userRole = user?.role || '';
+  const isGymOwner = userRole === 'gym-owner';
+  const isTrainer = userRole === 'trainer';
   const [searchTerm, setSearchTerm] = useState("");
   const [filterGoal, setFilterGoal] = useState("all");
   const [filterDifficulty, setFilterDifficulty] = useState("all");
   const [filterTrainer, setFilterTrainer] = useState("all");
   const [trainers, setTrainers] = useState([]);
-  
-  // State for workouts data
   const [workouts, setWorkouts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // State for workout form
   const [showWorkoutForm, setShowWorkoutForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [workoutFormData, setWorkoutFormData] = useState({
-    title: '',  // Changed from name to title to match backend
+    title: '',
     description: '',
     type: 'beginner',
     duration: '30',
     exercises: '',
-    videoLink: '',  // Changed from videoUrl to videoLink to match backend
+    videoLink: '',
     notes: ''
   });
-  
-  // Check if user is a trainer
-  const isTrainer = userRole === 'trainer';
-  
-  // Assignment dialog state - REMOVED: No longer needed
-  // const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
-  // const [selectedWorkoutForAssignment, setSelectedWorkoutForAssignment] = useState(null);
-  
-  // Fetch trainers associated with this gym owner
+
   const fetchGymTrainers = useCallback(async () => {
-    if (isGymOwner && user?._id) {
-      try {
-        console.log("Fetching trainers for gym owner:", user._id);
-        const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
-        console.log("Gym trainers response:", response);
-        
-        if (response.success && response.data?.trainers) {
-          setTrainers(response.data.trainers);
-          console.log(`Found ${response.data.trainers.length} trainers for this gym owner`);
-        }
-      } catch (error) {
-        console.error("Error fetching gym trainers:", error);
+    if (!user || !user._id || !isGymOwner) return;
+    try {
+      const response = await authFetch(`/users/trainers-by-gym/${user._id}`);
+      if (response.success && response.data?.trainers) {
+        setTrainers(response.data.trainers);
       }
+    } catch (error) {
+      console.error("Error fetching gym trainers:", error);
+      toast.error('Failed to load trainers.');
     }
-  }, [isGymOwner, user?._id, authFetch]);
-  
-  // Define loadWorkouts as a memoized callback with caching
+  }, [isGymOwner, user, authFetch]);
+
   const loadWorkouts = useCallback(async () => {
     if (!user || !user._id) return;
-    
-    console.log("Current user:", user);
-    console.log("User role:", userRole);
     
     setIsLoading(true);
     setError(null);
     
     try {
-      // Different endpoints based on user role
       let endpoint;
-      
       if (userRole === 'gym-owner') {
-        // Gym owners can see all workouts created by their trainers
         endpoint = `/workouts/gym/${user._id}`;
-        console.log("Gym owner fetching workouts from endpoint:", endpoint);
       } else if (userRole === 'trainer') {
-        // Trainers can see workouts they created
         endpoint = `/workouts/trainer/${user._id}`;
       } else if (userRole === 'member') {
-        // Members can see all workouts assigned to them or created by their trainer
         endpoint = `/workouts/member/${user._id}`;
       } else {
-        // Other roles would have different endpoints
         endpoint = `/workouts/user/${user._id}`;
       }
       
-      console.log("Fetching workouts from endpoint:", endpoint);
-      
-      // For gym owners, we need to ensure we're getting all workouts from their trainers
-      let response;
-      if (userRole === 'gym-owner') {
-        // First, get all trainers associated with this gym owner if not already fetched
-        if (trainers.length === 0) {
-          await fetchGymTrainers();
-        }
-        
-        console.log(`Fetching workouts for gym owner with ${trainers.length} trainers`);
-        
-        // Now get workouts from the gym endpoint which should include all trainer workouts
-        response = await authFetch(endpoint);
-      } else {
-        // For other roles, just fetch workouts normally
-        response = await authFetch(endpoint);
-      }
-      console.log("Workout API response:", response);
-      
+      const response = await authFetch(endpoint);
       if (response.success || response.status === 'success') {
         const workoutsData = response.data?.workouts || [];
-        console.log("Workouts data received:", workoutsData);
+        const enrichedWorkouts = await Promise.all(workoutsData.map(async (workout) => {
+          let trainerName = 'Unknown';
+          if (workout.trainer) {
+            try {
+              const trainerResponse = await authFetch(`/users/${workout.trainer}`);
+              if (trainerResponse.success || trainerResponse.status === 'success') {
+                trainerName = trainerResponse.data?.user?.name || 'Unknown';
+              }
+            } catch (error) {
+              console.error(`Error fetching trainer name for workout ${workout._id}:`, error);
+            }
+          }
+          return { ...workout, trainerName };
+        }));
         
-        // Sort workouts by creation date (newest first)
-        const sortedWorkouts = [...workoutsData].sort((a, b) => 
+        const sortedWorkouts = [...enrichedWorkouts].sort((a, b) => 
           new Date(b.createdAt) - new Date(a.createdAt)
         );
         
-        // Cache the workouts data in localStorage
         try {
           localStorage.setItem('cached_workouts', JSON.stringify(sortedWorkouts));
           localStorage.setItem('cached_workouts_timestamp', Date.now().toString());
@@ -250,21 +209,16 @@ const Workouts = () => {
         }
         
         setWorkouts(sortedWorkouts);
-        
-        if (workoutsData.length === 0) {
-          // No workouts found for this gym owner
-        }
       } else {
-        // Failed to load workouts
         setError(response.message || 'Failed to load workouts');
         toast.error(response.message || 'Failed to load workouts');
       }
     } catch (error) {
-      // Error loading workouts
-      setError('Failed to load workouts');
-      toast.error('Failed to load workouts');
-      
-      // Try to use cached data as fallback if available
+      setError('Failed to load workouts. Please check your connection or login again.');
+      toast.error('Failed to load workouts. Please check your connection or login again.');
+      if (error.message.includes('401')) {
+        toast.error('Session expired. Please log in again.');
+      }
       try {
         const cachedWorkouts = localStorage.getItem('cached_workouts');
         if (cachedWorkouts) {
@@ -273,58 +227,37 @@ const Workouts = () => {
           setError('Using cached data. Pull to refresh for latest data.');
         }
       } catch (e) {
-        // Failed to load cached workouts
+        console.warn('Failed to load cached workouts:', e);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [user, userRole, authFetch, fetchGymTrainers, trainers.length]);
-  
-  // Load workouts data only when user is available and stable
-  // Added a localStorage cache to prevent unnecessary API calls
+  }, [user, userRole, authFetch]);
+
   useEffect(() => {
     if (user && user._id) {
-      // For debugging purposes, always load fresh data
-      localStorage.removeItem('cached_workouts');
-      localStorage.removeItem('cached_workouts_timestamp');
-      
       if (userRole === 'gym-owner') {
-        // For gym owners, first fetch their trainers, then load workouts
-        fetchGymTrainers().then(() => {
-          loadWorkouts();
-        });
+        fetchGymTrainers().then(() => loadWorkouts());
       } else {
-        // For other roles, just load workouts directly
         loadWorkouts();
       }
     }
-  }, [user?._id, loadWorkouts, userRole, fetchGymTrainers]);
-  
-  // Load users data for gym owner to filter by trainer - with reduced frequency
+  }, [user, userRole, fetchGymTrainers, loadWorkouts]);
+
   useEffect(() => {
     if (isGymOwner && fetchUsers) {
-      // Check if we have cached users and it's not too old
       const cachedTimestamp = window.lastUsersFetchTime || 0;
       const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-      
       if (!users.length || (Date.now() - cachedTimestamp > CACHE_DURATION)) {
-        fetchUsers(false); // Use cached data if available
+        fetchUsers(false);
       }
     }
-  }, [isGymOwner, fetchUsers, users.length]);
-  
-  // Load gym trainers when component mounts
-  useEffect(() => {
-    if (isGymOwner) {
-      fetchGymTrainers();
-    } else {
-      // For non-gym owners, use the filtered users
+    if (!isGymOwner) {
       const filteredTrainers = users?.filter(u => u.role === 'trainer') || [];
       setTrainers(filteredTrainers);
     }
-  }, [isGymOwner, fetchGymTrainers, users]);
-  
-  // Filter workouts based on search and filter using useMemo
+  }, [isGymOwner, fetchUsers, users]);
+
   const filteredWorkouts = useMemo(() => {
     return workouts.filter(workout => {
       const matchesSearch = 
@@ -338,33 +271,30 @@ const Workouts = () => {
         (filterDifficulty === "Intermediate" && workout.type === "intermediate") ||
         (filterDifficulty === "Advanced" && workout.type === "advanced");
       const matchesTrainer = filterTrainer === "all" || 
-        (workout.trainer && workout.trainer.toString() === filterTrainer) ||
-        (workout.trainerName && workout.trainerName === filterTrainer);
+        (workout.trainer && workout.trainer.toString() === filterTrainer);
       
       return matchesSearch && matchesGoal && matchesDifficulty && matchesTrainer;
     });
   }, [workouts, searchTerm, filterGoal, filterDifficulty, filterTrainer]);
-  
-  // Format date helper function
+
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
-  
-  // Form handling functions
+
   const resetForm = () => {
     setWorkoutFormData({
-      title: '',  // Changed from name to title
+      title: '',
       description: '',
       type: 'beginner',
       duration: '30',
       exercises: '',
-      videoLink: '',  // Changed from videoUrl to videoLink
+      videoLink: '',
       notes: ''
     });
     setIsEditing(false);
   };
-  
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setWorkoutFormData(prev => ({
@@ -372,24 +302,22 @@ const Workouts = () => {
       [name]: value
     }));
   };
-  
+
   const handleSelectChange = (name, value) => {
     setWorkoutFormData(prev => ({
       ...prev,
       [name]: value
     }));
   };
-  
+
   const handleSubmitWorkout = async (e) => {
     e.preventDefault();
     
-    // Validate required fields - using title instead of name
     if (!workoutFormData.title.trim() || !workoutFormData.description.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
     
-    // Validate duration is a number
     if (isNaN(parseInt(workoutFormData.duration)) || parseInt(workoutFormData.duration) < 5) {
       toast.error('Please enter a valid duration (minimum 5 minutes)');
       return;
@@ -404,7 +332,6 @@ const Workouts = () => {
       
       const method = isEditing ? 'PUT' : 'POST';
       
-      // Create a copy of the form data with trimmed values
       const submissionData = {
         ...workoutFormData,
         title: workoutFormData.title.trim(),
@@ -423,25 +350,16 @@ const Workouts = () => {
         toast.success(isEditing ? 'Workout plan updated successfully' : 'Workout plan created successfully');
         setShowWorkoutForm(false);
         resetForm();
-        loadWorkouts(); // Refresh the workouts list
+        loadWorkouts();
       } else {
         toast.error(response.message || 'Failed to save workout plan');
       }
     } catch (error) {
-      // Error submitting workout plan - silent error handling
       toast.error('Please check all required fields and try again');
-      // Reset form submitting state but keep the form open for user to fix issues
     } finally {
       setFormSubmitting(false);
     }
   };
-  
-  // Assignment handlers
-  // Assignment function removed - no longer needed
-  // const handleAssignWorkout = (workout) => {
-  //   setSelectedWorkoutForAssignment(workout);
-  //   setShowAssignmentDialog(true);
-  // };
 
   const handleEditWorkout = (workout) => {
     setWorkoutFormData({
@@ -470,7 +388,7 @@ const Workouts = () => {
 
       if (response.success || response.status === 'success') {
         toast.success('Workout deleted successfully');
-        loadWorkouts(); // Refresh the workouts list
+        loadWorkouts();
       } else {
         toast.error(response.message || 'Failed to delete workout');
       }
@@ -480,14 +398,6 @@ const Workouts = () => {
     }
   };
 
-  // Assignment complete handler removed - no longer needed
-  // const handleAssignmentComplete = () => {
-  //   setShowAssignmentDialog(false);
-  //   setSelectedWorkoutForAssignment(null);
-  //   loadWorkouts(); // Refresh to show updated assignments
-  // };
-  
-  // Calculate workout stats
   const workoutStats = {
     total: workouts.length,
     totalViews: workouts.reduce((sum, workout) => sum + (workout.views || 0), 0),
@@ -498,7 +408,6 @@ const Workouts = () => {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">
@@ -530,7 +439,6 @@ const Workouts = () => {
           )}
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <Card className="bg-gray-800/50 border-gray-700">
             <CardContent className="p-6">
@@ -581,7 +489,6 @@ const Workouts = () => {
           </Card>
         </div>
 
-        {/* Search and Filters */}
         <Card className="bg-gray-800/50 border-gray-700">
           <CardHeader>
             <CardTitle className="text-white">
@@ -604,42 +511,43 @@ const Workouts = () => {
                   className="pl-10 bg-gray-700 border-gray-600 text-white"
                 />
               </div>
-              <select
-                value={filterGoal}
-                onChange={(e) => setFilterGoal(e.target.value)}
-                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              >
-                <option value="all">All Goals</option>
-                <option value="weight-loss">Weight Loss</option>
-                <option value="weight-gain">Weight Gain</option>
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-              <select
-                value={filterDifficulty}
-                onChange={(e) => setFilterDifficulty(e.target.value)}
-                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              >
-                <option value="all">All Levels</option>
-                <option value="Beginner">Beginner</option>
-                <option value="Intermediate">Intermediate</option>
-                <option value="Advanced">Advanced</option>
-              </select>
-              
-              <select
-                value={filterTrainer}
-                onChange={(e) => setFilterTrainer(e.target.value)}
-                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-              >
-                <option value="all">All Trainers</option>
-                {trainers.map(trainer => (
-                  <option key={trainer._id} value={trainer._id}>{trainer.name}</option>
-                ))}
-              </select>
+              <Select value={filterGoal} onValueChange={(value) => setFilterGoal(value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="All Goals" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectItem value="all">All Goals</SelectItem>
+                  <SelectItem value="weight-loss">Weight Loss</SelectItem>
+                  <SelectItem value="weight-gain">Weight Gain</SelectItem>
+                  <SelectItem value="beginner">Beginner</SelectItem>
+                  <SelectItem value="intermediate">Intermediate</SelectItem>
+                  <SelectItem value="advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterDifficulty} onValueChange={(value) => setFilterDifficulty(value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="All Levels" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectItem value="all">All Levels</SelectItem>
+                  <SelectItem value="Beginner">Beginner</SelectItem>
+                  <SelectItem value="Intermediate">Intermediate</SelectItem>
+                  <SelectItem value="Advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterTrainer} onValueChange={(value) => setFilterTrainer(value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="All Trainers" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                  <SelectItem value="all">All Trainers</SelectItem>
+                  {trainers.map(trainer => (
+                    <SelectItem key={trainer._id} value={trainer._id}>{trainer.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Workout Grid */}
             <div className="min-h-[300px]">
               {isLoading ? (
                 <div className="text-center py-10">
@@ -655,8 +563,16 @@ const Workouts = () => {
                   <h3 className="text-xl font-semibold text-white mb-2">No Workout Plans Found</h3>
                   {workouts.length === 0 ? (
                     <div className="text-gray-400 max-w-md mx-auto">
-                      <p className="mb-2">Your trainers haven't created any workout plans yet.</p>
-                      <p>Encourage your trainers to create workout plans for your gym members.</p>
+                      <p className="mb-2">
+                        {userRole === 'member'
+                          ? 'No workout plans have been assigned to you yet.'
+                          : userRole === 'trainer'
+                          ? 'You haven’t created any workout plans yet.'
+                          : 'Your trainers haven’t created any workout plans yet.'}
+                      </p>
+                      {userRole !== 'member' && (
+                        <p>Encourage your trainers to create workout plans for your gym members.</p>
+                      )}
                     </div>
                   ) : (
                     <p className="text-gray-400 max-w-md mx-auto">
@@ -671,6 +587,9 @@ const Workouts = () => {
                       key={workout._id} 
                       workout={workout} 
                       formatDate={formatDate} 
+                      isTrainer={isTrainer}
+                      onEdit={handleEditWorkout}
+                      onDelete={handleDeleteWorkout}
                     />
                   ))}
                 </div>
@@ -680,7 +599,6 @@ const Workouts = () => {
         </Card>
       </div>
       
-      {/* Workout Form Dialog */}
       <Dialog open={showWorkoutForm} onOpenChange={setShowWorkoutForm}>
         <DialogContent className="bg-gray-800 text-white border-gray-700 max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -737,7 +655,7 @@ const Workouts = () => {
                   onChange={handleInputChange}
                   className="bg-gray-700 border-gray-600 text-white min-h-[100px]"
                   placeholder="Describe the workout plan and its benefits..."
-                  
+                  required
                 />
               </div>
               
@@ -753,7 +671,7 @@ const Workouts = () => {
                     value={workoutFormData.duration}
                     onChange={handleInputChange}
                     className="bg-gray-700 border-gray-600 text-white"
-                  
+                    required
                   />
                 </div>
                 
@@ -778,8 +696,8 @@ const Workouts = () => {
                   value={workoutFormData.exercises}
                   onChange={handleInputChange}
                   className="bg-gray-700 border-gray-600 text-white min-h-[150px]"
-                  placeholder="List exercises with sets and reps (e.g., Squats: 3 sets x 12 reps)"    
-               />
+                  placeholder="List exercises with sets and reps (e.g., Squats: 3 sets x 12 reps)"
+                />
               </div>
               
               <div className="space-y-2">
@@ -813,7 +731,12 @@ const Workouts = () => {
                 className="bg-blue-600 hover:bg-blue-700"
                 disabled={formSubmitting}
               >
-                {formSubmitting ? 'Saving...' : isEditing ? 'Update Workout' : 'Create Workout'}
+                {formSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : isEditing ? 'Update Workout' : 'Create Workout'}
               </Button>
             </DialogFooter>
           </form>

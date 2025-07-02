@@ -415,28 +415,7 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          // Add trainer info to workout activities
-          for (const workout of recentWorkouts) {
-            let trainerName = 'Unknown Trainer';
-            if (workout.createdBy) {
-              try {
-                // Handle case where createdBy might be an object or a string ID
-                const createdById = extractId(workout.createdBy);
-                
-                // Skip if createdById is null or invalid
-                if (!createdById) {
-                  console.warn('Invalid or missing createdBy ID for workout:', workout._id);
-                } else {
-                  const trainerResponse = await authFetch(`/users/${createdById}`);
-                  if (trainerResponse.success || trainerResponse.status === 'success') {
-                    trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
-                  }
-                }
-              } catch (error) {
-                console.log('Error fetching trainer info:', error);
-              }
-            }
-            
+          assignedWorkouts.forEach((workout) => {
             activities.push({
               id: `workout-${workout._id}`,
               type: 'workout',
@@ -446,7 +425,7 @@ const Index = () => {
               timestamp: new Date(workout.createdAt)
             });
           }
-        }
+          );
         
         // 2. Get diet plans assigned to this member
         const dietPlansResponse = await authFetch(`/diet-plans/member/${user._id}`);
@@ -458,28 +437,7 @@ const Index = () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          // Add trainer info to diet plan activities
-          for (const plan of recentDietPlans) {
-            let trainerName = 'Unknown Trainer';
-            if (plan.createdBy) {
-              try {
-                // Handle case where createdBy might be an object or a string ID
-                const createdById = extractId(plan.createdBy);
-                
-                // Skip if createdById is null or invalid
-                if (!createdById) {
-                  console.warn('Invalid or missing createdBy ID for diet plan:', plan._id);
-                } else {
-                  const trainerResponse = await authFetch(`/users/${createdById}`);
-                  if (trainerResponse.success || trainerResponse.status === 'success') {
-                    trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
-                  }
-                }
-              } catch (error) {
-                console.log('Error fetching trainer info:', error);
-              }
-            }
-            
+          assignedDietPlans.forEach((plan) => {
             activities.push({
               id: `diet-${plan._id}`,
               type: 'diet',
@@ -489,7 +447,8 @@ const Index = () => {
               timestamp: new Date(plan.createdAt)
             });
           }
-        }
+        );
+      
         
         // 3. Get notifications for this member
         const notificationsResponse = await authFetch(`/notifications/user/${user._id}`);
@@ -546,7 +505,9 @@ const Index = () => {
       activities = activities.slice(0, 5);
       
       setRecentActivities(activities);
-    } catch (error) {
+    }
+  }
+ } catch (error) {
       console.error('Error fetching recent activities:', error);
       
       // Fallback to a welcome message if there's an error
