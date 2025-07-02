@@ -1,15 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save } from "lucide-react";
+import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { useAuth } from "@/contexts/AuthContext.jsx";
+import { useTranslation } from "@/contexts/TranslationContext.jsx";
+import { useI18n } from "@/components/ui/translate";
+import { toast } from "sonner";
+import { applySettings as applyAppSettings } from "@/lib/settings.jsx";
 
 const SystemSettings = () => {
+  const { user, authFetch, isSuperAdmin, isGymOwner } = useAuth();
+  const { t, language, changeLanguage } = useTranslation();
+  const { i18n } = useI18n();
+
   const [activeTab, setActiveTab] = useState("global");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
     global: {
       appName: "GymFlow",
@@ -18,7 +29,9 @@ const SystemSettings = () => {
       timezone: "UTC",
       emailEnabled: true,
       smsEnabled: true,
-      whatsappEnabled: false
+      whatsappEnabled: false,
+      dateFormat: "MM/DD/YYYY",
+      timeFormat: "12h"
     },
     branding: {
       primaryColor: "#3B82F6",
@@ -53,6 +66,50 @@ const SystemSettings = () => {
       smtpPass: ""
     }
   });
+  
+  // Access control: Only super admins and gym owners can access settings
+  const hasPermission = isSuperAdmin || isGymOwner;
+  
+  // Load settings from the server
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!user || !hasPermission) return;
+      
+      setIsLoading(true);
+      try {
+        // Determine the appropriate endpoint based on user role
+        let endpoint;
+        
+        if (isSuperAdmin) {
+          // Super admins can access global settings
+          endpoint = '/settings';
+        } else if (isGymOwner) {
+          // Gym owners get their gym-specific settings
+          endpoint = `/settings/gym/${user._id}`;
+        } else {
+          // Other users get their user-specific settings (though they shouldn't reach here due to hasPermission)
+          endpoint = `/settings/user/${user._id}`;
+        }
+        
+        console.log(`Loading settings from endpoint: ${endpoint}`);
+        const response = await authFetch(endpoint);
+        
+        if (response.success && response.data?.settings) {
+          setSettings(prevSettings => ({
+            ...prevSettings,
+            ...response.data.settings
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        toast.error('Failed to load settings');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadSettings();
+  }, [user, authFetch, hasPermission, isGymOwner, isSuperAdmin]);
 
   const handleSettingChange = (category, key, value) => {
     setSettings(prev => ({
@@ -62,15 +119,134 @@ const SystemSettings = () => {
         [key]: value
       }
     }));
+    
+    // Apply language change immediately if language is changed
+    if (category === 'global' && key === 'language') {
+      changeLanguage(value);
+    }
+    
+    // Save to localStorage for immediate effect
+    const updatedSettings = {
+      ...settings,
+      [category]: {
+        ...settings[category],
+        [key]: value
+      }
+    };
+    
+    // Store settings in user-specific storage key
+    const storageKey = `gym_settings_user_${user?._id}`;
+    localStorage.setItem(storageKey, JSON.stringify(updatedSettings));
+    
+    // Apply settings immediately for visual changes
+    if (category === 'branding') {
+      // Apply settings based on user role
+      applySettings(updatedSettings);
+      
+      // Show toast message about settings scope
+      if (!isSuperAdmin) {
+        toast.info('These settings will only apply to your dashboard', { 
+          duration: 3000,
+          position: 'bottom-right'
+        });
+      }
+    }
+  };
+  
+  // Save settings to the server
+  const saveSettings = async () => {
+    if (!user) {
+      toast.error('You must be logged in to save settings');
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      // Determine the appropriate endpoint based on user role
+      let endpoint;
+      
+      if (isSuperAdmin) {
+        // Super admins can save global settings
+        endpoint = '/settings';
+      } else if (isGymOwner) {
+        // Gym owners save their gym-specific settings
+        endpoint = `/settings/gym/${user._id}`;
+      } else {
+        // Other users save their user-specific settings (though they shouldn't reach here due to hasPermission)
+        endpoint = `/settings/user/${user._id}`;
+      }
+      
+      console.log(`Saving settings to endpoint: ${endpoint}`);
+      const response = await authFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ settings })
+      });
+      
+      if (response.success) {
+        toast.success(t('settingsSaved'));
+        
+        // Apply settings immediately, but only to the current user's dashboard
+        if (isSuperAdmin) {
+          // Super admin can apply global settings
+          applySettings(settings);
+          toast.info('Global settings applied to all users');
+        } else {
+          // Other users apply settings only to their dashboard
+          applyAppSettings(settings, user._id);
+          toast.info('Settings will be applied to your dashboard only');
+        }
+      } else {
+        toast.error(response.message || t('error'));
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  // Apply settings to the application
+  const applySettings = (settingsToApply) => {
+    // For super admin, apply global settings
+    if (isSuperAdmin) {
+      // Use our utility function to apply global settings
+      applyAppSettings(settingsToApply);
+    } else {
+      // For other users, apply user-specific settings
+      applyAppSettings(settingsToApply, user?._id);
+    }
   };
 
   const tabs = [
-    { id: "global", label: "Global Settings", icon: Globe },
-    { id: "branding", label: "Branding", icon: Palette },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "messaging", label: "Message Templates", icon: MessageSquare },
-    { id: "integration", label: "Integrations", icon: Settings }
+    { id: "global", label: t('globalSettings'), icon: Globe },
+    { id: "branding", label: t('branding'), icon: Palette },
+    { id: "notifications", label: t('notifications'), icon: Bell },
+    { id: "messaging", label: t('messageTemplates'), icon: MessageSquare },
+    { id: "integration", label: t('integrations'), icon: Settings }
   ];
+
+  // Check if user has access to this page
+  if (!hasPermission) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center h-[70vh]">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-red-500 mb-2">{t('accessDenied')}</h2>
+            <p className="text-gray-400 mb-6">
+              You don't have permission to access system settings. Only Super Admins and Gym Owners can access this page.
+            </p>
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => window.history.back()}
+            >
+              {t('goBack')}
+            </Button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -78,12 +254,25 @@ const SystemSettings = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">System Settings</h1>
-            <p className="text-gray-400">Configure global and gym-specific settings</p>
+            <h1 className="text-3xl font-bold text-white">{t('systemSettings')}</h1>
+            <p className="text-gray-400">{t('configureSettings')}</p>
           </div>
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Save className="h-4 w-4 mr-2" />
-            Save All Changes
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={saveSettings}
+            disabled={isSaving || !hasPermission}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {t('loading')}
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                {t('saveAllChanges')}
+              </>
+            )}
           </Button>
         </div>
 
@@ -91,7 +280,7 @@ const SystemSettings = () => {
           {/* Sidebar Navigation */}
           <Card className="bg-gray-800/50 border-gray-700 lg:col-span-1">
             <CardHeader>
-              <CardTitle className="text-white">Settings Categories</CardTitle>
+              <CardTitle className="text-white">{t('settings')}</CardTitle>
             </CardHeader>
             <CardContent>
               <nav className="space-y-2">
@@ -106,6 +295,10 @@ const SystemSettings = () => {
                           ? "bg-blue-600 text-white"
                           : "text-gray-400 hover:text-white hover:bg-gray-700"
                       }`}
+                      style={{ 
+                        backgroundColor: activeTab === tab.id ? 'var(--primary)' : 'transparent',
+                        color: activeTab === tab.id ? 'var(--text)' : 'rgba(var(--text-rgb), 0.7)'
+                      }}
                     >
                       <IconComponent className="h-5 w-5" />
                       <span>{tab.label}</span>
@@ -122,65 +315,118 @@ const SystemSettings = () => {
             {activeTab === "global" && (
               <Card className="bg-gray-800/50 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="text-white">Global Settings</CardTitle>
+                  <CardTitle className="text-white">{t('globalSettings')}</CardTitle>
                   <CardDescription className="text-gray-400">
-                    Configure system-wide settings and preferences
+                    {t('configureSettings')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <Label htmlFor="appName" className="text-gray-300">Application Name</Label>
-                      <Input
-                        id="appName"
-                        value={settings.global.appName}
-                        onChange={(e) => handleSettingChange("global", "appName", e.target.value)}
-                        className="bg-gray-700 border-gray-600 text-white"
-                      />
+                  {isLoading ? (
+                    <div className="flex justify-center items-center py-12">
+                      <div className="flex items-center space-x-2">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                        <span className="text-gray-400">{t('loading')}</span>
+                      </div>
                     </div>
-                    <div>
-                      <Label htmlFor="currency" className="text-gray-300">Default Currency</Label>
-                      <select
-                        id="currency"
-                        value={settings.global.currency}
-                        onChange={(e) => handleSettingChange("global", "currency", e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                      >
-                        <option value="USD">USD - US Dollar</option>
-                        <option value="EUR">EUR - Euro</option>
-                        <option value="INR">INR - Indian Rupee</option>
-                        <option value="GBP">GBP - British Pound</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label htmlFor="language" className="text-gray-300">Default Language</Label>
-                      <select
-                        id="language"
-                        value={settings.global.language}
-                        onChange={(e) => handleSettingChange("global", "language", e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                      >
-                        <option value="English">English</option>
-                        <option value="Spanish">Spanish</option>
-                        <option value="French">French</option>
-                        <option value="Hindi">Hindi</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label htmlFor="timezone" className="text-gray-300">Default Timezone</Label>
-                      <select
-                        id="timezone"
-                        value={settings.global.timezone}
-                        onChange={(e) => handleSettingChange("global", "timezone", e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
-                      >
-                        <option value="UTC">UTC</option>
-                        <option value="America/New_York">Eastern Time</option>
-                        <option value="America/Los_Angeles">Pacific Time</option>
-                        <option value="Asia/Kolkata">India Standard Time</option>
-                      </select>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <Label htmlFor="appName" className="text-gray-300">{t('appName')}</Label>
+                          <Input
+                            id="appName"
+                            value={settings.global.appName}
+                            onChange={(e) => handleSettingChange("global", "appName", e.target.value)}
+                            className="bg-gray-700 border-gray-600 text-white"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="currency" className="text-gray-300">{t('defaultCurrency')}</Label>
+                          <select
+                            id="currency"
+                            value={settings.global.currency}
+                            onChange={(e) => handleSettingChange("global", "currency", e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                          >
+                            <option value="USD">{t('usd')}</option>
+                            <option value="EUR">{t('eur')}</option>
+                            <option value="INR">{t('inr')}</option>
+                            <option value="GBP">{t('gbp')}</option>
+                            <option value="CAD">{t('cad')}</option>
+                            <option value="AUD">{t('aud')}</option>
+                            <option value="JPY">{t('jpy')}</option>
+                            <option value="CNY">{t('cny')}</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label htmlFor="language" className="text-gray-300">{t('defaultLanguage')}</Label>
+                          <select
+                            id="language"
+                            value={settings.global.language}
+                            onChange={(e) => handleSettingChange("global", "language", e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                          >
+                            <option value="English">English</option>
+                            <option value="Spanish">Español (Spanish)</option>
+                            <option value="French">Français (French)</option>
+                            <option value="Hindi">हिन्दी (Hindi)</option>
+                            <option value="German">Deutsch (German)</option>
+                            <option value="Chinese">中文 (Chinese)</option>
+                            <option value="Japanese">日本語 (Japanese)</option>
+                            <option value="Arabic">العربية (Arabic)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label htmlFor="timezone" className="text-gray-300">{t('defaultTimezone')}</Label>
+                          <select
+                            id="timezone"
+                            value={settings.global.timezone}
+                            onChange={(e) => handleSettingChange("global", "timezone", e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                          >
+                            <option value="UTC">UTC</option>
+                            <option value="America/New_York">Eastern Time (ET)</option>
+                            <option value="America/Chicago">Central Time (CT)</option>
+                            <option value="America/Denver">Mountain Time (MT)</option>
+                            <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                            <option value="Europe/London">London (GMT)</option>
+                            <option value="Europe/Paris">Central European Time (CET)</option>
+                            <option value="Asia/Kolkata">India Standard Time (IST)</option>
+                            <option value="Asia/Tokyo">Japan Standard Time (JST)</option>
+                            <option value="Australia/Sydney">Australian Eastern Time (AET)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label htmlFor="dateFormat" className="text-gray-300">{t('dateFormat')}</Label>
+                          <select
+                            id="dateFormat"
+                            value={settings.global.dateFormat}
+                            onChange={(e) => handleSettingChange("global", "dateFormat", e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                          >
+                            <option value="MM/DD/YYYY">MM/DD/YYYY (US)</option>
+                            <option value="DD/MM/YYYY">DD/MM/YYYY (UK/EU)</option>
+                            <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
+                            <option value="MMM DD, YYYY">MMM DD, YYYY (Jan 01, 2023)</option>
+                            <option value="DD MMM YYYY">DD MMM YYYY (01 Jan 2023)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <Label htmlFor="timeFormat" className="text-gray-300">{t('timeFormat')}</Label>
+                          <select
+                            id="timeFormat"
+                            value={settings.global.timeFormat}
+                            onChange={(e) => handleSettingChange("global", "timeFormat", e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                          >
+                            <option value="12h">12-hour (1:30 PM)</option>
+                            <option value="24h">24-hour (13:30)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                
 
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium text-white">Communication Services</h3>
@@ -310,7 +556,7 @@ const SystemSettings = () => {
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <Label htmlFor="primaryColor" className="text-gray-300">Primary Color</Label>
+                      <Label htmlFor="primaryColor" className="text-gray-300">Primary Color (Buttons, Links)</Label>
                       <div className="flex gap-2">
                         <Input
                           id="primaryColor"
@@ -328,7 +574,7 @@ const SystemSettings = () => {
                     </div>
                     
                     <div>
-                      <Label htmlFor="secondaryColor" className="text-gray-300">Secondary Color</Label>
+                      <Label htmlFor="secondaryColor" className="text-gray-300">Secondary Color (Accents)</Label>
                       <div className="flex gap-2">
                         <Input
                           id="secondaryColor"
@@ -343,6 +589,87 @@ const SystemSettings = () => {
                           className="flex-1 bg-gray-700 border-gray-600 text-white"
                         />
                       </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="backgroundColor" className="text-gray-300">Background Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="backgroundColor"
+                          type="color"
+                          value={settings.branding.backgroundColor || '#111827'}
+                          onChange={(e) => handleSettingChange("branding", "backgroundColor", e.target.value)}
+                          className="w-16 h-10 p-1 bg-gray-700 border-gray-600"
+                        />
+                        <Input
+                          value={settings.branding.backgroundColor || '#111827'}
+                          onChange={(e) => handleSettingChange("branding", "backgroundColor", e.target.value)}
+                          className="flex-1 bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="cardColor" className="text-gray-300">Card Background Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="cardColor"
+                          type="color"
+                          value={settings.branding.cardColor || '#1F2937'}
+                          onChange={(e) => handleSettingChange("branding", "cardColor", e.target.value)}
+                          className="w-16 h-10 p-1 bg-gray-700 border-gray-600"
+                        />
+                        <Input
+                          value={settings.branding.cardColor || '#1F2937'}
+                          onChange={(e) => handleSettingChange("branding", "cardColor", e.target.value)}
+                          className="flex-1 bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="sidebarColor" className="text-gray-300">Sidebar Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="sidebarColor"
+                          type="color"
+                          value={settings.branding.sidebarColor || '#1F2937'}
+                          onChange={(e) => handleSettingChange("branding", "sidebarColor", e.target.value)}
+                          className="w-16 h-10 p-1 bg-gray-700 border-gray-600"
+                        />
+                        <Input
+                          value={settings.branding.sidebarColor || '#1F2937'}
+                          onChange={(e) => handleSettingChange("branding", "sidebarColor", e.target.value)}
+                          className="flex-1 bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="textColor" className="text-gray-300">Text Color</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="textColor"
+                          type="color"
+                          value={settings.branding.textColor || '#FFFFFF'}
+                          onChange={(e) => handleSettingChange("branding", "textColor", e.target.value)}
+                          className="w-16 h-10 p-1 bg-gray-700 border-gray-600"
+                        />
+                        <Input
+                          value={settings.branding.textColor || '#FFFFFF'}
+                          onChange={(e) => handleSettingChange("branding", "textColor", e.target.value)}
+                          className="flex-1 bg-gray-700 border-gray-600 text-white"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="darkMode"
+                        checked={settings.branding.darkMode !== false}
+                        onCheckedChange={(checked) => handleSettingChange("branding", "darkMode", checked)}
+                      />
+                      <Label htmlFor="darkMode" className="text-gray-300">Dark Mode</Label>
                     </div>
                   </div>
 

@@ -13,8 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Dumbbell, Settings, User, LogOut, CreditCard, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTranslation } from "@/contexts/TranslationContext";
 import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
+import LanguageSwitcher from "@/components/ui/language-switcher";
 import { toast } from "sonner";
 
 const DashboardHeader = () => {
@@ -27,10 +29,11 @@ const DashboardHeader = () => {
     subscriptionDaysRemaining,
     checkSubscriptionStatus
   } = useAuth();
+  const { t } = useTranslation();
   
   // Function to refresh the page
   const handleRefresh = () => {
-    toast.info("Refreshing page...");
+    toast.info(t('loading'));
     window.location.reload();
   };
   
@@ -68,6 +71,9 @@ const DashboardHeader = () => {
 
           {/* Right Side - Refresh Button, Subscription Status, Notifications and User Menu */}
           <div className="flex items-center space-x-4">
+            {/* Language Switcher */}
+            <LanguageSwitcher className="text-gray-300 hover:text-white" />
+            
             {/* Refresh Button */}
             <Button 
               variant="outline" 
@@ -76,7 +82,7 @@ const DashboardHeader = () => {
               className="text-gray-300 hover:text-white hover:bg-gray-700 flex items-center gap-2"
             >
               <RefreshCw className="h-4 w-4" />
-              <span>Refresh</span>
+              <span>{t('refresh')}</span>
             </Button>
             
             {/* Subscription Status for Gym Owners */}
@@ -90,7 +96,7 @@ const DashboardHeader = () => {
                     <CreditCard className="h-3 w-3 mr-1" />
                     {subscriptionDaysRemaining <= 2 
                       ? `Expires in ${subscriptionDaysRemaining} day${subscriptionDaysRemaining === 1 ? '' : 's'}`
-                      : "Subscription Active"
+                      : t('subscriptionActive')
                     }
                   </Badge>
                 ) : (
@@ -100,7 +106,7 @@ const DashboardHeader = () => {
                       className="hidden sm:flex items-center gap-1 cursor-pointer"
                     >
                       <CreditCard className="h-3 w-3 mr-1" />
-                      Subscription Expired
+                      {t('membershipExpired')}
                     </Badge>
                   </Link>
                 )}
@@ -136,13 +142,13 @@ const DashboardHeader = () => {
                 <DropdownMenuItem className="text-gray-300 hover:bg-gray-700 hover:text-white" asChild>
                   <Link to="/profile">
                     <User className="mr-2 h-4 w-4" />
-                    <span>Profile</span>
+                    <span>{t('profile')}</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-gray-300 hover:bg-gray-700 hover:text-white" asChild>
                   <Link to="/settings">
                     <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
+                    <span>{t('settings')}</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-gray-700" />
@@ -151,7 +157,7 @@ const DashboardHeader = () => {
                   onClick={logout}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
+                  <span>{t('logout')}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

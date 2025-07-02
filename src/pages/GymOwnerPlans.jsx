@@ -303,6 +303,152 @@ const GymOwnerPlans = () => {
     }
   };
 
+  // Handle test mode renewal (skip payment)
+  const handleTestModeRenewal = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Generate a mock transaction ID
+      const mockTransactionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      
+      // Call the renew endpoint directly with test payment data
+      const renewResponse = await authFetch(`/subscriptions/${currentSubscription._id}/renew`, {
+        method: 'POST',
+        body: JSON.stringify({
+          durationMonths: 1,
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        })
+      });
+      
+      if (renewResponse.success || renewResponse.status === 'success') {
+        toast.success('Subscription renewed successfully in test mode!');
+        // Refresh subscription status
+        await checkSubscriptionStatus(user._id, null, true);
+      } else {
+        toast.error(renewResponse.message || 'Failed to renew subscription');
+      }
+    } catch (error) {
+      console.error('Error renewing subscription in test mode:', error);
+      toast.error('Failed to renew subscription');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle subscription renewal with Razorpay
+  const handleRenewSubscription = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Step 1: Create a Razorpay order
+      const orderResponse = await authFetch(`/payments/razorpay/create-order`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: currentSubscription.price,
+          currency: 'INR',
+          receipt: `renewal_${Date.now()}`,
+          notes: {
+            subscriptionId: currentSubscription._id,
+            gymOwnerId: user._id,
+            plan: currentSubscription.plan
+          }
+        })
+      });
+      
+      console.log('Order response:', orderResponse);
+      
+      if (!orderResponse || (!orderResponse.success && orderResponse.status !== 'success')) {
+        toast.error('Failed to create payment order');
+        setIsProcessing(false);
+        return;
+      }
+      
+      const order = orderResponse.data?.order;
+      if (!order) {
+        toast.error('Invalid order response');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 2: Load Razorpay script
+      const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => {
+            resolve(true);
+          };
+          script.onerror = () => {
+            resolve(false);
+          };
+          document.body.appendChild(script);
+        });
+      };
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error('Failed to load Razorpay checkout');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 3: Open Razorpay checkout
+      const options = {
+        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        amount: order.amount,
+        currency: order.currency,
+        name: 'GymFlow',
+        description: `Subscription Renewal - ${currentSubscription.plan}`,
+        order_id: order.id,
+        handler: async function(response) {
+          try {
+            // Step 4: Verify payment and renew subscription
+            const renewResponse = await authFetch(`/subscriptions/${currentSubscription._id}/renew`, {
+              method: 'POST',
+              body: JSON.stringify({
+                durationMonths: 1,
+                paymentMethod: 'razorpay',
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature
+              })
+            });
+            
+            if (renewResponse.success || renewResponse.status === 'success') {
+              toast.success('Subscription renewed successfully!');
+              // Refresh subscription status
+              await checkSubscriptionStatus(user._id, null, true);
+            } else {
+              toast.error(renewResponse.message || 'Failed to renew subscription');
+            }
+          } catch (error) {
+            console.error('Error verifying payment:', error);
+            toast.error('Failed to verify payment');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone || ''
+        },
+        theme: {
+          color: '#3B82F6'
+        }
+      };
+      
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+      
+    } catch (error) {
+      console.error('Error renewing subscription:', error);
+      toast.error('Failed to renew subscription');
+      setIsProcessing(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const variants = {
       'Active': 'default',
@@ -406,6 +552,57 @@ const GymOwnerPlans = () => {
                 )}
               </CardDescription>
             </CardHeader>
+            <CardContent>
+              <div className="flex flex-col space-y-3">
+                <div className="flex justify-end space-x-3">
+                  {!hasActiveSubscription && (
+                    <>
+                      <Button 
+                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={handleRenewSubscription}
+                        disabled={isProcessing}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        {isProcessing ? 'Processing...' : 'Renew Subscription'}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
+                        onClick={handleTestModeRenewal}
+                        disabled={isProcessing}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
+                      </Button>
+                    </>
+                  )}
+                  {hasActiveSubscription && daysRemaining <= 5 && (
+                    <>
+                      <Button 
+                        className="bg-blue-600 hover:bg-blue-700"
+                        onClick={handleRenewSubscription}
+                        disabled={isProcessing}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        {isProcessing ? 'Processing...' : 'Extend Subscription'}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
+                        onClick={handleTestModeRenewal}
+                        disabled={isProcessing}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <div className="text-xs text-amber-500/70 text-right italic">
+                  Test Mode: Payments are simulated for development purposes
+                </div>
+              </div>
+            </CardContent>
           </Card>
         )}
 
@@ -448,299 +645,316 @@ const GymOwnerPlans = () => {
                   <Card 
                     key={plan.id} 
                     className={`bg-gray-700/50 border-gray-600 relative ${
-                      plan.recommended ? 'ring-2 ring-blue-500' : ''
+                      plan.recommended ? 'border-blue-500' : ''
                     }`}
                   >
                     {plan.recommended && (
-                      <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                        <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
-                          Recommended
-                        </span>
+                      <div className="absolute top-0 right-0 bg-blue-500 text-white text-xs px-2 py-1 rounded-bl-md">
+                        Recommended
                       </div>
                     )}
                     <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="text-white">{plan.name}</CardTitle>
-                          <CardDescription className="text-gray-400">
-                            <span className="text-xl font-bold text-white">₹{plan.price}</span>/{plan.duration}
-                          </CardDescription>
-                        </div>
-                        {getStatusBadge(plan.status)}
+                      <CardTitle className="text-white">{plan.name}</CardTitle>
+                      <CardDescription className="text-gray-400">
+                        {plan.duration === 'monthly' ? 'Monthly' : 'Annual'} Plan
+                      </CardDescription>
+                      <div className="text-2xl font-bold text-white mt-2">
+                        ${plan.price}<span className="text-sm font-normal text-gray-400">/month</span>
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm text-gray-400">Limits</p>
-                          <p className="text-white">Max Members: {plan.maxMembers}</p>
-                          <p className="text-white">Max Trainers: {plan.maxTrainers}</p>
+                      <div className="space-y-2">
+                        <div className="flex items-center text-gray-300">
+                          <span className="font-medium">Max Members:</span>
+                          <span className="ml-auto">{plan.maxMembers}</span>
                         </div>
-                        
-                        <div>
-                          <p className="text-sm text-gray-400 mb-2">Features</p>
-                          <ul className="space-y-1">
-                            {plan.features.map((feature, index) => (
-                              <li key={index} className="text-sm text-white flex items-center">
-                                <CheckCircle className="h-4 w-4 text-green-500 mr-2" />
-                                {feature}
+                        <div className="flex items-center text-gray-300">
+                          <span className="font-medium">Max Trainers:</span>
+                          <span className="ml-auto">{plan.maxTrainers}</span>
+                        </div>
+                        <div className="border-t border-gray-600 my-3"></div>
+                        <div className="text-gray-300 font-medium">Features:</div>
+                        <ul className="space-y-1 text-gray-400 text-sm">
+                          {Array.isArray(plan.features) ? (
+                            plan.features.map((feature, index) => (
+                              <li key={index} className="flex items-start">
+                                <CheckCircle className="h-4 w-4 text-green-400 mr-2 mt-0.5" />
+                                <span>{feature}</span>
                               </li>
-                            ))}
-                          </ul>
-                        </div>
+                            ))
+                          ) : (
+                            <li>No features listed</li>
+                          )}
+                        </ul>
                       </div>
                     </CardContent>
-                    <CardFooter>
-                      <div className="flex gap-2 w-full">
-                        <Button 
-                          variant="outline" 
-                          className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-600"
-                          onClick={() => handleEditPlan(plan)}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          className="border-gray-600 text-red-400 hover:bg-red-900/20 hover:text-red-300"
-                          onClick={() => handleDeletePlan(plan._id || plan.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    <CardFooter className="flex justify-between border-t border-gray-600 pt-4">
+                      <Button 
+                        variant="outline" 
+                        className="border-gray-600 text-gray-300 hover:bg-gray-600"
+                        onClick={() => handleEditPlan(plan)}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="destructive"
+                        onClick={() => handleDeletePlan(plan._id || plan.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
                     </CardFooter>
                   </Card>
                 ))}
               </div>
-              
-              {isLoading && (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
 
-        {/* Member Subscriptions Tab */}
+        {/* Subscriptions Tab */}
         {activeTab === "subscriptions" && (
           <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Member Subscriptions</CardTitle>
-              <CardDescription className="text-gray-400">
-                View and manage subscriptions for your gym members
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between mb-4">
-                <div className="relative w-64">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <CardTitle className="text-white">Member Subscriptions</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Manage your gym members' subscriptions
+                  </CardDescription>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
                   <Input
+                    type="search"
                     placeholder="Search subscriptions..."
-                    className="pl-8 bg-gray-700 border-gray-600 text-white"
+                    className="pl-8 bg-gray-700/50 border-gray-600 text-white"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
               </div>
-              
-              <div className="rounded-md border border-gray-700 overflow-hidden">
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border border-gray-700">
                 <Table>
-                  <TableHeader className="bg-gray-800">
-                    <TableRow className="hover:bg-gray-800/50 border-gray-700">
-                      <TableHead className="text-gray-400">Invoice #</TableHead>
-                      <TableHead className="text-gray-400">Member</TableHead>
-                      <TableHead className="text-gray-400">Plan</TableHead>
-                      <TableHead className="text-gray-400">Amount</TableHead>
-                      <TableHead className="text-gray-400">Status</TableHead>
-                      <TableHead className="text-gray-400">Start Date</TableHead>
-                      <TableHead className="text-gray-400">End Date</TableHead>
-                      <TableHead className="text-gray-400">Actions</TableHead>
+                  <TableHeader>
+                    <TableRow className="bg-gray-700/50 hover:bg-gray-700/70">
+                      <TableHead className="text-gray-300">Invoice</TableHead>
+                      <TableHead className="text-gray-300">Member</TableHead>
+                      <TableHead className="text-gray-300">Plan</TableHead>
+                      <TableHead className="text-gray-300">Amount</TableHead>
+                      <TableHead className="text-gray-300">Status</TableHead>
+                      <TableHead className="text-gray-300">Date</TableHead>
+                      <TableHead className="text-gray-300">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {memberSubscriptions.map(subscription => (
-                      <TableRow key={subscription.id} className="hover:bg-gray-700/50 border-gray-700">
-                        <TableCell className="text-white">{subscription.invoiceNumber}</TableCell>
-                        <TableCell className="text-white">{subscription.memberName}</TableCell>
-                        <TableCell className="text-white">{subscription.planName}</TableCell>
-                        <TableCell className="text-white">₹{subscription.amount}</TableCell>
-                        <TableCell>{getStatusBadge(subscription.status)}</TableCell>
-                        <TableCell className="text-white">{subscription.startDate}</TableCell>
-                        <TableCell className="text-white">{subscription.endDate}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-white">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-white">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {memberSubscriptions
+                      .filter(sub => 
+                        sub.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        sub.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        sub.planName.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                      .map((subscription) => (
+                        <TableRow key={subscription.id} className="hover:bg-gray-700/30">
+                          <TableCell className="font-medium text-gray-300">
+                            {subscription.invoiceNumber}
+                          </TableCell>
+                          <TableCell className="text-gray-300">{subscription.memberName}</TableCell>
+                          <TableCell className="text-gray-300">{subscription.planName}</TableCell>
+                          <TableCell className="text-gray-300">${subscription.amount}</TableCell>
+                          <TableCell>{getStatusBadge(subscription.status)}</TableCell>
+                          <TableCell className="text-gray-300">
+                            {new Date(subscription.startDate).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="h-8 w-8 text-gray-400 hover:text-white"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="h-8 w-8 text-gray-400 hover:text-white"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               </div>
             </CardContent>
           </Card>
         )}
-      </div>
 
-      {/* Plan Creation/Editing Dialog */}
-      <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="text-white">{editingPlan ? 'Edit Member Plan' : 'Create New Member Plan'}</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              {editingPlan ? 'Update the details of this member plan.' : 'Fill in the details for the new member plan.'}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label htmlFor="name" className="text-white">Plan Name</Label>
+        {/* Plan Dialog */}
+        <Dialog open={showPlanDialog} onOpenChange={setShowPlanDialog}>
+          <DialogContent className="bg-gray-800 text-white border-gray-700 sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                {editingPlan ? 'Update the details of this plan.' : 'Add a new subscription plan for your members.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">
+                  Name
+                </Label>
                 <Input
                   id="name"
                   name="name"
                   value={planFormData.name}
                   onChange={handlePlanFormChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                  placeholder="e.g. Basic Member, Premium Member"
+                  className="col-span-3 bg-gray-700 border-gray-600"
+                  placeholder="e.g. Basic Plan"
                 />
               </div>
-              
-              <div>
-                <Label htmlFor="price" className="text-white">Price (₹)</Label>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="price" className="text-right">
+                  Price ($)
+                </Label>
                 <Input
                   id="price"
                   name="price"
                   type="number"
                   value={planFormData.price}
                   onChange={handlePlanFormChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                  placeholder="e.g. 39"
+                  className="col-span-3 bg-gray-700 border-gray-600"
+                  placeholder="e.g. 19.99"
                 />
               </div>
-              
-              <div>
-                <Label htmlFor="duration" className="text-white">Duration</Label>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="duration" className="text-right">
+                  Duration
+                </Label>
                 <Select 
                   name="duration" 
-                  value={planFormData.duration} 
-                  onValueChange={(value) => handlePlanFormChange({ target: { name: 'duration', value } })}
+                  value={planFormData.duration}
+                  onValueChange={(value) => handlePlanFormChange({target: {name: 'duration', value}})}
                 >
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className="col-span-3 bg-gray-700 border-gray-600">
                     <SelectValue placeholder="Select duration" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600 text-white">
+                  <SelectContent className="bg-gray-800 border-gray-700">
                     <SelectItem value="monthly">Monthly</SelectItem>
                     <SelectItem value="quarterly">Quarterly</SelectItem>
                     <SelectItem value="yearly">Yearly</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div>
-                <Label htmlFor="maxMembers" className="text-white">Max Members</Label>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="maxMembers" className="text-right">
+                  Max Members
+                </Label>
                 <Input
                   id="maxMembers"
                   name="maxMembers"
                   type="number"
                   value={planFormData.maxMembers}
                   onChange={handlePlanFormChange}
-                  className="bg-gray-700 border-gray-600 text-white"
+                  className="col-span-3 bg-gray-700 border-gray-600"
                   placeholder="e.g. 50"
                 />
               </div>
-              
-              <div>
-                <Label htmlFor="maxTrainers" className="text-white">Max Trainers</Label>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="maxTrainers" className="text-right">
+                  Max Trainers
+                </Label>
                 <Input
                   id="maxTrainers"
                   name="maxTrainers"
                   type="number"
                   value={planFormData.maxTrainers}
                   onChange={handlePlanFormChange}
-                  className="bg-gray-700 border-gray-600 text-white"
-                  placeholder="e.g. 2"
+                  className="col-span-3 bg-gray-700 border-gray-600"
+                  placeholder="e.g. 5"
                 />
               </div>
-              
-              <div className="col-span-2">
-                <Label htmlFor="features" className="text-white">Features (comma-separated)</Label>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label htmlFor="features" className="text-right pt-2">
+                  Features
+                </Label>
                 <Textarea
                   id="features"
                   name="features"
                   value={planFormData.features}
                   onChange={(e) => handleFeaturesChange(e.target.value)}
-                  className="bg-gray-700 border-gray-600 text-white min-h-[100px]"
-                  placeholder="e.g. Member Management, Basic Attendance Tracking, Email Support"
+                  className="col-span-3 bg-gray-700 border-gray-600 min-h-[100px]"
+                  placeholder="Enter features separated by commas"
                 />
               </div>
-              
-              <div>
-                <Label htmlFor="status" className="text-white">Status</Label>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="status" className="text-right">
+                  Status
+                </Label>
                 <Select 
                   name="status" 
-                  value={planFormData.status} 
-                  onValueChange={(value) => handlePlanFormChange({ target: { name: 'status', value } })}
+                  value={planFormData.status}
+                  onValueChange={(value) => handlePlanFormChange({target: {name: 'status', value}})}
                 >
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className="col-span-3 bg-gray-700 border-gray-600">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600 text-white">
+                  <SelectContent className="bg-gray-800 border-gray-700">
                     <SelectItem value="Active">Active</SelectItem>
                     <SelectItem value="Inactive">Inactive</SelectItem>
-                    <SelectItem value="Deprecated">Deprecated</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="recommended" className="text-white">Recommended Plan</Label>
-                <Switch
-                  id="recommended"
-                  name="recommended"
-                  checked={planFormData.recommended}
-                  onCheckedChange={(checked) => handlePlanFormChange({ target: { name: 'recommended', type: 'checkbox', checked } })}
-                />
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="recommended" className="text-right">
+                  Recommended
+                </Label>
+                <div className="flex items-center space-x-2 col-span-3">
+                  <Switch
+                    id="recommended"
+                    name="recommended"
+                    checked={planFormData.recommended}
+                    onCheckedChange={(checked) => 
+                      handlePlanFormChange({target: {name: 'recommended', type: 'checkbox', checked}})
+                    }
+                  />
+                  <Label htmlFor="recommended" className="text-gray-400">
+                    Mark as recommended plan
+                  </Label>
+                </div>
               </div>
             </div>
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              className="border-gray-600 text-gray-300 hover:bg-gray-700"
-              onClick={() => setShowPlanDialog(false)}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={handleSavePlan}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <>Processing...</>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  {editingPlan ? 'Update Plan' : 'Create Plan'}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                onClick={() => setShowPlanDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleSavePlan}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  'Saving...'
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    {editingPlan ? 'Update Plan' : 'Create Plan'}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </DashboardLayout>
   );
 };

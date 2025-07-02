@@ -58,12 +58,15 @@ const Reports = () => {
     
     const calculateStats = async () => {
       try {
+        console.log('Calculating gym stats...');
+        
         // Try to fetch stats from backend first
         let backendStats = null;
         try {
           const response = await authFetch('/stats/gym');
           if (response.success && response.data) {
             backendStats = response.data;
+            console.log('Stats loaded from backend');
           }
         } catch (error) {
           console.log('Using local calculation for stats as backend fetch failed');
@@ -71,7 +74,41 @@ const Reports = () => {
         
         // If backend stats are available, use them
         if (backendStats) {
-          setRealStats(backendStats);
+          // Make sure we update the expenses in the monthly stats
+          const updatedStats = {...backendStats};
+          
+          // Update expenses from the current expenses array
+          if (updatedStats.monthlyStats) {
+            // Calculate expenses per month from expenses array
+            expenses.forEach(expense => {
+              const expenseDate = new Date(expense.date);
+              if (expenseDate.getFullYear() === currentYear) {
+                const month = expenseDate.getMonth() + 1;
+                
+                if (!updatedStats.monthlyStats[month]) {
+                  updatedStats.monthlyStats[month] = {
+                    newMembers: 0,
+                    revenue: 0,
+                    expenses: 0,
+                    profit: 0
+                  };
+                }
+                
+                // Reset expenses to recalculate
+                if (expense === expenses[0]) {
+                  updatedStats.monthlyStats[month].expenses = 0;
+                }
+                
+                updatedStats.monthlyStats[month].expenses += parseFloat(expense.amount);
+                
+                // Recalculate profit
+                updatedStats.monthlyStats[month].profit = 
+                  updatedStats.monthlyStats[month].revenue - updatedStats.monthlyStats[month].expenses;
+              }
+            });
+          }
+          
+          setRealStats(updatedStats);
           return;
         }
         
@@ -163,9 +200,9 @@ const Reports = () => {
     };
     
     calculateStats();
-  }, [isGymOwner, user, users, expenses, authFetch]);
+  }, [isGymOwner, user, users, expenses, authFetch, currentYear]);
 
-  // Load expenses from localStorage or API
+  // Load expenses from API with localStorage fallback
   useEffect(() => {
     if (!isGymOwner || !user) return;
     
@@ -173,34 +210,59 @@ const Reports = () => {
       setIsLoading(true);
       
       try {
-        // Try to load from localStorage first (as a fallback)
+        console.log('Loading expenses for gym owner:', user._id);
+        
+        // Try to fetch from API first
+        try {
+          const response = await authFetch('/expenses');
+          
+          if (response.success && response.data?.expenses) {
+            console.log('Expenses loaded from API:', response.data.expenses.length);
+            setExpenses(response.data.expenses);
+            
+            // Calculate total expenses
+            const total = response.data.expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+            setTotalExpenses(total);
+            
+            // Also update localStorage as a backup
+            localStorage.setItem(`gym_expenses_${user._id}`, JSON.stringify(response.data.expenses));
+            return;
+          }
+        } catch (apiError) {
+          console.error('Error fetching expenses from API:', apiError);
+          // Fall back to localStorage if API fails
+        }
+        
+        // Try to load from localStorage as fallback
         const storedExpenses = localStorage.getItem(`gym_expenses_${user._id}`);
         
         if (storedExpenses) {
+          console.log('Expenses loaded from localStorage');
           const parsedExpenses = JSON.parse(storedExpenses);
           setExpenses(parsedExpenses);
           
           // Calculate total expenses
           const total = parsedExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
           setTotalExpenses(total);
-        } else {
-          // If no local data, try to fetch from API (if implemented)
+          
+          // Try to sync with server in the background
           try {
-            const response = await authFetch('/expenses');
-            
-            if (response.success && response.data?.expenses) {
-              setExpenses(response.data.expenses);
-              
-              // Calculate total expenses
-              const total = response.data.expenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
-              setTotalExpenses(total);
-            }
-          } catch (apiError) {
-            console.error('Error fetching expenses:', apiError);
-            // Initialize with empty array if API fails
-            setExpenses([]);
-            setTotalExpenses(0);
+            await authFetch('/expenses/sync', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ expenses: parsedExpenses })
+            });
+            console.log('Expenses synced with server');
+          } catch (syncError) {
+            console.error('Error syncing expenses with server:', syncError);
           }
+        } else {
+          // Initialize with empty array if no data found
+          console.log('No expenses found, initializing empty array');
+          setExpenses([]);
+          setTotalExpenses(0);
         }
       } catch (error) {
         console.error('Error loading expenses:', error);
@@ -330,7 +392,7 @@ const Reports = () => {
   }, [isSuperAdmin, user, authFetch, currentMonth, currentYear]);
 
   // Handle adding a new expense
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!newExpense.description || !newExpense.amount) {
       toast.error('Please fill in all required fields');
       return;
@@ -342,54 +404,161 @@ const Reports = () => {
       return;
     }
     
-    const expenseToAdd = {
-      id: Date.now().toString(),
-      ...newExpense,
-      amount: parseFloat(newExpense.amount)
-    };
+    // Show loading state
+    setIsLoading(true);
     
-    const updatedExpenses = [...expenses, expenseToAdd];
-    setExpenses(updatedExpenses);
-    
-    // Update total
-    const newTotal = totalExpenses + parseFloat(newExpense.amount);
-    setTotalExpenses(newTotal);
-    
-    // Save to localStorage
-    if (user) {
-      localStorage.setItem(`gym_expenses_${user._id}`, JSON.stringify(updatedExpenses));
+    try {
+      const expenseToAdd = {
+        id: Date.now().toString(),
+        ...newExpense,
+        amount: parseFloat(newExpense.amount),
+        gymOwnerId: user._id,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Try to save to API first
+      let savedExpense = expenseToAdd;
+      try {
+        const response = await authFetch('/expenses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(expenseToAdd)
+        });
+        
+        if (response.success && response.data?.expense) {
+          // Use the expense returned from the server (it might have a different ID)
+          savedExpense = response.data.expense;
+          console.log('Expense saved to server:', savedExpense);
+        }
+      } catch (apiError) {
+        console.error('Error saving expense to API:', apiError);
+        // Continue with local saving if API fails
+      }
+      
+      // Update local state
+      const updatedExpenses = [...expenses, savedExpense];
+      setExpenses(updatedExpenses);
+      
+      // Update total
+      const newTotal = totalExpenses + parseFloat(savedExpense.amount);
+      setTotalExpenses(newTotal);
+      
+      // Save to localStorage as backup
+      if (user) {
+        localStorage.setItem(`gym_expenses_${user._id}`, JSON.stringify(updatedExpenses));
+      }
+      
+      // Reset form
+      setNewExpense({
+        date: new Date().toISOString().split('T')[0],
+        category: "utilities",
+        description: "",
+        amount: ""
+      });
+      
+      setIsAddingExpense(false);
+      toast.success('Expense added successfully');
+      
+      // Update monthly stats
+      const expenseDate = new Date(savedExpense.date);
+      const expenseMonth = expenseDate.getMonth() + 1;
+      const expenseYear = expenseDate.getFullYear();
+      
+      if (expenseYear === currentYear) {
+        setRealStats(prevStats => {
+          const updatedMonthlyStats = { ...prevStats.monthlyStats };
+          
+          if (!updatedMonthlyStats[expenseMonth]) {
+            updatedMonthlyStats[expenseMonth] = {
+              newMembers: 0,
+              revenue: 0,
+              expenses: 0,
+              profit: 0
+            };
+          }
+          
+          updatedMonthlyStats[expenseMonth].expenses += parseFloat(savedExpense.amount);
+          updatedMonthlyStats[expenseMonth].profit = 
+            updatedMonthlyStats[expenseMonth].revenue - updatedMonthlyStats[expenseMonth].expenses;
+          
+          return {
+            ...prevStats,
+            monthlyStats: updatedMonthlyStats
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Error adding expense:', error);
+      toast.error('Failed to add expense. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Reset form
-    setNewExpense({
-      date: new Date().toISOString().split('T')[0],
-      category: "utilities",
-      description: "",
-      amount: ""
-    });
-    
-    setIsAddingExpense(false);
-    toast.success('Expense added successfully');
   };
 
   // Handle deleting an expense
-  const handleDeleteExpense = (id) => {
+  const handleDeleteExpense = async (id) => {
     const expenseToDelete = expenses.find(e => e.id === id);
     if (!expenseToDelete) return;
     
-    const updatedExpenses = expenses.filter(e => e.id !== id);
-    setExpenses(updatedExpenses);
+    // Show loading state
+    setIsLoading(true);
     
-    // Update total
-    const newTotal = totalExpenses - parseFloat(expenseToDelete.amount);
-    setTotalExpenses(newTotal);
-    
-    // Save to localStorage
-    if (user) {
-      localStorage.setItem(`gym_expenses_${user._id}`, JSON.stringify(updatedExpenses));
+    try {
+      // Try to delete from API first
+      try {
+        await authFetch(`/expenses/${id}`, {
+          method: 'DELETE'
+        });
+        console.log('Expense deleted from server:', id);
+      } catch (apiError) {
+        console.error('Error deleting expense from API:', apiError);
+        // Continue with local deletion if API fails
+      }
+      
+      // Update local state
+      const updatedExpenses = expenses.filter(e => e.id !== id);
+      setExpenses(updatedExpenses);
+      
+      // Update total
+      const newTotal = totalExpenses - parseFloat(expenseToDelete.amount);
+      setTotalExpenses(newTotal);
+      
+      // Save to localStorage as backup
+      if (user) {
+        localStorage.setItem(`gym_expenses_${user._id}`, JSON.stringify(updatedExpenses));
+      }
+      
+      toast.success('Expense deleted successfully');
+      
+      // Update monthly stats
+      const expenseDate = new Date(expenseToDelete.date);
+      const expenseMonth = expenseDate.getMonth() + 1;
+      const expenseYear = expenseDate.getFullYear();
+      
+      if (expenseYear === currentYear) {
+        setRealStats(prevStats => {
+          const updatedMonthlyStats = { ...prevStats.monthlyStats };
+          
+          if (updatedMonthlyStats[expenseMonth]) {
+            updatedMonthlyStats[expenseMonth].expenses -= parseFloat(expenseToDelete.amount);
+            updatedMonthlyStats[expenseMonth].profit = 
+              updatedMonthlyStats[expenseMonth].revenue - updatedMonthlyStats[expenseMonth].expenses;
+          }
+          
+          return {
+            ...prevStats,
+            monthlyStats: updatedMonthlyStats
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      toast.error('Failed to delete expense. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-    
-    toast.success('Expense deleted successfully');
   };
 
   // Format currency in INR
@@ -1153,9 +1322,16 @@ const Reports = () => {
                         <Button 
                           className="ml-2 bg-green-600 hover:bg-green-700"
                           onClick={handleAddExpense}
+                          disabled={isLoading}
                         >
-                          <Save className="h-4 w-4 mr-2" />
-                          Save
+                          {isLoading ? (
+                            <>Saving...</>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              Save
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -1163,19 +1339,113 @@ const Reports = () => {
                 </div>
               )}
               
-              {/* Expenses Table */}
-              <div className="rounded-md border border-gray-700 overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gray-700 hover:bg-gray-800/50">
-                      <TableHead className="text-gray-300">Date</TableHead>
-                      <TableHead className="text-gray-300">Category</TableHead>
-                      <TableHead className="text-gray-300">Description</TableHead>
-                      <TableHead className="text-gray-300 text-right">Amount</TableHead>
-                      <TableHead className="text-gray-300 w-[80px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              {/* Expense History Section */}
+              <div className="mb-6 bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-white font-medium">Expense History</h3>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-gray-400 text-sm">
+                      {reportPeriod === "monthly" 
+                        ? `${new Date(currentYear, currentMonth - 1).toLocaleString('default', { month: 'long' })} ${currentYear}`
+                        : reportPeriod === "yearly" 
+                          ? `${currentYear}` 
+                          : "All Time"}
+                    </span>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="h-8 border-gray-600 text-gray-300 hover:bg-gray-700"
+                      onClick={generateExpenseReport}
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1" />
+                      Export
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Expenses Table */}
+                <div className="rounded-md border border-gray-700 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-700 hover:bg-gray-800/50">
+                        <TableHead className="text-gray-300">Date</TableHead>
+                        <TableHead className="text-gray-300">Category</TableHead>
+                        <TableHead className="text-gray-300">Description</TableHead>
+                        <TableHead className="text-gray-300 text-right">Amount</TableHead>
+                        <TableHead className="text-gray-300 w-[80px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(() => {
+                        // Filter expenses based on selected period
+                        let filteredExpenses = [...expenses];
+                        
+                        if (reportPeriod === "monthly") {
+                          filteredExpenses = expenses.filter(expense => {
+                            const expenseDate = new Date(expense.date);
+                            return expenseDate.getMonth() + 1 === currentMonth && 
+                                  expenseDate.getFullYear() === currentYear;
+                          });
+                        } else if (reportPeriod === "yearly") {
+                          filteredExpenses = expenses.filter(expense => {
+                            const expenseDate = new Date(expense.date);
+                            return expenseDate.getFullYear() === currentYear;
+                          });
+                        }
+                        
+                        if (filteredExpenses.length === 0) {
+                          return (
+                            <TableRow className="border-gray-700">
+                              <TableCell colSpan={5} className="text-center py-6 text-gray-400">
+                                {expenses.length === 0 
+                                  ? "No expenses recorded yet. Click \"Add Expense\" to get started."
+                                  : `No expenses found for the selected ${reportPeriod === "monthly" ? "month" : "year"}.`
+                                }
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        
+                        // Sort expenses by date (newest first)
+                        return filteredExpenses
+                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .map((expense) => (
+                            <TableRow key={expense.id} className="border-gray-700 hover:bg-gray-800/30">
+                              <TableCell className="text-white">
+                                {new Date(expense.date).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </TableCell>
+                              <TableCell className="text-white capitalize">{expense.category}</TableCell>
+                              <TableCell className="text-white">{expense.description}</TableCell>
+                              <TableCell className="text-white text-right">{formatINR(parseFloat(expense.amount))}</TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? (
+                                    <span className="h-4 w-4 animate-spin">•</span>
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ));
+                      })()}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {/* Expense Summary */}
+                <div className="mt-4 flex justify-between items-center">
+                  <div className="text-sm text-gray-400">
                     {(() => {
                       // Filter expenses based on selected period
                       let filteredExpenses = [...expenses];
@@ -1193,51 +1463,70 @@ const Reports = () => {
                         });
                       }
                       
-                      if (filteredExpenses.length === 0) {
-                        return (
-                          <TableRow className="border-gray-700">
-                            <TableCell colSpan={5} className="text-center py-6 text-gray-400">
-                              {expenses.length === 0 
-                                ? "No expenses recorded yet. Click \"Add Expense\" to get started."
-                                : `No expenses found for the selected ${reportPeriod === "monthly" ? "month" : "year"}.`
-                              }
-                            </TableCell>
-                          </TableRow>
-                        );
-                      }
-                      
-                      // Sort expenses by date (newest first)
-                      return filteredExpenses
-                        .sort((a, b) => new Date(b.date) - new Date(a.date))
-                        .map((expense) => (
-                          <TableRow key={expense.id} className="border-gray-700 hover:bg-gray-800/30">
-                            <TableCell className="text-white">{expense.date}</TableCell>
-                            <TableCell className="text-white capitalize">{expense.category}</TableCell>
-                            <TableCell className="text-white">{expense.description}</TableCell>
-                            <TableCell className="text-white text-right">{formatINR(parseFloat(expense.amount))}</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                                onClick={() => handleDeleteExpense(expense.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ));
+                      return `Showing ${filteredExpenses.length} expense${filteredExpenses.length !== 1 ? 's' : ''}`;
                     })()}
-                  </TableBody>
-                </Table>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-gray-400 mr-2">Total:</span>
+                    <span className="text-white font-medium">
+                      {(() => {
+                        // Filter expenses based on selected period
+                        let filteredExpenses = [...expenses];
+                        
+                        if (reportPeriod === "monthly") {
+                          filteredExpenses = expenses.filter(expense => {
+                            const expenseDate = new Date(expense.date);
+                            return expenseDate.getMonth() + 1 === currentMonth && 
+                                  expenseDate.getFullYear() === currentYear;
+                          });
+                        } else if (reportPeriod === "yearly") {
+                          filteredExpenses = expenses.filter(expense => {
+                            const expenseDate = new Date(expense.date);
+                            return expenseDate.getFullYear() === currentYear;
+                          });
+                        }
+                        
+                        const total = filteredExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+                        return formatINR(total);
+                      })()}
+                    </span>
+                  </div>
+                </div>
               </div>
               
               {/* Monthly Expense Summary */}
-              {reportPeriod === "monthly" && expenses.length > 0 && (
+              {reportPeriod === "monthly" && (
                 <div className="mt-6 bg-gray-700/30 p-4 rounded-lg">
                   <h3 className="text-white font-medium mb-4">
-                    {new Date(currentYear, currentMonth - 1).toLocaleString('default', { month: 'long' })} {currentYear} Expense Summary
+                    {new Date(currentYear, currentMonth - 1).toLocaleString('default', { month: 'long' })} {currentYear} Financial Summary
                   </h3>
+                  
+                  {/* Monthly Profit Calculation */}
+                  <div className="mb-6 bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                    <h4 className="text-white font-medium mb-3">Monthly Profit Calculation</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-800">
+                        <p className="text-gray-300 text-sm">Revenue</p>
+                        <p className="text-xl font-bold text-white">
+                          {formatINR(realStats.monthlyStats[currentMonth]?.revenue || 0)}
+                        </p>
+                      </div>
+                      <div className="bg-red-900/20 p-3 rounded-lg border border-red-800">
+                        <p className="text-gray-300 text-sm">Expenses</p>
+                        <p className="text-xl font-bold text-white">
+                          {formatINR(realStats.monthlyStats[currentMonth]?.expenses || 0)}
+                        </p>
+                      </div>
+                      <div className="bg-green-900/20 p-3 rounded-lg border border-green-800">
+                        <p className="text-gray-300 text-sm">Profit</p>
+                        <p className="text-xl font-bold text-white">
+                          {formatINR((realStats.monthlyStats[currentMonth]?.revenue || 0) - 
+                                    (realStats.monthlyStats[currentMonth]?.expenses || 0))}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <h4 className="text-gray-300 text-sm mb-2">Expenses by Category</h4>
@@ -1313,6 +1602,227 @@ const Reports = () => {
                             })()}
                           </span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Monthly Revenue</span>
+                          <span className="text-white font-medium">
+                            {formatINR(realStats.monthlyStats[currentMonth]?.revenue || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Monthly Profit</span>
+                          <span className="text-white font-medium">
+                            {(() => {
+                              const monthlyExpenses = expenses.filter(expense => {
+                                const expenseDate = new Date(expense.date);
+                                return expenseDate.getMonth() + 1 === currentMonth && 
+                                      expenseDate.getFullYear() === currentYear;
+                              });
+                              
+                              const totalExpense = monthlyExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+                              const monthlyRevenue = realStats.monthlyStats[currentMonth]?.revenue || 0;
+                              const profit = monthlyRevenue - totalExpense;
+                              
+                              return formatINR(profit);
+                            })()}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Daily Expenses for Current Month */}
+                      <h4 className="text-gray-300 text-sm mt-4 mb-2">Daily Expenses</h4>
+                      <div className="max-h-60 overflow-y-auto pr-2">
+                        {(() => {
+                          // Group expenses by day for the selected month
+                          const monthlyExpenses = expenses.filter(expense => {
+                            const expenseDate = new Date(expense.date);
+                            return expenseDate.getMonth() + 1 === currentMonth && 
+                                  expenseDate.getFullYear() === currentYear;
+                          });
+                          
+                          // Group by date
+                          const expensesByDay = {};
+                          monthlyExpenses.forEach(expense => {
+                            if (!expensesByDay[expense.date]) {
+                              expensesByDay[expense.date] = [];
+                            }
+                            expensesByDay[expense.date].push(expense);
+                          });
+                          
+                          if (Object.keys(expensesByDay).length === 0) {
+                            return <p className="text-gray-400">No daily expenses recorded</p>;
+                          }
+                          
+                          // Sort dates in descending order (newest first)
+                          const sortedDates = Object.keys(expensesByDay).sort((a, b) => 
+                            new Date(b) - new Date(a)
+                          );
+                          
+                          return (
+                            <div className="space-y-3">
+                              {sortedDates.map(date => {
+                                const dayExpenses = expensesByDay[date];
+                                const totalForDay = dayExpenses.reduce(
+                                  (sum, expense) => sum + parseFloat(expense.amount), 0
+                                );
+                                
+                                const formattedDate = new Date(date).toLocaleDateString('en-US', {
+                                  weekday: 'short',
+                                  month: 'short',
+                                  day: 'numeric'
+                                });
+                                
+                                return (
+                                  <div key={date} className="bg-gray-800/50 p-2 rounded border border-gray-700">
+                                    <div className="flex justify-between items-center mb-1">
+                                      <span className="text-white font-medium">{formattedDate}</span>
+                                      <span className="text-white">{formatINR(totalForDay)}</span>
+                                    </div>
+                                    <div className="text-xs space-y-1">
+                                      {dayExpenses.map((expense, idx) => (
+                                        <div key={idx} className="flex justify-between text-gray-400">
+                                          <span className="capitalize">{expense.category}: {expense.description}</span>
+                                          <span>{formatINR(parseFloat(expense.amount))}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Yearly Expense Summary */}
+              {reportPeriod === "yearly" && (
+                <div className="mt-6 bg-gray-700/30 p-4 rounded-lg">
+                  <h3 className="text-white font-medium mb-4">
+                    {currentYear} Financial Summary
+                  </h3>
+                  
+                  {/* Yearly Profit Calculation */}
+                  <div className="mb-6 bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                    <h4 className="text-white font-medium mb-3">Yearly Profit Calculation</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {(() => {
+                        // Calculate yearly totals
+                        let yearlyRevenue = 0;
+                        let yearlyExpenses = 0;
+                        
+                        for (let month = 1; month <= 12; month++) {
+                          if (realStats.monthlyStats[month]) {
+                            yearlyRevenue += realStats.monthlyStats[month].revenue || 0;
+                            yearlyExpenses += realStats.monthlyStats[month].expenses || 0;
+                          }
+                        }
+                        
+                        const yearlyProfit = yearlyRevenue - yearlyExpenses;
+                        
+                        return (
+                          <>
+                            <div className="bg-blue-900/20 p-3 rounded-lg border border-blue-800">
+                              <p className="text-gray-300 text-sm">Total Revenue</p>
+                              <p className="text-xl font-bold text-white">{formatINR(yearlyRevenue)}</p>
+                            </div>
+                            <div className="bg-red-900/20 p-3 rounded-lg border border-red-800">
+                              <p className="text-gray-300 text-sm">Total Expenses</p>
+                              <p className="text-xl font-bold text-white">{formatINR(yearlyExpenses)}</p>
+                            </div>
+                            <div className="bg-green-900/20 p-3 rounded-lg border border-green-800">
+                              <p className="text-gray-300 text-sm">Total Profit</p>
+                              <p className="text-xl font-bold text-white">{formatINR(yearlyProfit)}</p>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-gray-300 text-sm mb-2">Expenses by Category</h4>
+                      {(() => {
+                        // Filter expenses for the selected year
+                        const yearlyExpenses = expenses.filter(expense => {
+                          const expenseDate = new Date(expense.date);
+                          return expenseDate.getFullYear() === currentYear;
+                        });
+                        
+                        // Group by category
+                        const expensesByCategory = yearlyExpenses.reduce((acc, expense) => {
+                          const category = expense.category;
+                          if (!acc[category]) {
+                            acc[category] = 0;
+                          }
+                          acc[category] += parseFloat(expense.amount);
+                          return acc;
+                        }, {});
+                        
+                        if (Object.keys(expensesByCategory).length === 0) {
+                          return <p className="text-gray-400">No expenses for this year</p>;
+                        }
+                        
+                        return (
+                          <div className="space-y-2">
+                            {Object.entries(expensesByCategory).map(([category, amount], index) => (
+                              <div key={index} className="flex justify-between">
+                                <span className="text-white capitalize">{category}</span>
+                                <span className="text-white">{formatINR(amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-gray-300 text-sm mb-2">Monthly Breakdown</h4>
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                        {(() => {
+                          // Calculate expenses by month
+                          const expensesByMonth = {};
+                          
+                          // Initialize all months
+                          for (let month = 1; month <= 12; month++) {
+                            expensesByMonth[month] = 0;
+                          }
+                          
+                          // Sum expenses by month
+                          expenses.forEach(expense => {
+                            const expenseDate = new Date(expense.date);
+                            if (expenseDate.getFullYear() === currentYear) {
+                              const month = expenseDate.getMonth() + 1;
+                              expensesByMonth[month] += parseFloat(expense.amount);
+                            }
+                          });
+                          
+                          // Check if there are any expenses
+                          const hasExpenses = Object.values(expensesByMonth).some(amount => amount > 0);
+                          
+                          if (!hasExpenses) {
+                            return <p className="text-gray-400">No expenses recorded for this year</p>;
+                          }
+                          
+                          return (
+                            <div className="space-y-2">
+                              {Object.entries(expensesByMonth).map(([month, amount]) => {
+                                const monthName = new Date(currentYear, parseInt(month) - 1, 1)
+                                  .toLocaleString('default', { month: 'long' });
+                                
+                                return (
+                                  <div key={month} className="flex justify-between">
+                                    <span className="text-white">{monthName}</span>
+                                    <span className="text-white">{formatINR(amount)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

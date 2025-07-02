@@ -65,21 +65,50 @@ export const createWorkout = async (req, res) => {
   }
 };
 
-// Get all workouts (admin only)
+// Get all workouts (admin, gym-owner, and trainer)
 export const getAllWorkouts = async (req, res) => {
   try {
-    // Check if user is admin or super-admin
-    if (req.user.role !== 'super-admin' && req.user.role !== 'gym-owner') {
+    let workouts = [];
+    
+    if (req.user.role === 'super-admin') {
+      // Super admin can see all workouts
+      workouts = await Workout.find()
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else if (req.user.role === 'gym-owner') {
+      // Gym owner can see workouts from their trainers
+      const trainers = await User.find({ 
+        role: 'trainer',
+        $or: [
+          { gym: req.user._id },
+          { createdBy: req.user._id }
+        ]
+      });
+      
+      const trainerIds = trainers.map(trainer => trainer._id);
+      
+      workouts = await Workout.find({ 
+        $or: [
+          { gym: req.user._id },
+          { trainer: { $in: trainerIds } }
+        ]
+      })
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else if (req.user.role === 'trainer') {
+      // Trainer can only see their own workouts
+      workouts = await Workout.find({ trainer: req.user._id })
+        .populate('trainer', 'name email')
+        .populate('assignedTo', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
       });
     }
-    
-    const workouts = await Workout.find()
-      .populate('trainer', 'name email')
-      .populate('assignedTo', 'name email')
-      .sort({ createdAt: -1 });
     
     res.status(200).json({
       success: true,
@@ -251,9 +280,42 @@ export const getWorkoutsByMember = async (req, res) => {
       });
     }
     
-    const workouts = await Workout.find({ assignedTo: memberId })
-      .populate('trainer', 'name email')
-      .sort({ createdAt: -1 });
+    // Get the member details to find their assigned trainer
+    const member = await User.findById(memberId);
+    if (!member || member.role !== 'member') {
+      return res.status(404).json({
+        success: false,
+        message: 'Member not found'
+      });
+    }
+    
+    let workouts = [];
+    
+    // If member has an assigned trainer, show all workouts from that trainer
+    if (member.assignedTrainer) {
+      workouts = await Workout.find({ trainer: member.assignedTrainer })
+        .populate('trainer', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
+      // If no assigned trainer, show workouts from all trainers in the same gym
+      const gymOwnerId = member.createdBy || member.gym;
+      if (gymOwnerId) {
+        // Find all trainers in the same gym
+        const trainers = await User.find({ 
+          role: 'trainer',
+          $or: [
+            { gym: gymOwnerId },
+            { createdBy: gymOwnerId }
+          ]
+        });
+        
+        const trainerIds = trainers.map(trainer => trainer._id);
+        
+        workouts = await Workout.find({ trainer: { $in: trainerIds } })
+          .populate('trainer', 'name email')
+          .sort({ createdAt: -1 });
+      }
+    }
     
     res.status(200).json({
       success: true,
@@ -498,6 +560,110 @@ export const markWorkoutCompleted = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to mark workout as completed',
+      error: error.message
+    });
+  }
+};
+
+// Assign workout to members
+export const assignWorkout = async (req, res) => {
+  try {
+    const { workoutId } = req.params;
+    const { memberIds } = req.body;
+    
+    // Validate workout ID
+    if (!mongoose.Types.ObjectId.isValid(workoutId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid workout ID'
+      });
+    }
+    
+    // Validate member IDs
+    if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide valid member IDs'
+      });
+    }
+    
+    // Find the workout
+    const workout = await Workout.findById(workoutId);
+    
+    if (!workout) {
+      return res.status(404).json({
+        success: false,
+        message: 'Workout not found'
+      });
+    }
+    
+    // Check if user is authorized to assign this workout
+    if (req.user.role !== 'super-admin' && 
+        req.user.role !== 'gym-owner' && 
+        req.user._id.toString() !== workout.trainer.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+    
+    // Verify all member IDs are valid
+    const validMemberIds = [];
+    for (const memberId of memberIds) {
+      if (mongoose.Types.ObjectId.isValid(memberId)) {
+        const member = await User.findById(memberId);
+        if (member && member.role === 'member') {
+          validMemberIds.push(memberId);
+        }
+      }
+    }
+    
+    if (validMemberIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid members found'
+      });
+    }
+    
+    // Create individual workout assignments for each member
+    const assignedWorkouts = [];
+    
+    for (const memberId of validMemberIds) {
+      // Create a copy of the workout for each member
+      const assignedWorkout = new Workout({
+        title: workout.title,
+        type: workout.type,
+        focus: workout.focus,
+        description: workout.description,
+        videoLink: workout.videoLink,
+        duration: workout.duration,
+        exercises: workout.exercises,
+        notes: workout.notes,
+        trainer: workout.trainer,
+        trainerName: workout.trainerName,
+        gym: workout.gym,
+        assignedTo: memberId,
+        isCompleted: false,
+        createdAt: new Date()
+      });
+      
+      const savedWorkout = await assignedWorkout.save();
+      assignedWorkouts.push(savedWorkout);
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: `Workout assigned to ${validMemberIds.length} member${validMemberIds.length !== 1 ? 's' : ''}`,
+      data: { 
+        assignedWorkouts,
+        assignedCount: validMemberIds.length
+      }
+    });
+  } catch (error) {
+    console.error('Error assigning workout:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to assign workout',
       error: error.message
     });
   }

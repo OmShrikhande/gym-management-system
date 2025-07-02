@@ -127,7 +127,41 @@ export const getMonthlyGymOwnerStats = catchAsync(async (req, res, next) => {
 // Get all users (admin only)
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find();
+    let users = [];
+    
+    // If super-admin, return all users
+    if (req.user.role === 'super-admin') {
+      users = await User.find();
+    } 
+    // If gym-owner, only return users created by this gym owner
+    else if (req.user.role === 'gym-owner') {
+      // Get trainers created by this gym owner
+      const trainers = await User.find({ 
+        createdBy: req.user.id,
+        role: 'trainer'
+      });
+      
+      // Get members created by this gym owner
+      const members = await User.find({ 
+        createdBy: req.user.id,
+        role: 'member'
+      });
+      
+      // For gym owners, only include their own members and trainers
+      users = [...trainers, ...members];
+    }
+    // If trainer, only return members assigned to this trainer
+    else if (req.user.role === 'trainer') {
+      const members = await User.find({
+        assignedTrainer: req.user.id,
+        role: 'member'
+      });
+      
+      users = members;
+    } else {
+      // For other roles, return an empty array
+      users = [];
+    }
     
     res.status(200).json({
       status: 'success',
@@ -148,12 +182,61 @@ export const getAllUsers = async (req, res) => {
 // Get a single user by ID (admin only)
 export const getUser = async (req, res) => {
   try {
+    // Debug: Log the received ID parameter
+    console.log('getUser - Received ID:', req.params.id, 'Type:', typeof req.params.id);
+    
+    // Validate that the ID is a valid ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log('getUser - Invalid ObjectId format:', req.params.id);
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid user ID format'
+      });
+    }
+    
     const user = await User.findById(req.params.id);
     
     if (!user) {
       return res.status(404).json({
         status: 'fail',
         message: 'User not found'
+      });
+    }
+    
+    // Check if the requesting user has permission to view this user
+    // Users can view their own details
+    const isOwnProfile = req.user.id === req.params.id;
+    
+    // Gym owners can view users they created
+    const isGymOwnerCreator = req.user.role === 'gym-owner' && 
+                             user.createdBy && 
+                             user.createdBy.toString() === req.user.id;
+    
+    // Trainers can view members assigned to them
+    const isAssignedTrainer = req.user.role === 'trainer' && 
+                             user.role === 'member' && 
+                             user.assignedTrainer && 
+                             user.assignedTrainer.toString() === req.user.id;
+    
+    // Members can view their assigned trainer
+    const isMyTrainer = req.user.role === 'member' && 
+                       user.role === 'trainer' && 
+                       req.user.assignedTrainer && 
+                       req.user.assignedTrainer.toString() === req.params.id;
+    
+    // Members can view gym owner who created them (for gym info)
+    const isMyGymOwner = req.user.role === 'member' && 
+                        user.role === 'gym-owner' && 
+                        req.user.createdBy && 
+                        req.user.createdBy.toString() === req.params.id;
+    
+    // Super admin can view all users
+    const isSuperAdmin = req.user.role === 'super-admin';
+    
+    if (!isOwnProfile && !isGymOwnerCreator && !isAssignedTrainer && !isMyTrainer && !isMyGymOwner && !isSuperAdmin) {
+      return res.status(403).json({
+        status: 'fail',
+        message: 'You do not have permission to view this user'
       });
     }
     
@@ -282,12 +365,24 @@ export const getUserDetails = async (req, res) => {
     }
     
     // Check if the requesting user has permission to view this user's details
-    // Users can view their own details, gym owners can view their members, trainers can view their assigned members
+    // Users can view their own details
     const isOwnProfile = req.user.id === req.params.id;
-    const isGymOwner = req.user.role === 'gym-owner' && user.createdBy && user.createdBy.toString() === req.user.id;
-    const isTrainer = req.user.role === 'trainer' && user.assignedTrainer && user.assignedTrainer.toString() === req.user.id;
     
-    if (!isOwnProfile && !isGymOwner && !isTrainer && req.user.role !== 'super-admin') {
+    // Gym owners can view users they created
+    const isGymOwnerCreator = req.user.role === 'gym-owner' && 
+                             user.createdBy && 
+                             user.createdBy.toString() === req.user.id;
+    
+    // Trainers can view members assigned to them
+    const isAssignedTrainer = req.user.role === 'trainer' && 
+                             user.role === 'member' && 
+                             user.assignedTrainer && 
+                             user.assignedTrainer.toString() === req.user.id;
+    
+    // Super admin can view all users
+    const isSuperAdmin = req.user.role === 'super-admin';
+    
+    if (!isOwnProfile && !isGymOwnerCreator && !isAssignedTrainer && !isSuperAdmin) {
       return res.status(403).json({
         status: 'fail',
         message: 'You do not have permission to view this user\'s details'
@@ -445,12 +540,8 @@ export const getGymOwnerMembers = async (req, res) => {
       }
     }
     
-    // If still no members, return all members as a fallback
-    if (members.length === 0) {
-      console.log('No members found for this gym owner, returning all members as fallback');
-      members = await User.find({ role: 'member' }).limit(20);
-      console.log(`Returning ${members.length} members as fallback`);
-    }
+    // Return empty array if no members found - DO NOT return all members as fallback
+    // This ensures gym owners only see their own members
     
     res.status(200).json({
       status: 'success',
@@ -510,9 +601,13 @@ export const getTrainerMembers = async (req, res) => {
     }
     
     // Check if the requesting user is authorized
-    if (req.user.role !== 'super-admin' && 
-        req.user.role !== 'gym-owner' && 
-        req.user._id.toString() !== trainerId) {
+    // Only allow super-admin, the gym owner who created this trainer, or the trainer themselves
+    const isAuthorized = 
+      req.user.role === 'super-admin' || 
+      (req.user.role === 'gym-owner' && trainer.createdBy && trainer.createdBy.toString() === req.user.id) ||
+      req.user._id.toString() === trainerId;
+      
+    if (!isAuthorized) {
       return res.status(403).json({
         status: 'fail',
         message: 'You are not authorized to access this data'
@@ -567,13 +662,10 @@ export const getTrainersByGym = async (req, res) => {
       });
     }
     
-    // Find all trainers associated with this gym
+    // Find all trainers associated with this gym (created by this gym owner)
     const trainers = await User.find({ 
       role: 'trainer',
-      $or: [
-        { gym: gymId },
-        { createdBy: gymId }
-      ]
+      createdBy: gymId
     }).select('name email _id');
     
     res.status(200).json({

@@ -181,10 +181,6 @@ function UserManagement() {
     gymName: ''
   });
   
-  // Add dialogs to the component
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
@@ -218,7 +214,8 @@ function UserManagement() {
     setMessage({ type: 'info', text: 'Updating user...' });
     
     try {
-      const API_URL = 'http://localhost:8081/api';
+      console.log('Updating user:', selectedUser._id, selectedUser.name);
+      
       const updateData = { ...editFormData };
       
       // Only include password if it was changed
@@ -226,7 +223,8 @@ function UserManagement() {
         delete updateData.password;
       }
       
-      const response = await authFetch(`${API_URL}/users/${selectedUser._id}`, {
+      // Use authFetch directly with the relative path
+      const response = await authFetch(`/users/${selectedUser._id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
@@ -234,16 +232,21 @@ function UserManagement() {
         body: JSON.stringify(updateData)
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update user');
+      console.log('Update response:', response);
+      
+      // Check if the response indicates success
+      if (response.success === false || response.status === 'error') {
+        throw new Error(response.message || 'Failed to update user');
       }
       
-      toast.success('User updated successfully');
+      toast.success(`${selectedUser.name} updated successfully`);
       setShowEditDialog(false);
-      fetchUsers();
+      
+      // Force refresh the users list
+      await fetchUsers(true);
     } catch (error) {
       console.error('Error updating user:', error);
+      toast.error(error.message || 'Failed to update user');
       setMessage({ type: 'error', text: error.message || 'Failed to update user' });
     } finally {
       setIsLoading(false);
@@ -258,21 +261,28 @@ function UserManagement() {
     setMessage({ type: 'info', text: 'Deleting user...' });
     
     try {
-      const API_URL = 'http://localhost:8081/api';
-      const response = await authFetch(`${API_URL}/users/${selectedUser._id}`, {
+      console.log('Deleting user:', selectedUser._id, selectedUser.name);
+      
+      // Use authFetch directly with the relative path
+      const response = await authFetch(`/users/${selectedUser._id}`, {
         method: 'DELETE'
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete user');
+      console.log('Delete response:', response);
+      
+      // Check if the response indicates success
+      if (response.success === false || response.status === 'error') {
+        throw new Error(response.message || 'Failed to delete user');
       }
       
-      toast.success('User deleted successfully');
+      toast.success(`${selectedUser.name} deleted successfully`);
       setShowDeleteDialog(false);
-      fetchUsers();
+      
+      // Force refresh the users list
+      await fetchUsers(true);
     } catch (error) {
       console.error('Error deleting user:', error);
+      toast.error(error.message || 'Failed to delete user');
       setMessage({ type: 'error', text: error.message || 'Failed to delete user' });
     } finally {
       setIsLoading(false);
@@ -724,6 +734,7 @@ function UserManagement() {
                                 className="text-red-400 hover:text-red-300 cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  console.log('Delete clicked for user:', user._id, user.name);
                                   handleDeleteClick(user);
                                 }}
                               >

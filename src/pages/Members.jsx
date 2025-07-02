@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Users, User, Edit, Trash2, Calendar, Target, X, AlertCircle, CreditCard } from "lucide-react";
+import { Search, Plus, Users, User, Edit, Trash2, Calendar, Target, X, AlertCircle, CreditCard, RefreshCw } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import QRPaymentModal from "@/components/payment/QRPaymentModal";
@@ -67,29 +67,18 @@ const Members = () => {
   // State for gym owner plans
   const [gymOwnerPlans, setGymOwnerPlans] = useState([
     {
-      id: "basic-member",
-      name: "Basic Member",
-      price: 19,
-      duration: "monthly",
-      features: ["Member Management", "Basic Attendance Tracking", "Email Support"],
-      status: "Active"
+      id: 'default-1',
+      name: 'Basic Member',
+      price: 500,
+      duration: 'month',
+      features: ['Standard gym access', 'Basic equipment usage']
     },
     {
-      id: "premium-member",
-      name: "Premium Member",
-      price: 39,
-      duration: "monthly",
-      features: ["All Basic Features", "Fitness Progress Tracking", "Workout Plans", "Priority Support"],
-      status: "Active",
-      recommended: true
-    },
-    {
-      id: "elite-member",
-      name: "Elite Member",
-      price: 79,
-      duration: "monthly",
-      features: ["All Premium Features", "Nutrition Planning", "Personal Training Sessions", "24/7 Support"],
-      status: "Active"
+      id: 'default-2', 
+      name: 'Premium Member',
+      price: 1000,
+      duration: 'month',
+      features: ['Full gym access', 'All equipment', 'Group classes']
     }
   ]);
   
@@ -139,65 +128,90 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
-      // Get current subscription info
-      const hasActiveSubscription = subscription?.hasActiveSubscription || false;
+      console.log('Fetching subscription info for gym owner:', user._id);
+      console.log('Current subscription from context:', subscription);
+      
+      // Set default values first
+      let hasActiveSubscription = subscription?.hasActiveSubscription || false;
+      let plan = subscription?.subscription?.plan || 'Basic';
+      let maxMembers = 200; // Default for Basic plan
+      
+      // Always get the latest subscription status directly from the API
+      // This ensures we have the most up-to-date information after renewal
+      try {
+        const statusResponse = await authFetch(`/subscriptions/status/${user._id}`);
+        console.log('Subscription status response:', statusResponse);
+        
+        // Update active status from the API response if available
+        if (statusResponse) {
+          hasActiveSubscription = statusResponse?.data?.hasActiveSubscription || 
+                                 statusResponse?.hasActiveSubscription || 
+                                 hasActiveSubscription;
+        }
+      } catch (statusError) {
+        console.error('Error fetching subscription status:', statusError);
+        // Continue with the default value from context
+      }
+      
+      console.log('Has active subscription:', hasActiveSubscription);
       
       // Get subscription plan details
       try {
         // Use the authFetch function which already has the API_URL prefix
         const response = await authFetch(`/subscriptions/details/${user._id}`);
+        console.log('Subscription details response:', response);
         
-        if (response.success !== false) {
-          const plan = response.data?.subscription?.plan || 'Basic';
-          
-          // Set max members based on plan
-          let maxMembers = 200; // Default for Basic plan
-          if (plan === 'Premium') maxMembers = 500;
-          if (plan === 'Enterprise') maxMembers = 1000;
-          
-          // Count current members
-          const currentMembers = users.filter(u => u.role === 'member').length;
-          
-          setSubscriptionInfo({
-            maxMembers,
-            currentMembers,
-            hasActiveSubscription,
-            membershipFee: 500 // Default membership fee
-          });
-          return;
+        if (response && (response.success !== false || response.status === 'success')) {
+          const subscriptionData = response.data?.subscription || response.subscription;
+          if (subscriptionData) {
+            plan = subscriptionData.plan || plan;
+          }
         }
       } catch (apiError) {
-        console.error('API error:', apiError);
-        // Continue to fallback
+        console.error('API error fetching subscription details:', apiError);
+        // Continue with the default value from context
       }
       
-      // Fallback if API call fails
-      // Use subscription from context if available
-      const plan = subscription?.subscription?.plan || 'Basic';
+      console.log('Subscription plan:', plan);
       
       // Set max members based on plan
-      let maxMembers = 200; // Default for Basic plan
-      if (plan === 'Premium') maxMembers = 500;
-      if (plan === 'Enterprise') maxMembers = 1000;
+      if (plan === 'Premium' || plan === 'Premium Member') maxMembers = 500;
+      if (plan === 'Enterprise' || plan === 'Elite Member') maxMembers = 1000;
       
       // Count current members
       const currentMembers = users.filter(u => u.role === 'member').length;
       
+      console.log('Max members:', maxMembers, 'Current members:', currentMembers);
+      
+      // Set the subscription info with all the data we've gathered
       setSubscriptionInfo({
         maxMembers,
         currentMembers,
         hasActiveSubscription,
-        membershipFee: 500 // Default membership fee
+        membershipFee: 500, // Default membership fee
+        plan
+      });
+      
+      console.log('Subscription info set:', {
+        maxMembers,
+        currentMembers,
+        hasActiveSubscription,
+        plan
       });
     } catch (error) {
       console.error('Error fetching subscription info:', error);
       // Set default values
-      setSubscriptionInfo({
+      const currentMembers = users.filter(u => u.role === 'member').length;
+      const defaultInfo = {
         maxMembers: 200,
-        currentMembers: users.filter(u => u.role === 'member').length,
-        hasActiveSubscription: false,
-        membershipFee: 500
-      });
+        currentMembers,
+        hasActiveSubscription: subscription?.hasActiveSubscription || false,
+        membershipFee: 500,
+        plan: 'Basic'
+      };
+      
+      setSubscriptionInfo(defaultInfo);
+      console.log('Using default subscription info:', defaultInfo);
     }
   };
 
@@ -262,99 +276,170 @@ const Members = () => {
 
   // Combined data loading effect to reduce re-renders
   useEffect(() => {
+    // Use a debounce to prevent multiple rapid data loads
+    let loadingTimeout;
+    
     const loadData = async () => {
-      if (!isLoading) setIsLoading(true);
+      // Clear any existing timeout
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+      
+      // Set a small delay before showing loading state to prevent flickering
+      loadingTimeout = setTimeout(() => {
+        if (!isLoading) setIsLoading(true);
+      }, 300);
       
       try {
-        // Step 1: Fetch users
-        await fetchUsers();
+        console.log('Loading data for Members page...');
+        
+        // Create an array of promises to load all data in parallel
+        const promises = [];
+        
+        // Step 1: Fetch users (force refresh to get latest data)
+        const usersPromise = fetchUsers(true);
+        promises.push(usersPromise);
         
         // Step 2: Check subscription status if user is gym owner
         if (user && isGymOwner && checkSubscriptionStatus) {
-          await checkSubscriptionStatus(user._id);
+          console.log('Checking subscription status for gym owner:', user._id);
+          const statusPromise = checkSubscriptionStatus(user._id, null, true);
+          promises.push(statusPromise);
         }
         
-        // Step 3: Fetch subscription info if needed
-        if (user && isGymOwner && users.length > 0) {
+        // Step 3: Fetch gym owner plans if needed
+        if (user && isGymOwner) {
+          console.log('Fetching gym owner plans');
+          const plansPromise = fetchGymOwnerPlans();
+          promises.push(plansPromise);
+        }
+        
+        // Wait for all promises to resolve
+        await Promise.all(promises);
+        
+        // Now that we have users data, we can fetch subscription info
+        if (user && isGymOwner) {
+          console.log('Fetching subscription info for gym owner');
           await fetchSubscriptionInfo();
         }
         
-        // Step 4: Fetch gym owner plans
-        if (user && isGymOwner) {
-          await fetchGymOwnerPlans();
-        }
-        
-        // Step 5: Fetch trainers
+        // Fetch trainers after users are loaded
         if (user && isGymOwner && users.length > 0) {
+          console.log('Fetching trainers');
           await fetchTrainers();
         }
         
-        // Step 6: Fetch trainer members if user is a trainer
+        // Fetch trainer members if user is a trainer
         if (user && isTrainer) {
+          console.log('Fetching trainer members');
           await fetchTrainerMembers();
         }
+        
+        console.log('Data loading complete');
+        
+        // Clear the loading timeout
+        clearTimeout(loadingTimeout);
+        loadingTimeout = null;
       } catch (error) {
         console.error('Error loading data:', error);
         setMessage({ type: 'error', text: 'Failed to load data' });
+        
+        // Clear the loading timeout
+        clearTimeout(loadingTimeout);
+        loadingTimeout = null;
+        
+        // Set loading to false
+        setIsLoading(false);
       }
     };
     
     loadData();
-    // We'll set isLoading to false after processing the data in the next useEffect
-  }, [fetchUsers, user, isGymOwner, isTrainer, checkSubscriptionStatus, users]);
+    
+    // Cleanup function to clear timeout if component unmounts
+    return () => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+    };
+  }, [fetchUsers, user, isGymOwner, isTrainer, checkSubscriptionStatus]);
 
   // Process users to get members - only runs when users array changes
   useEffect(() => {
-    if (!users || users.length === 0) return;
-    
-    // Filter users to get only members
-    const members = users
-      .filter(user => user.role === 'member')
-      .map(member => {
-        // Calculate membership end date if not present but duration is available
-        let membershipEndDate = member.membershipEndDate;
-        if (!membershipEndDate && member.membershipDuration && member.createdAt) {
-          const startDate = new Date(member.createdAt);
-          const endDate = new Date(startDate);
-          const duration = parseInt(member.membershipDuration || '1');
-          endDate.setFullYear(endDate.getFullYear() + duration);
-          membershipEndDate = endDate.toISOString();
+    // Use a debounce to prevent flickering
+    const processTimeout = setTimeout(() => {
+      console.log('Processing users to get members, users count:', users?.length || 0);
+      
+      if (!users || users.length === 0) {
+        console.log('No users found, skipping member processing');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Filter users to get only members
+      const members = users
+        .filter(user => user.role === 'member')
+        .map(member => {
+          // Calculate membership end date if not present but duration is available
+          let membershipEndDate = member.membershipEndDate;
+          if (!membershipEndDate && member.membershipDuration && (member.membershipStartDate || member.createdAt)) {
+            const startDate = new Date(member.membershipStartDate || member.createdAt);
+            const endDate = new Date(startDate);
+            const duration = parseInt(member.membershipDuration || '1');
+            endDate.setFullYear(endDate.getFullYear() + duration);
+            membershipEndDate = endDate.toISOString();
+          }
+          
+          return {
+            id: member._id,
+            name: member.name,
+            email: member.email,
+            mobile: member.phone || '',
+            whatsapp: member.whatsapp || '',
+            gender: member.gender || 'Not specified',
+            dob: member.dob || '',
+            joinDate: member.createdAt || new Date().toISOString(),
+            assignedTrainer: member.assignedTrainer || null,
+            goal: member.goal || 'general-fitness',
+            membershipStatus: member.membershipStatus || 'Active',
+            planType: member.planType || 'Basic',
+            profileImage: member.profileImage || null,
+            address: member.address || '',
+            height: member.height || '',
+            weight: member.weight || '',
+            emergencyContact: member.emergencyContact || '',
+            medicalConditions: member.medicalConditions || '',
+            lastCheckIn: member.lastCheckIn || '',
+            attendanceRate: member.attendanceRate || '0%',
+            paymentStatus: member.paymentStatus || 'Paid',
+            notes: member.notes || '',
+            // Membership details
+            membershipStartDate: member.membershipStartDate || member.createdAt,
+            membershipEndDate: membershipEndDate,
+            membershipDuration: member.membershipDuration || '1'
+          };
+        });
+      
+      console.log('Setting real members, count:', members.length);
+      
+      // Batch state updates to reduce re-renders
+      const batchUpdates = () => {
+        setRealMembers(members);
+        
+        // Update subscription info with current member count
+        if (isGymOwner) {
+          setSubscriptionInfo(prev => ({
+            ...prev,
+            currentMembers: members.length
+          }));
         }
         
-        return {
-          id: member._id,
-          name: member.name,
-          email: member.email,
-          mobile: member.phone || '',
-          whatsapp: member.whatsapp || '',
-          gender: member.gender || 'Not specified',
-          dob: member.dob || '',
-          joinDate: member.createdAt || new Date().toISOString(),
-          assignedTrainer: member.assignedTrainer || null,
-          goal: member.goal || 'general-fitness',
-          membershipStatus: member.membershipStatus || 'Active',
-          planType: member.planType || 'Basic',
-          profileImage: member.profileImage || null,
-          address: member.address || '',
-          height: member.height || '',
-          weight: member.weight || '',
-          emergencyContact: member.emergencyContact || '',
-          medicalConditions: member.medicalConditions || '',
-          lastCheckIn: member.lastCheckIn || '',
-          attendanceRate: member.attendanceRate || '0%',
-          paymentStatus: member.paymentStatus || 'Paid',
-          notes: member.notes || '',
-          // Membership details
-          membershipStartDate: member.membershipStartDate || member.createdAt,
-          membershipEndDate: membershipEndDate,
-          membershipDuration: member.membershipDuration || '1'
-        };
-      });
+        // Only set loading to false after we've processed the data
+        setIsLoading(false);
+      };
+      
+      // Execute batch updates
+      batchUpdates();
+    }, 100); // Small delay to batch updates
     
-    setRealMembers(members);
-    // Only set loading to false after we've processed the data
-    setIsLoading(false);
-  }, [users]);
+    // Cleanup function
+    return () => clearTimeout(processTimeout);
+  }, [users, isGymOwner]);
 
   // Debounce search term to prevent excessive filtering
   useEffect(() => {
@@ -627,6 +712,8 @@ const Members = () => {
       // Add payment information to the member data
       const memberDataWithPayment = {
         ...pendingMemberData,
+        // Map mobile to phone for backend compatibility
+        phone: pendingMemberData.mobile || pendingMemberData.phone,
         paymentStatus: 'Paid',
         paymentId: paymentData.paymentId,
         paymentAmount: paymentData.amount || pendingMemberData.calculatedFee,
@@ -638,8 +725,13 @@ const Members = () => {
         fitnessGoalDescription: pendingMemberData.fitnessGoalDescription || ''
       };
       
+      // Remove mobile field to avoid confusion
+      delete memberDataWithPayment.mobile;
+      
       // Create the member
+      console.log('Creating member with data:', memberDataWithPayment);
       const result = await createMember(memberDataWithPayment);
+      console.log('Member creation result:', result);
       
       if (result.success) {
         setMessage({ type: 'success', text: result.message });
@@ -792,25 +884,95 @@ const Members = () => {
                   : 'Manage gym members, assignments, and goals'}
               </p>
             </div>
-            {isGymOwner && (
+            <div className="flex gap-2">
               <Button 
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={() => {
-                  console.log("Add Member button clicked");
-                  setShowAddForm(true);
-                  setFormStep(1); // Reset to first step
-                  resetForm(); // Reset form data
+                variant="outline" 
+                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                disabled={isLoading}
+                onClick={async () => {
+                  // Use a small delay before showing loading state to prevent flickering
+                  const loadingTimer = setTimeout(() => {
+                    setIsLoading(true);
+                  }, 300);
+                  
+                  try {
+                    // Force refresh all data
+                    const promises = [
+                      fetchUsers(true)
+                    ];
+                    
+                    if (user && isGymOwner) {
+                      promises.push(checkSubscriptionStatus(user._id, null, true));
+                    }
+                    
+                    // Wait for all promises to resolve
+                    await Promise.all(promises);
+                    
+                    // Then fetch subscription info if needed
+                    if (user && isGymOwner) {
+                      await fetchSubscriptionInfo();
+                    }
+                    
+                    toast.success("Data refreshed successfully");
+                  } catch (error) {
+                    console.error("Error refreshing data:", error);
+                    toast.error("Failed to refresh data");
+                  } finally {
+                    clearTimeout(loadingTimer);
+                    // Small delay before removing loading state to prevent flickering
+                    setTimeout(() => {
+                      setIsLoading(false);
+                    }, 300);
+                  }
                 }}
-                disabled={!subscriptionInfo.hasActiveSubscription || subscriptionInfo.currentMembers >= subscriptionInfo.maxMembers}
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Add New Member
+                {isLoading ? (
+                  <div className="animate-spin mr-2">
+                    <RefreshCw className="h-4 w-4" />
+                  </div>
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Refresh
               </Button>
-            )}
+              
+              {isGymOwner && (
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => {
+                    console.log("Add Member button clicked");
+                    console.log("Subscription info:", subscriptionInfo);
+                    setShowAddForm(true);
+                    setFormStep(1); // Reset to first step
+                    resetForm(); // Reset form data
+                  }}
+                  disabled={!subscriptionInfo.hasActiveSubscription || subscriptionInfo.currentMembers >= subscriptionInfo.maxMembers}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add New Member
+                  {subscriptionInfo.hasActiveSubscription ? 
+                    ` (${subscriptionInfo.currentMembers}/${subscriptionInfo.maxMembers})` : 
+                    ' (Inactive Subscription)'}
+                </Button>
+              )}
+            </div>
+            
           </div>
           
+          {/* Loading Indicator */}
+          {isLoading && (
+            <Card className="bg-blue-900/20 border-blue-800">
+              <CardContent className="p-4 flex items-center justify-center">
+                <div className="animate-spin mr-2">
+                  <RefreshCw className="h-5 w-5 text-blue-400" />
+                </div>
+                <p className="text-blue-300">Loading member data...</p>
+              </CardContent>
+            </Card>
+          )}
+          
           {/* Subscription Warning */}
-          {isGymOwner && !subscriptionInfo.hasActiveSubscription && (
+          {isGymOwner && !subscriptionInfo.hasActiveSubscription && !isLoading && (
             <Card className="bg-red-900/20 border-red-800">
               <CardContent className="p-4 flex items-start space-x-3">
                 <AlertCircle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
@@ -819,15 +981,35 @@ const Members = () => {
                   <p className="text-gray-300 text-sm">
                     Your subscription is inactive. Please renew your subscription to add new members.
                   </p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-2 border-red-700 text-red-300 hover:bg-red-800/50"
-                    onClick={() => navigate("/gym-owner-plans")}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Renew Subscription
-                  </Button>
+                  <div className="flex flex-wrap gap-3 mt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="border-red-700 text-red-300 hover:bg-red-800/50"
+                      onClick={() => navigate("/gym-owner-plans")}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Renew Subscription
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="border-yellow-700 text-yellow-300 hover:bg-yellow-800/50"
+                      onClick={async () => {
+                        // Force refresh subscription status
+                        setIsLoading(true);
+                        if (checkSubscriptionStatus) {
+                          await checkSubscriptionStatus(user._id, null, true);
+                        }
+                        await fetchSubscriptionInfo();
+                        setIsLoading(false);
+                        toast.info("Subscription status refreshed");
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh Status
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -2166,7 +2348,54 @@ const Members = () => {
                       {filteredMembers.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-8">
-                            <p className="text-gray-400">No members found matching your filters.</p>
+                            {isLoading ? (
+                              <div className="flex items-center justify-center">
+                                <div className="animate-spin mr-2">
+                                  <RefreshCw className="h-5 w-5 text-blue-400" />
+                                </div>
+                                <p className="text-blue-300">Loading members...</p>
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="text-gray-400 mb-2">No members found matching your filters.</p>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                                  disabled={isLoading}
+                                  onClick={async () => {
+                                    // Use a small delay before showing loading state
+                                    const loadingTimer = setTimeout(() => {
+                                      setIsLoading(true);
+                                    }, 300);
+                                    
+                                    try {
+                                      await fetchUsers(true);
+                                      if (user && isGymOwner) {
+                                        await fetchSubscriptionInfo();
+                                      }
+                                    } catch (error) {
+                                      console.error("Error refreshing data:", error);
+                                    } finally {
+                                      clearTimeout(loadingTimer);
+                                      // Small delay before removing loading state
+                                      setTimeout(() => {
+                                        setIsLoading(false);
+                                      }, 300);
+                                    }
+                                  }}
+                                >
+                                  {isLoading ? (
+                                    <div className="animate-spin mr-2">
+                                      <RefreshCw className="h-4 w-4" />
+                                    </div>
+                                  ) : (
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                  )}
+                                  Refresh Data
+                                </Button>
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       ) : (

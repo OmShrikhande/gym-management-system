@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Video, Calendar, Dumbbell, Plus } from "lucide-react";
+import { Search, Video, Calendar, Dumbbell, Plus, Users, Edit, Trash2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+// import AssignmentDialog from "@/components/AssignmentDialog"; // REMOVED: No longer needed
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 // Memoized Workout Card component to prevent unnecessary re-renders
-const WorkoutCard = React.memo(({ workout, formatDate }) => {
+const WorkoutCard = React.memo(({ workout, formatDate, isTrainer, onEdit, onDelete }) => {
   // Get badge variant based on workout type
   const getTypeBadge = (type) => {
     const typeMap = {
@@ -41,7 +42,7 @@ const WorkoutCard = React.memo(({ workout, formatDate }) => {
             <CardTitle className="text-white text-lg mb-2">{workout.title}</CardTitle>
             <div className="flex flex-wrap gap-2 mb-2">
               {getTypeBadge(workout.type)}
-              <Badge variant="secondary">{workout.focus}</Badge>
+              {workout.focus && <Badge variant="secondary">{workout.focus}</Badge>}
               <Badge variant="outline">{workout.duration} min</Badge>
               {workout.views > 0 && (
                 <Badge variant="outline" className="text-blue-300">
@@ -80,6 +81,29 @@ const WorkoutCard = React.memo(({ workout, formatDate }) => {
               <Video className="h-4 w-4 mr-1" />
               Watch Video Tutorial
             </a>
+          </div>
+        )}
+
+        {/* Action buttons for trainers */}
+        {isTrainer && (
+          <div className="flex gap-2 mt-4">
+            {/* Assignment removed - all members can now see all trainer workouts */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onEdit(workout)}
+              className="border-gray-600 text-gray-400 hover:bg-gray-600 hover:text-white"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onDelete(workout)}
+              className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         )}
       </CardContent>
@@ -136,6 +160,10 @@ const Workouts = () => {
   
   // Check if user is a trainer
   const isTrainer = userRole === 'trainer';
+  
+  // Assignment dialog state - REMOVED: No longer needed
+  // const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
+  // const [selectedWorkoutForAssignment, setSelectedWorkoutForAssignment] = useState(null);
   
   // Fetch trainers associated with this gym owner
   const fetchGymTrainers = useCallback(async () => {
@@ -407,6 +435,57 @@ const Workouts = () => {
       setFormSubmitting(false);
     }
   };
+  
+  // Assignment handlers
+  // Assignment function removed - no longer needed
+  // const handleAssignWorkout = (workout) => {
+  //   setSelectedWorkoutForAssignment(workout);
+  //   setShowAssignmentDialog(true);
+  // };
+
+  const handleEditWorkout = (workout) => {
+    setWorkoutFormData({
+      _id: workout._id,
+      title: workout.title,
+      description: workout.description,
+      type: workout.type,
+      duration: workout.duration.toString(),
+      exercises: workout.exercises || '',
+      videoLink: workout.videoLink || '',
+      notes: workout.notes || ''
+    });
+    setIsEditing(true);
+    setShowWorkoutForm(true);
+  };
+
+  const handleDeleteWorkout = async (workout) => {
+    if (!confirm(`Are you sure you want to delete "${workout.title}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await authFetch(`/workouts/${workout._id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.success || response.status === 'success') {
+        toast.success('Workout deleted successfully');
+        loadWorkouts(); // Refresh the workouts list
+      } else {
+        toast.error(response.message || 'Failed to delete workout');
+      }
+    } catch (error) {
+      console.error('Error deleting workout:', error);
+      toast.error('Failed to delete workout');
+    }
+  };
+
+  // Assignment complete handler removed - no longer needed
+  // const handleAssignmentComplete = () => {
+  //   setShowAssignmentDialog(false);
+  //   setSelectedWorkoutForAssignment(null);
+  //   loadWorkouts(); // Refresh to show updated assignments
+  // };
   
   // Calculate workout stats
   const workoutStats = {

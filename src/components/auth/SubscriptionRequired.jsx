@@ -48,6 +48,75 @@ const SubscriptionRequired = () => {
     document.getElementById('payment-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Handle test mode payment (skip payment)
+  const handleTestModePayment = async () => {
+    if (!user || !selectedPlan) {
+      toast.error('Please select a plan first');
+      return;
+    }
+    
+    setIsProcessing(true);
+    
+    try {
+      // Determine if this is a new subscription or renewal
+      const isRenewal = subscription?.subscription?._id;
+      
+      // Generate a mock transaction ID
+      const mockTransactionId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      
+      let endpoint, method, body;
+      
+      if (isRenewal) {
+        // Renew existing subscription
+        endpoint = `${API_URL}/subscriptions/${subscription.subscription._id}/renew`;
+        method = 'POST';
+        body = {
+          durationMonths: 1,
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        };
+      } else {
+        // Create new subscription
+        endpoint = `${API_URL}/subscriptions`;
+        method = 'POST';
+        body = {
+          gymOwnerId: user._id,
+          plan: selectedPlan.name,
+          price: selectedPlan.price,
+          durationMonths: 1,
+          paymentMethod: 'test_mode',
+          transactionId: mockTransactionId
+        };
+      }
+      
+      // Make API call
+      const response = await authFetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (response.success || response.status === 'success') {
+        toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully in test mode!`);
+        
+        // Refresh subscription status
+        await checkSubscriptionStatus(user._id, null, true);
+        
+        // Navigate to dashboard
+        navigate("/dashboard");
+      } else {
+        toast.error(response.message || 'Subscription failed. Please try again.');
+      }
+    } catch (err) {
+      console.error('Test mode subscription error:', err);
+      toast.error('Subscription failed. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Handle subscription purchase or renewal
   const handlePayment = async () => {
     if (!user || !selectedPlan) {
@@ -61,56 +130,158 @@ const SubscriptionRequired = () => {
       // Determine if this is a new subscription or renewal
       const isRenewal = subscription?.subscription?._id;
       
-      let endpoint, method, body;
+      // Step 1: Create a Razorpay order
+      let orderEndpoint, orderBody;
       
       if (isRenewal) {
-        // Renew existing subscription
-        endpoint = `${API_URL}/subscriptions/${subscription.subscription._id}/renew`;
-        method = 'POST';
-        body = {
-          durationMonths: 1,
-          paymentMethod: 'credit_card',
-          transactionId: `demo_${Date.now()}`
+        // Create order for renewal
+        orderEndpoint = `${API_URL}/payments/razorpay/create-order`;
+        orderBody = {
+          amount: selectedPlan.price,
+          currency: 'INR',
+          receipt: `renewal_${Date.now()}`,
+          notes: {
+            subscriptionId: subscription.subscription._id,
+            gymOwnerId: user._id,
+            plan: selectedPlan.name
+          }
         };
       } else {
-        // Create new subscription
-        endpoint = `${API_URL}/subscriptions`;
-        method = 'POST';
-        body = {
-          gymOwnerId: user._id,
-          plan: selectedPlan.name,
-          price: selectedPlan.price,
-          durationMonths: 1,
-          paymentMethod: 'credit_card',
-          transactionId: `demo_${Date.now()}`
+        // Create order for new subscription
+        orderEndpoint = `${API_URL}/payments/razorpay/create-order`;
+        orderBody = {
+          amount: selectedPlan.price,
+          currency: 'INR',
+          receipt: `subscription_${Date.now()}`,
+          notes: {
+            gymOwnerId: user._id,
+            plan: selectedPlan.name
+          }
         };
       }
       
-      // Make API call
-      const response = await authFetch(endpoint, {
-        method,
+      const orderResponse = await authFetch(orderEndpoint, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(orderBody)
       });
       
-      if (response.ok) {
-        toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully!`);
-        
-        // Refresh subscription status
-        await checkSubscriptionStatus(user._id);
-        
-        // Navigate to dashboard
-        navigate("/dashboard");
-      } else {
-        const data = await response.json();
-        toast.error(data.message || 'Subscription failed. Please try again.');
+      console.log('Order response:', orderResponse);
+      
+      if (!orderResponse || (!orderResponse.success && orderResponse.status !== 'success')) {
+        toast.error('Failed to create payment order');
+        setIsProcessing(false);
+        return;
       }
+      
+      const order = orderResponse.data?.order;
+      
+      // Step 2: Load Razorpay script
+      const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => {
+            resolve(true);
+          };
+          script.onerror = () => {
+            resolve(false);
+          };
+          document.body.appendChild(script);
+        });
+      };
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error('Failed to load Razorpay checkout');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 3: Open Razorpay checkout
+      const options = {
+        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        amount: order.amount,
+        currency: order.currency,
+        name: 'GymFlow',
+        description: `${isRenewal ? 'Subscription Renewal' : 'New Subscription'} - ${selectedPlan.name}`,
+        order_id: order.id,
+        handler: async function(response) {
+          try {
+            // Step 4: Verify payment and create/renew subscription
+            let endpoint, method, body;
+            
+            if (isRenewal) {
+              // Renew existing subscription
+              endpoint = `${API_URL}/subscriptions/${subscription.subscription._id}/renew`;
+              method = 'POST';
+              body = {
+                durationMonths: 1,
+                paymentMethod: 'razorpay',
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature
+              };
+            } else {
+              // Create new subscription with Razorpay verification
+              endpoint = `${API_URL}/payments/razorpay/verify`;
+              method = 'POST';
+              body = {
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature,
+                gymOwnerData: {
+                  gymOwnerId: user._id,
+                  plan: selectedPlan.name,
+                  price: selectedPlan.price
+                }
+              };
+            }
+            
+            const verifyResponse = await authFetch(endpoint, {
+              method,
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(body)
+            });
+            
+            if (verifyResponse.success || verifyResponse.status === 'success') {
+              toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully!`);
+              
+              // Refresh subscription status
+              await checkSubscriptionStatus(user._id, null, true);
+              
+              // Navigate to dashboard
+              navigate("/dashboard");
+            } else {
+              toast.error(verifyResponse.message || 'Subscription failed. Please try again.');
+            }
+          } catch (error) {
+            console.error('Error verifying payment:', error);
+            toast.error('Failed to verify payment');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone || ''
+        },
+        theme: {
+          color: '#3B82F6'
+        }
+      };
+      
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+      
     } catch (err) {
       console.error('Subscription error:', err);
       toast.error('Subscription failed. Please try again.');
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -271,34 +442,51 @@ const SubscriptionRequired = () => {
                       />
                     </div>
                     
-                    <div className="pt-4 flex flex-col sm:flex-row gap-4">
+                    <div className="pt-4 flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <Button 
+                          className="bg-blue-600 hover:bg-blue-700 flex items-center flex-1"
+                          size="lg"
+                          disabled={isProcessing}
+                          onClick={handlePayment}
+                        >
+                          {isProcessing ? (
+                            <>Processing...</>
+                          ) : (
+                            <>
+                              <CreditCard className="mr-2 h-5 w-5" />
+                              Pay with Razorpay
+                            </>
+                          )}
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                          size="lg"
+                          onClick={logout}
+                        >
+                          Logout
+                        </Button>
+                      </div>
                       <Button 
-                        className="bg-blue-600 hover:bg-blue-700 flex items-center flex-1"
+                        variant="outline"
+                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
                         size="lg"
                         disabled={isProcessing}
-                        onClick={handlePayment}
+                        onClick={handleTestModePayment}
                       >
-                        {isProcessing ? (
-                          <>Processing...</>
-                        ) : (
-                          <>
-                            <CreditCard className="mr-2 h-5 w-5" />
-                            Complete Payment
-                          </>
-                        )}
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800"
-                        size="lg"
-                        onClick={logout}
-                      >
-                        Logout
+                        <CheckCircle className="mr-2 h-5 w-5" />
+                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
                       </Button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2 text-center">
-                      This is a demo. No actual payment will be processed.
-                    </p>
+                    <div className="mt-2 text-center space-y-1">
+                      <p className="text-xs text-gray-400">
+                        Secure payment powered by Razorpay. Your subscription will be activated immediately after payment.
+                      </p>
+                      <p className="text-xs text-amber-500/70 italic">
+                        Test Mode: Payments are simulated for development purposes
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

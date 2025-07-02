@@ -73,9 +73,7 @@ const NavigationSidebar = ({ onClose }) => {
           ...baseItems,
           { label: "My Workouts", icon: Dumbbell, href: "/my-workouts" },
           { label: "Diet Plan", icon: UtensilsCrossed, href: "/my-diet" },
-          { label: "Progress", icon: BarChart3, href: "/progress" },
-          { label: "Messages", icon: MessageSquare, href: "/messages" },
-          { label: "Profile", icon: Settings, href: "/profile" }
+          { label: "Messages", icon: MessageSquare, href: "/messages" }
         ];
       default:
         return baseItems;

@@ -8,7 +8,8 @@ import {
   getWorkoutById, 
   updateWorkout, 
   deleteWorkout, 
-  markWorkoutCompleted 
+  markWorkoutCompleted,
+  assignWorkout 
 } from '../controllers/workoutController.js';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
@@ -21,10 +22,10 @@ router.post('/',
   createWorkout
 );
 
-// Get all workouts (admin and gym owner only)
+// Get all workouts (admin, gym owner, and trainer)
 router.get('/', 
   protect, 
-  restrictTo('super-admin', 'gym-owner'), 
+  restrictTo('super-admin', 'gym-owner', 'trainer'), 
   getAllWorkouts
 );
 
@@ -70,5 +71,12 @@ router.patch('/:workoutId/complete',
   restrictTo('member'), 
   markWorkoutCompleted
 );
+
+// Assign workout to members (trainer only) - DISABLED: All members can now see all trainer workouts
+// router.post('/:workoutId/assign', 
+//   protect, 
+//   restrictTo('trainer', 'gym-owner'), 
+//   assignWorkout
+// );
 
 export default router;

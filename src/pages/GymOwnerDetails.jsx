@@ -4,6 +4,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { extractId } from "@/utils/idUtils";
 import { 
   Building2, 
   Users, 
@@ -33,8 +34,15 @@ const GymOwnerDetails = () => {
     const fetchGymOwnerDetails = async () => {
       setLoading(true);
       try {
+        // Debug: Log the id parameter to see what's being passed
+        console.log('GymOwnerDetails - ID parameter:', id, 'Type:', typeof id);
+        
+        // Ensure id is a string and not an object
+        const userId = extractId(id);
+        console.log('GymOwnerDetails - Processed userId:', userId);
+        
         // Fetch gym owner details
-        const userResponse = await authFetch(`/users/${id}`);
+        const userResponse = await authFetch(`/users/${userId}`);
         if (userResponse.success || userResponse.status === 'success') {
           setGymOwner(userResponse.data.user);
         } else {
@@ -43,7 +51,7 @@ const GymOwnerDetails = () => {
         
         // Fetch subscription details
         try {
-          const subscriptionResponse = await authFetch(`/subscriptions/gym-owner/${id}`);
+          const subscriptionResponse = await authFetch(`/subscriptions/gym-owner/${userId}`);
           if (subscriptionResponse.success || subscriptionResponse.status === 'success') {
             setSubscription(subscriptionResponse.data.subscription);
           }
@@ -53,7 +61,7 @@ const GymOwnerDetails = () => {
         
         // Fetch members associated with this gym owner
         try {
-          const membersResponse = await authFetch(`/users/gym-owner/${id}/members`);
+          const membersResponse = await authFetch(`/users/gym-owner/${userId}/members`);
           if (membersResponse.success || membersResponse.status === 'success') {
             setMembers(membersResponse.data.users);
           }

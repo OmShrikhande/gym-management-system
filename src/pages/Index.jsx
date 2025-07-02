@@ -3,12 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User } from "lucide-react";
+import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import QRCodeGenerator from "@/components/qr/QRCodeGenerator";
+import QRCodeScanner from "@/components/qr/QRCodeScanner";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { extractId } from "@/utils/idUtils";
 
 // Loading indicator component
 const LoadingIndicator = () => (
@@ -19,7 +22,7 @@ const LoadingIndicator = () => (
 );
 
 const Index = () => {
-  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus } = useAuth();
+  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus, updateCurrentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [gymOwnerCount, setGymOwnerCount] = useState(0);
@@ -41,6 +44,9 @@ const Index = () => {
   const [trainerGymName, setTrainerGymName] = useState('');
   const [trainerWorkoutPlans, setTrainerWorkoutPlans] = useState([]);
   const [trainerDietPlans, setTrainerDietPlans] = useState([]);
+  
+  // QR Scanner state for members
+  const [showQRScanner, setShowQRScanner] = useState(false);
   
   // We don't need these state variables anymore as we're using dedicated pages
 
@@ -171,7 +177,17 @@ const Index = () => {
             const latestPayment = sub.paymentHistory[sub.paymentHistory.length - 1];
             
             // Get gym owner details
-            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            // Handle case where gymOwner might be an object or a string ID
+            const gymOwnerId = extractId(sub.gymOwner);
+            console.log('fetchRecentActivities - gymOwner:', sub.gymOwner, 'gymOwnerId:', gymOwnerId);
+            
+            // Skip if gymOwnerId is null or invalid
+            if (!gymOwnerId) {
+              console.warn('Invalid or missing gymOwner ID for subscription:', sub._id);
+              continue;
+            }
+            
+            const gymOwnerResponse = await authFetch(`/users/${gymOwnerId}`);
             const gymOwnerName = gymOwnerResponse.success ? 
               (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
               'a gym owner';
@@ -208,7 +224,17 @@ const Index = () => {
             const daysRemaining = Math.ceil((endDate - currentDate) / (1000 * 60 * 60 * 24));
             
             // Get gym owner details
-            const gymOwnerResponse = await authFetch(`/users/${sub.gymOwner}`);
+            // Handle case where gymOwner might be an object or a string ID
+            const gymOwnerId = extractId(sub.gymOwner);
+            console.log('fetchRecentActivities - expiring gymOwner:', sub.gymOwner, 'gymOwnerId:', gymOwnerId);
+            
+            // Skip if gymOwnerId is null or invalid
+            if (!gymOwnerId) {
+              console.warn('Invalid or missing gymOwner ID for expiring subscription:', sub._id);
+              continue;
+            }
+            
+            const gymOwnerResponse = await authFetch(`/users/${gymOwnerId}`);
             const gymOwnerName = gymOwnerResponse.success ? 
               (gymOwnerResponse.data.user.gymName || gymOwnerResponse.data.user.name) : 
               'A gym';
@@ -380,55 +406,89 @@ const Index = () => {
         
       } else if (userRole === 'member') {
         // 1. Get workout plans assigned to this member
-        const workoutsResponse = await authFetch(`/workouts`);
+        const workoutsResponse = await authFetch(`/workouts/member/${user._id}`);
         if (workoutsResponse.success || workoutsResponse.status === 'success') {
-          const allWorkouts = workoutsResponse.data?.workouts || [];
+          const assignedWorkouts = workoutsResponse.data?.workouts || [];
           
-          // Filter for workouts assigned to this member
-          const assignedWorkouts = allWorkouts
-            .filter(workout => 
-              workout.members && 
-              workout.members.includes(user._id)
-            )
+          // Get the latest 3 workouts
+          const recentWorkouts = assignedWorkouts
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedWorkouts.forEach((workout) => {
+          // Add trainer info to workout activities
+          for (const workout of recentWorkouts) {
+            let trainerName = 'Unknown Trainer';
+            if (workout.createdBy) {
+              try {
+                // Handle case where createdBy might be an object or a string ID
+                const createdById = extractId(workout.createdBy);
+                
+                // Skip if createdById is null or invalid
+                if (!createdById) {
+                  console.warn('Invalid or missing createdBy ID for workout:', workout._id);
+                } else {
+                  const trainerResponse = await authFetch(`/users/${createdById}`);
+                  if (trainerResponse.success || trainerResponse.status === 'success') {
+                    trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+                  }
+                }
+              } catch (error) {
+                console.log('Error fetching trainer info:', error);
+              }
+            }
+            
             activities.push({
               id: `workout-${workout._id}`,
               type: 'workout',
               icon: <Dumbbell className="h-4 w-4 text-white" />,
               iconBg: 'bg-blue-500',
-              message: `Workout plan assigned to you: ${workout.title}`,
+              message: `Workout plan "${workout.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(workout.createdAt)
             });
-          });
+          }
         }
         
         // 2. Get diet plans assigned to this member
-        const dietPlansResponse = await authFetch(`/diet-plans`);
+        const dietPlansResponse = await authFetch(`/diet-plans/member/${user._id}`);
         if (dietPlansResponse.success || dietPlansResponse.status === 'success') {
-          const allDietPlans = dietPlansResponse.data?.dietPlans || [];
+          const assignedDietPlans = dietPlansResponse.data?.dietPlans || [];
           
-          // Filter for diet plans assigned to this member
-          const assignedDietPlans = allDietPlans
-            .filter(plan => 
-              plan.members && 
-              plan.members.includes(user._id)
-            )
+          // Get the latest 3 diet plans
+          const recentDietPlans = assignedDietPlans
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 3);
           
-          assignedDietPlans.forEach((plan) => {
+          // Add trainer info to diet plan activities
+          for (const plan of recentDietPlans) {
+            let trainerName = 'Unknown Trainer';
+            if (plan.createdBy) {
+              try {
+                // Handle case where createdBy might be an object or a string ID
+                const createdById = extractId(plan.createdBy);
+                
+                // Skip if createdById is null or invalid
+                if (!createdById) {
+                  console.warn('Invalid or missing createdBy ID for diet plan:', plan._id);
+                } else {
+                  const trainerResponse = await authFetch(`/users/${createdById}`);
+                  if (trainerResponse.success || trainerResponse.status === 'success') {
+                    trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+                  }
+                }
+              } catch (error) {
+                console.log('Error fetching trainer info:', error);
+              }
+            }
+            
             activities.push({
               id: `diet-${plan._id}`,
               type: 'diet',
               icon: <UtensilsCrossed className="h-4 w-4 text-white" />,
               iconBg: 'bg-orange-500',
-              message: `Diet plan assigned to you: ${plan.title}`,
+              message: `Diet plan "${plan.title}" assigned by trainer ${trainerName}`,
               timestamp: new Date(plan.createdAt)
             });
-          });
+          }
         }
         
         // 3. Get notifications for this member
@@ -592,6 +652,34 @@ const Index = () => {
           updatedUserData.membershipStatus = memberData.membership.status || 'Active';
           updatedUserData.membershipEndDate = memberData.membership.endDate;
           updatedUserData.membershipType = memberData.membership.type || 'Standard';
+          
+          // Calculate days remaining if end date exists
+          if (memberData.membership.endDate) {
+            const endDate = new Date(memberData.membership.endDate);
+            const today = new Date();
+            const diffTime = endDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Set days remaining (minimum 0)
+            updatedUserData.membershipDaysRemaining = Math.max(0, diffDays);
+            
+            // Update status based on days remaining
+            if (diffDays <= 0) {
+              updatedUserData.membershipStatus = 'Expired';
+            } else {
+              updatedUserData.membershipStatus = 'Active';
+            }
+            
+            console.log('Member stats updated:', {
+              endDate: endDate.toLocaleDateString(),
+              daysRemaining: updatedUserData.membershipDaysRemaining,
+              status: updatedUserData.membershipStatus
+            });
+          } else {
+            // Default values if no end date
+            updatedUserData.membershipDaysRemaining = 0;
+            updatedUserData.membershipStatus = 'Unknown';
+          }
         }
         
         // Add health metrics if available
@@ -605,16 +693,23 @@ const Index = () => {
         
         // If there's an assigned trainer, fetch trainer details
         if (user.assignedTrainer) {
-          const trainerResponse = await authFetch(`/users/${user.assignedTrainer}`);
-          if (trainerResponse.success || trainerResponse.status === 'success') {
-            updatedUserData.trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+          // Handle case where assignedTrainer might be an object or a string ID
+          const trainerId = extractId(user.assignedTrainer);
+          
+          // Skip if trainerId is null or invalid
+          if (!trainerId) {
+            console.warn('Invalid or missing assignedTrainer ID for user:', user._id);
+          } else {
+            const trainerResponse = await authFetch(`/users/${trainerId}`);
+            if (trainerResponse.success || trainerResponse.status === 'success') {
+              updatedUserData.trainerName = trainerResponse.data?.user?.name || 'Unknown Trainer';
+            }
           }
         }
       }
-    } catch (error) {
-      console.error('Error fetching member stats:', error);
-    }
-  };
+     } catch (error) {
+        console.error('Error fetching member stats:', error);
+      };
 
   // Add an event listener to refresh trainer stats when a member is assigned to a trainer
   useEffect(() => {
@@ -637,19 +732,58 @@ const Index = () => {
   }, [user, userRole]);
 
   useEffect(() => {
-    if (user && userRole === 'super-admin') {
-      fetchTotalRevenue();
-      fetchNewGymOwnersCount();
-    } else if (user && userRole === 'trainer') {
-      fetchTrainerStats();
-    } else if (user && userRole === 'member') {
-      fetchMemberStats();
-    }
+    const loadDashboardData = async () => {
+      if (!user) return;
+      
+      try {
+        if (userRole === 'super-admin') {
+          await fetchTotalRevenue();
+          await fetchNewGymOwnersCount();
+        } else if (userRole === 'trainer') {
+          await fetchTrainerStats();
+        } else if (userRole === 'member') {
+          // For members, calculate membership data directly
+          // This ensures we have accurate information even if API calls fail
+          if (user.membershipEndDate) {
+            const endDate = new Date(user.membershipEndDate);
+            const today = new Date();
+            const diffTime = endDate - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            // Update user with calculated values if they're different
+            if (!user.membershipDaysRemaining || user.membershipDaysRemaining !== Math.max(0, diffDays)) {
+              const updatedUser = {
+                ...user,
+                membershipDaysRemaining: Math.max(0, diffDays),
+                membershipStatus: diffDays > 0 ? 'Active' : 'Expired'
+              };
+              
+              // Update user in context
+              updateCurrentUser(updatedUser);
+            }
+          }
+          
+          // Try to fetch additional member data, but don't fail if it doesn't work
+          try {
+            await fetchMemberStats();
+          } catch (error) {
+            console.log('Could not fetch member stats, using calculated data instead');
+          }
+        }
+        
+        // Try to fetch activities, but don't fail if it doesn't work
+        try {
+          await fetchRecentActivities();
+        } catch (error) {
+          console.log('Could not fetch recent activities');
+        }
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+      }
+    };
     
-    if (user) {
-      fetchRecentActivities();
-    }
-  }, [user, userRole, location.pathname]);
+    loadDashboardData();
+  }, [user, userRole, location.pathname, updateCurrentUser]);
 
   useEffect(() => {
     // Count users based on role
@@ -1153,6 +1287,182 @@ const Index = () => {
               </CardContent>
             </Card>
           )}
+
+          {/* QR Code Generator for Gym Owners */}
+          {userRole === 'gym-owner' && user && (
+            <QRCodeGenerator 
+              gymOwnerId={user._id} 
+              gymName={user.gymName || user.name + "'s Gym"} 
+            />
+          )}
+          
+          {/* Member Membership Status - Only shown for members */}
+          {userRole === 'member' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-white">My Membership</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Your current membership status
+                  </CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  className="text-gray-300 hover:text-white hover:bg-gray-700"
+                  onClick={() => navigate('/profile')}
+                >
+                  <User className="h-4 w-4 mr-2" />
+                  View Profile
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Membership Status */}
+                  <div className="p-4 bg-gray-700/30 rounded-lg border border-gray-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-white font-medium">Membership Status</h3>
+                      <Badge 
+                        className={
+                          user?.membershipStatus === 'Active' 
+                            ? "bg-green-500/20 text-green-400 hover:bg-green-500/30 border-green-500/50" 
+                            : "bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/50"
+                        }
+                      >
+                        {user?.membershipStatus || 'Unknown'}
+                      </Badge>
+                    </div>
+                    
+                    {/* Membership End Date */}
+                    <div className="flex justify-between items-center text-sm mb-3">
+                      <span className="text-gray-400">End Date:</span>
+                      <span className="text-white">
+                        {user?.membershipEndDate 
+                          ? new Date(user.membershipEndDate).toLocaleDateString() 
+                          : 'Not specified'}
+                      </span>
+                    </div>
+                    
+                    {/* Days Remaining */}
+                    <div className="mt-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-gray-300">Days Remaining</span>
+                        <span className={
+                          (user?.membershipDaysRemaining > 0 || 
+                           (user?.membershipEndDate && new Date(user.membershipEndDate) > new Date())) 
+                            ? "text-green-400" 
+                            : "text-red-400"
+                        }>
+                          {(() => {
+                            // Calculate days remaining if not already set
+                            if (user?.membershipDaysRemaining !== undefined) {
+                              return `${user.membershipDaysRemaining} days`;
+                            } else if (user?.membershipEndDate) {
+                              const endDate = new Date(user.membershipEndDate);
+                              const today = new Date();
+                              const diffTime = endDate - today;
+                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                              return `${Math.max(0, diffDays)} days`;
+                            } else {
+                              return 'Unknown';
+                            }
+                          })()}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2.5">
+                        <div 
+                          className={(() => {
+                            const daysRemaining = user?.membershipDaysRemaining !== undefined 
+                              ? user.membershipDaysRemaining 
+                              : user?.membershipEndDate 
+                                ? Math.max(0, Math.ceil((new Date(user.membershipEndDate) - new Date()) / (1000 * 60 * 60 * 24)))
+                                : 0;
+                                
+                            if (daysRemaining > 30) return "bg-green-500 h-2.5 rounded-full";
+                            if (daysRemaining > 7) return "bg-yellow-500 h-2.5 rounded-full";
+                            return "bg-red-500 h-2.5 rounded-full";
+                          })()}
+                          style={{ 
+                            width: `${(() => {
+                              const daysRemaining = user?.membershipDaysRemaining !== undefined 
+                                ? user.membershipDaysRemaining 
+                                : user?.membershipEndDate 
+                                  ? Math.max(0, Math.ceil((new Date(user.membershipEndDate) - new Date()) / (1000 * 60 * 60 * 24)))
+                                  : 0;
+                              return Math.min(100, (daysRemaining / 90) * 100);
+                            })()}%` 
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                    
+                    {/* Renew Button */}
+                    {(() => {
+                      // Calculate days remaining if not already set
+                      const daysRemaining = user?.membershipDaysRemaining !== undefined 
+                        ? user.membershipDaysRemaining 
+                        : user?.membershipEndDate 
+                          ? Math.max(0, Math.ceil((new Date(user.membershipEndDate) - new Date()) / (1000 * 60 * 60 * 24)))
+                          : 0;
+                          
+                      if (daysRemaining < 30) {
+                        return (
+                          <Button 
+                            className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+                            onClick={() => navigate('/billing-plans')}
+                          >
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            Renew Membership
+                          </Button>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* QR Code Scanner for Members */}
+          {userRole === 'member' && (
+            <Card className="bg-gray-800/50 border-gray-700">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center">
+                  <Scan className="h-5 w-5 mr-2" />
+                  Join a Gym
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Scan a gym's QR code to join their membership
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!showQRScanner ? (
+                  <div className="text-center py-6">
+                    <Scan className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+                    <p className="text-gray-300 mb-4">
+                      Use your camera to scan a gym's QR code and join their membership program.
+                    </p>
+                    <Button
+                      onClick={() => setShowQRScanner(true)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Scan className="h-4 w-4 mr-2" />
+                      Start QR Scanner
+                    </Button>
+                  </div>
+                ) : (
+                  <QRCodeScanner
+                    onScanSuccess={(data) => {
+                      console.log('QR Code scanned:', data);
+                      toast.success(`Scanned gym: ${data.gymName}`);
+                      // Handle the scanned data here
+                    }}
+                    onClose={() => setShowQRScanner(false)}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
           
           {/* Member Workout Progress - Only shown for members */}
           {userRole === 'member' && (
@@ -1354,6 +1664,7 @@ const Index = () => {
       </div>
     </DashboardLayout>
   );
+}
 };
 
 export default Index;

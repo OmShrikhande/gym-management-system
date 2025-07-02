@@ -13,6 +13,13 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import workoutRoutes from './routes/workoutRoutes.js';
 import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
+import settingRoutes from './routes/settingRoutes.js';
+import memberRoutes from './routes/memberRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
+import nodeMcuRoutes from './routes/nodeMcuRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
+import statsRoutes from './routes/statsRoutes.js';
+import enquiryRoutes from './routes/enquiryRoutes.js';
 import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 
@@ -32,11 +39,21 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
+// Alias route for membership-plans (points to subscription-plans)
+app.use('/api/membership-plans', subscriptionPlanRoutes);
+app.use('/api/plans', subscriptionPlanRoutes); // Another alias
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/settings', settingRoutes);
+app.use('/api/members', memberRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/nodemcu', nodeMcuRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/enquiries', enquiryRoutes);
 
 // Default route
 app.get('/', (req, res) => {

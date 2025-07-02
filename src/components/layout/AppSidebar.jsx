@@ -9,9 +9,11 @@ import {
   Settings,
   Home,
   Building2,
-  UserCheck
+  UserCheck,
+  HelpCircle
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
+import { useTranslation } from "@/contexts/TranslationContext";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +27,7 @@ import {
 
 export function AppSidebar() {
   const { userRole } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -34,44 +37,43 @@ export function AppSidebar() {
 
   const getNavigationItems = () => {
     const baseItems = [
-      { label: "Dashboard", icon: Home, href: "/" }
+      { label: t('dashboard'), icon: Home, href: "/" }
     ];
 
     switch (userRole) {
       case 'super-admin':
         return [
           ...baseItems,
-          { label: "Gym Management", icon: Building2, href: "/gyms" },
-          { label: "User Management", icon: Users, href: "/users" },
-          { label: "Billing & Plans", icon: CreditCard, href: "/billing" },
-          { label: "Reports", icon: BarChart3, href: "/reports" },
-          { label: "System Settings", icon: Settings, href: "/settings" }
+          { label: t('gymManagement'), icon: Building2, href: "/gyms" },
+          { label: t('userManagement'), icon: Users, href: "/users" },
+          { label: t('billing'), icon: CreditCard, href: "/billing" },
+          { label: t('reports'), icon: BarChart3, href: "/reports" },
+          { label: t('systemSettings'), icon: Settings, href: "/settings" }
         ];
       case 'gym-owner':
         return [
           ...baseItems,
-          { label: "Members", icon: Users, href: "/members" },
-          { label: "Trainers", icon: UserCheck, href: "/trainers" },
-          { label: "Workouts", icon: Dumbbell, href: "/workouts" },
-          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" },
-          { label: "Messages", icon: MessageSquare, href: "/messages" },
-          { label: "Reports", icon: BarChart3, href: "/reports" },
-          { label: "Settings", icon: Settings, href: "/settings" }
+          { label: t('members'), icon: Users, href: "/members" },
+          { label: t('trainers'), icon: UserCheck, href: "/trainers" },
+          { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
+          { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
+          { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },
+          { label: t('messages'), icon: MessageSquare, href: "/messages" },
+          { label: t('reports'), icon: BarChart3, href: "/reports" },
+          { label: t('settings'), icon: Settings, href: "/settings" }
         ];
       case 'trainer':
         return [
           ...baseItems,
-          { label: "My Members", icon: Users, href: "/my-members" },
-          { label: "Workouts", icon: Dumbbell, href: "/workouts" },
-          { label: "Diet Plans", icon: UtensilsCrossed, href: "/diet-plans" }
+          { label: t('members'), icon: Users, href: "/my-members" },
+          { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
+          { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       case 'member':
         return [
           ...baseItems,
-          { label: "My Workouts", icon: Dumbbell, href: "/workouts" },
-          { label: "Diet Plan", icon: UtensilsCrossed, href: "/diet-plans" },
-          { label: "Progress", icon: BarChart3, href: "/progress" },
-          { label: "Profile", icon: Settings, href: "/profile" }
+          { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
+          { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       default:
         return baseItems;
@@ -83,10 +85,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r border-gray-700">
-      <SidebarContent className="bg-gray-800">
+      <SidebarContent style={{ backgroundColor: 'var(--sidebar, #1F2937)' }}>
         <SidebarGroup>
           <SidebarGroupLabel className="text-gray-400 px-4 py-2">
-            Navigation
+            {t('navigation')}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -94,9 +96,12 @@ export function AppSidebar() {
                 <SidebarMenuItem key={index}>
                   <SidebarMenuButton
                     onClick={() => handleNavigation(item.href)}
-                    className={`w-full justify-start text-gray-300 hover:text-white hover:bg-gray-700 ${
-                      isActive(item.href) ? 'bg-gray-700 text-white' : ''
+                    className={`w-full justify-start text-gray-300 hover:text-white hover:bg-opacity-70 ${
+                      isActive(item.href) ? 'bg-blue-600/30 text-white' : ''
                     }`}
+                    style={{ 
+                      color: isActive(item.href) ? 'var(--text, #FFFFFF)' : 'rgba(var(--text-rgb, 255, 255, 255), 0.7)'
+                    }}
                   >
                     <item.icon className="mr-3 h-4 w-4" />
                     {item.label}

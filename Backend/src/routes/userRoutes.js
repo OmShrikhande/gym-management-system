@@ -21,11 +21,13 @@ router.get('/trainer/:trainerId/members', userController.getTrainerMembers);
 router.get('/trainers-by-gym/:gymId', userController.getTrainersByGym);
 router.post('/trainers/update-member-counts', restrictTo('super-admin', 'gym-owner'), userController.updateAllTrainerMemberCounts);
 
+// User access route - handles its own permissions
+router.get('/:id', userController.getUser);
+
 // Routes restricted to admin users
 router.use(restrictTo('super-admin', 'gym-owner'));
 router.get('/', userController.getAllUsers);
 router.get('/gym-owner/:gymOwnerId/members', userController.getGymOwnerMembers);
-router.get('/:id', userController.getUser);
 router.patch('/:id', userController.updateUser);
 router.delete('/:id', userController.deleteUser);
 

@@ -272,10 +272,10 @@ export const AuthProvider = ({ children }) => {
     }
     
     // Validate password length
-    if (userData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (userData.password.length < 8) {
+      setError('Password must be at least 8 characters');
       setIsLoading(false);
-      return { success: false, message: 'Password must be at least 6 characters' };
+      return { success: false, message: 'Password must be at least 8 characters' };
     }
     
     try {
@@ -540,12 +540,40 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message || 'Invalid email or password' };
       }
       
+      // Process user data before setting it
+      const userData = data.data.user;
+      
+      // If user is a member, initialize membership data if not present
+      if (userData.role === 'member') {
+        // Calculate days remaining if membership end date exists
+        if (userData.membershipEndDate) {
+          const endDate = new Date(userData.membershipEndDate);
+          const today = new Date();
+          const diffTime = endDate - today;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          // Set membership days remaining and status
+          userData.membershipDaysRemaining = diffDays > 0 ? diffDays : 0;
+          userData.membershipStatus = diffDays > 0 ? 'Active' : 'Expired';
+          
+          console.log('Member login - calculated membership data:', {
+            membershipEndDate: userData.membershipEndDate,
+            membershipDaysRemaining: userData.membershipDaysRemaining,
+            membershipStatus: userData.membershipStatus
+          });
+        } else {
+          // Default values if no end date
+          userData.membershipDaysRemaining = 0;
+          userData.membershipStatus = 'Unknown';
+        }
+      }
+      
       // Set the user and token in state
-      setUser(data.data.user);
+      setUser(userData);
       setToken(data.token);
       
       // Save user and token to localStorage
-      setStorageItem(USER_STORAGE_KEY, data.data.user);
+      setStorageItem(USER_STORAGE_KEY, userData);
       setStorageItem(TOKEN_STORAGE_KEY, data.token);
       
       // If user is a gym owner, check subscription status
@@ -587,8 +615,13 @@ export const AuthProvider = ({ children }) => {
   const fetchUsers = useCallback(async (forceRefresh = false) => {
     if (!token) return [];
     
+    console.log('Fetching users, force refresh:', forceRefresh);
+    
     // Use cached users if available and not forcing refresh
-    if (!forceRefresh && users.length > 0) {
+    // Only use cache if it's less than 30 seconds old
+    const cacheAge = Date.now() - (window.lastUsersFetchTime || 0);
+    if (!forceRefresh && users.length > 0 && cacheAge < 30000) {
+      console.log('Using cached users, cache age:', cacheAge, 'ms');
       return users;
     }
     
@@ -635,17 +668,17 @@ export const AuthProvider = ({ children }) => {
     setStorageItem(USER_STORAGE_KEY, updatedUser);
   };
   
-  // Check if member's membership has expired - SIMPLIFIED LOGIC
+  // Check if member's membership has expired - IMPROVED LOGIC
   const checkMembershipExpiration = useCallback((user) => {
     if (!user || user.role !== 'member') return false;
     
-    // If membershipStatus is explicitly set to 'Active', always return false (not expired)
-    if (user.membershipStatus === 'Active') {
-      return false;
-    }
-    
-    // If no membership end date, assume membership is active
+    // If no membership end date, assume membership is active and set days to a high number
     if (!user.membershipEndDate) {
+      updateCurrentUser({
+        ...user,
+        membershipStatus: 'Active',
+        membershipDaysRemaining: 365 // Default to a year if no end date
+      });
       return false;
     }
     
@@ -657,18 +690,24 @@ export const AuthProvider = ({ children }) => {
     const diffTime = endDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    // Only update the days remaining, don't change the status
+    // Update user with days remaining
     if (diffDays >= 0) {
+      // Not expired - update days remaining and ensure status is Active
       updateCurrentUser({
         ...user,
+        membershipStatus: 'Active',
         membershipDaysRemaining: diffDays
       });
+      console.log(`Member has ${diffDays} days remaining. Setting status to Active.`);
       return false; // Not expired
     } else {
+      // Expired - set days to 0 and status to Expired
       updateCurrentUser({
         ...user,
+        membershipStatus: 'Expired',
         membershipDaysRemaining: 0
       });
+      console.log('Member membership has expired. Setting status to Expired.');
       return true; // Expired
     }
   }, []);

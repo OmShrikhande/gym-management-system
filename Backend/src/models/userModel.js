@@ -90,7 +90,38 @@ const userSchema = new mongoose.Schema({
   assignedMembers: {
     type: Number,
     default: 0
-  }
+  },
+  
+  // Attendance and Access Control fields
+  attendance: [{
+    gymOwnerId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    deviceId: String
+  }],
+  
+  accessAttempts: [{
+    gymOwnerId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    status: {
+      type: String,
+      enum: ['GRANTED', 'DENIED'],
+      required: true
+    },
+    reason: String,
+    deviceId: String
+  }]
 });
 
 // Pre-save middleware to hash password

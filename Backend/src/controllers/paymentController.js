@@ -22,13 +22,17 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
   }
   
   try {
-    // Store the user form data in the session for later use
-    // In a real implementation, you might want to store this in a temporary database record
-    req.session = req.session || {};
-    req.session.pendingGymOwner = {
-      formData: userFormData,
-      planId
-    };
+    // Check if this is a subscription renewal or a new gym owner registration
+    const isSubscriptionRenewal = notes && notes.subscriptionId;
+    
+    if (!isSubscriptionRenewal && userFormData) {
+      // Store the user form data in the session for later use (for new gym owner registration)
+      req.session = req.session || {};
+      req.session.pendingGymOwner = {
+        formData: userFormData,
+        planId
+      };
+    }
     
     // Create a Razorpay order using the initialized Razorpay instance
     // This will create a real order in Razorpay's test environment
@@ -37,7 +41,11 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
       amount: amount * 100, // Razorpay expects amount in paise
       currency,
       receipt,
-      notes
+      notes: {
+        ...notes,
+        userId: req.user._id,
+        userRole: req.user.role
+      }
     });
     
     res.status(200).json({
@@ -165,27 +173,7 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     }
     
     // Get the selected plan details
-    const plans = [
-      {
-        id: "basic",
-        name: "Basic",
-        price: 49,
-        duration: "monthly"
-      },
-      {
-        id: "premium",
-        name: "Premium",
-        price: 99,
-        duration: "monthly"
-      },
-      {
-        id: "enterprise",
-        name: "Enterprise",
-        price: 199,
-        duration: "monthly"
-      }
-    ];
-    
+  
     const selectedPlan = plans.find(p => p.id === planId);
     
     if (!selectedPlan) {

@@ -1,8 +1,12 @@
 import { Toaster } from "sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { I18nextProvider } from "react-i18next";
+import i18n from "./i18n";
 import { AuthProvider } from "@/contexts/AuthContext.jsx";
+import { TranslationProvider } from "@/contexts/TranslationContext.jsx";
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
+import SettingsInitializer from "@/components/SettingsInitializer.jsx";
 import Index from "./pages/Index.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import GymManagement from "./pages/GymManagement.jsx";
@@ -19,16 +23,22 @@ import WorkoutPage from "./pages/WorkoutPage.jsx";
 import DietPlans from "./pages/DietPlans.jsx";
 import Messages from "./pages/Messages.jsx";
 import MyMembers from "./pages/MyMembers.jsx";
+import MyWorkouts from "./pages/MyWorkouts.jsx";
+import MyDiet from "./pages/MyDiet.jsx";
 import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
+import Enquiries from "./pages/Enquiries.jsx";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <Toaster position="top-center" richColors />
-      <BrowserRouter>
+    <I18nextProvider i18n={i18n}>
+      <AuthProvider>
+        <TranslationProvider>
+          <Toaster position="top-center" richColors />
+          <SettingsInitializer />
+          <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
           
@@ -77,7 +87,7 @@ const App = () => (
             </ProtectedRoute>
           } />
           <Route path="/settings" element={
-            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner']}>
+            <ProtectedRoute>
               <SystemSettings />
             </ProtectedRoute>
           } />
@@ -110,6 +120,11 @@ const App = () => (
               <DietPlans />
             </ProtectedRoute>
           } />
+          <Route path="/enquiries" element={
+            <ProtectedRoute allowedRoles={['gym-owner', 'trainer']}>
+              <Enquiries />
+            </ProtectedRoute>
+          } />
           <Route path="/messages" element={
             <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer']}>
               <Messages />
@@ -122,6 +137,19 @@ const App = () => (
               <MyMembers />
             </ProtectedRoute>
           } />
+          
+          {/* Member Routes */}
+          <Route path="/my-workouts" element={
+            <ProtectedRoute allowedRoles={['member']}>
+              <MyWorkouts />
+            </ProtectedRoute>
+          } />
+          <Route path="/my-diet" element={
+            <ProtectedRoute allowedRoles={['member']}>
+              <MyDiet />
+            </ProtectedRoute>
+          } />
+          
           <Route path="/schedule" element={
             <ProtectedRoute>
               <Schedule />
@@ -139,7 +167,9 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
-    </AuthProvider>
+        </TranslationProvider>
+      </AuthProvider>
+    </I18nextProvider>
   </QueryClientProvider>
 );
 
