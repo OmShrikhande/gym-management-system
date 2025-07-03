@@ -17,6 +17,7 @@ import settingRoutes from './routes/settingRoutes.js';
 import memberRoutes from './routes/memberRoutes.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import nodeMcuRoutes from './routes/nodeMcuRoutes.js';
+import deviceRoutes from './routes/deviceRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import enquiryRoutes from './routes/enquiryRoutes.js';
@@ -53,16 +54,17 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/nodemcu', nodeMcuRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 
-// NodeMCU specific validation endpoint
+// NodeMCU specific validation endpoint (Legacy - use /api/devices/validate for new devices)
 app.post('/api/nodemcu/validate', async (req, res) => {
   try {
     console.log('NodeMCU validation request received:', req.body);
     
-    const { gymOwnerId, memberId, timestamp } = req.body;
+    const { gymOwnerId, memberId, timestamp, deviceId } = req.body;
 
     // Validate required fields
     if (!gymOwnerId || !memberId) {
@@ -166,14 +168,7 @@ app.post('/api/nodemcu/validate', async (req, res) => {
   }
 });
 
-// Simple endpoint for NodeMCU to check server status
-app.get('/api/nodemcu/status', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    message: 'NodeMCU API is running',
-    timestamp: new Date().toISOString()
-  });
-});
+// NodeMCU status endpoint is now handled in nodeMcuRoutes.js
 
 // Default route
 app.get('/', (req, res) => {

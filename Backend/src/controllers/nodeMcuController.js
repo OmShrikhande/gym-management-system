@@ -16,10 +16,8 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
   // Validate input
   if (!gymOwnerId || !memberId) {
     console.log('Validation failed - missing gymOwnerId or memberId');
-    return res.status(400).json({
-      status: 'INACTIVE',
-      message: 'Missing required parameters',
-      timestamp: new Date().toISOString()
+    return res.status(200).json({
+      nodeMcuResponse: 'INACTIVE'
     });
   }
 
@@ -29,9 +27,7 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
     if (!gymOwner || gymOwner.role !== 'gym-owner') {
       console.log('Invalid gym owner');
       return res.status(200).json({
-        status: 'INACTIVE',
-        message: 'Invalid gym',
-        timestamp: new Date().toISOString()
+        nodeMcuResponse: 'INACTIVE'
       });
     }
 
@@ -40,9 +36,7 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
     if (!member || member.role !== 'member') {
       console.log('Invalid member');
       return res.status(200).json({
-        status: 'INACTIVE',
-        message: 'Invalid member',
-        timestamp: new Date().toISOString()
+        nodeMcuResponse: 'INACTIVE'
       });
     }
 
@@ -50,10 +44,7 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
     if (!member.createdBy || member.createdBy.toString() !== gymOwnerId) {
       console.log('Member not associated with gym');
       return res.status(200).json({
-        status: 'INACTIVE',
-        message: 'Not a member of this gym',
-        timestamp: new Date().toISOString(),
-        gymName: gymOwner.gymName || gymOwner.name + "'s Gym"
+        nodeMcuResponse: 'INACTIVE'
       });
     }
 
@@ -73,11 +64,7 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
       await member.save({ validateBeforeSave: false });
 
       return res.status(200).json({
-        status: 'INACTIVE',
-        message: 'Membership inactive',
-        timestamp: new Date().toISOString(),
-        memberName: member.name,
-        gymName: gymOwner.gymName || gymOwner.name + "'s Gym"
+        nodeMcuResponse: 'INACTIVE'
       });
     }
 
@@ -104,20 +91,13 @@ export const verifyMembershipForNodeMCU = catchAsync(async (req, res, next) => {
     console.log('Access granted for member:', member.name);
     
     res.status(200).json({
-      status: 'ACTIVE',
-      message: 'Access granted',
-      timestamp: new Date().toISOString(),
-      memberName: member.name,
-      gymName: gymOwner.gymName || gymOwner.name + "'s Gym",
-      welcomeMessage: `Welcome ${member.name}!`
+      nodeMcuResponse: 'ACTIVE'
     });
 
   } catch (error) {
     console.error('Error in NodeMCU verification:', error);
     res.status(200).json({
-      status: 'INACTIVE',
-      message: 'System error',
-      timestamp: new Date().toISOString()
+      nodeMcuResponse: 'INACTIVE'
     });
   }
 });

@@ -13,6 +13,8 @@ const router = express.Router();
 router.post('/verify', verifyMembershipForNodeMCU);
 router.post('/health', deviceHealthCheck);
 
+
+
 // Protected routes (require authentication)
 router.use(protect);
 
