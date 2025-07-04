@@ -14,7 +14,7 @@ import workoutRoutes from './routes/workoutRoutes.js';
 import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
-import memberRoutes from './routes/memberRoutes.js';
+
 import attendanceRoutes from './routes/attendanceRoutes.js';
 
 
@@ -51,7 +51,7 @@ app.use('/api/workouts', workoutRoutes);
 app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingRoutes);
-app.use('/api/members', memberRoutes);
+
 app.use('/api/attendance', attendanceRoutes);
 
 

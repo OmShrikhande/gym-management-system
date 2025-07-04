@@ -101,8 +101,7 @@ const userSchema = new mongoose.Schema({
     timestamp: {
       type: Date,
       default: Date.now
-    },
-    deviceId: String
+    }
   }],
   
   accessAttempts: [{
@@ -119,8 +118,7 @@ const userSchema = new mongoose.Schema({
       enum: ['GRANTED', 'DENIED'],
       required: true
     },
-    reason: String,
-    deviceId: String
+    reason: String
   }]
 });
 

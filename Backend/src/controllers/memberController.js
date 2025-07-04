@@ -2,6 +2,7 @@
 import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
+import firestoreService from '../services/firestoreService.js';
 
 // Verify membership and subscription status for QR code scanning
 // When successful, sends "allow" response to NodeMCU for access control
@@ -87,6 +88,36 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   }
 
   // Success - member is active
+  try {
+    // Update Firestore with active status
+    await firestoreService.updateMemberStatusToActive(
+      memberId,
+      gymOwnerId,
+      {
+        name: member.name,
+        email: member.email
+      },
+      {
+        id: gymOwner._id,
+        name: gymOwner.gymName || gymOwner.name + "'s Gym",
+        owner: gymOwner.name
+      }
+    );
+
+    // Log successful QR scan
+    await firestoreService.logQRScanAttempt(
+      memberId,
+      gymOwnerId,
+      'success',
+      'Active membership verified'
+    );
+
+    console.log('✅ Firestore: Member status updated to active successfully');
+  } catch (firestoreError) {
+    console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    // Don't fail the request if Firestore fails - it's supplementary
+  }
+
   res.status(200).json({
     status: 'success',
     message: `✅ Subscription is Active! Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}`,
@@ -208,6 +239,36 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
   }
 
   // Success - member is active, allow access
+  try {
+    // Update Firestore with active status
+    await firestoreService.updateMemberStatusToActive(
+      memberId,
+      gymOwnerId,
+      {
+        name: member.name,
+        email: member.email
+      },
+      {
+        id: gymOwner._id,
+        name: gymOwner.gymName || gymOwner.name + "'s Gym",
+        owner: gymOwner.name
+      }
+    );
+
+    // Log successful QR scan
+    await firestoreService.logQRScanAttempt(
+      memberId,
+      gymOwnerId,
+      'success',
+      'QR scan verification successful'
+    );
+
+    console.log('✅ Firestore: Member QR scan logged and status updated successfully');
+  } catch (firestoreError) {
+    console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    // Don't fail the request if Firestore fails - it's supplementary
+  }
+
   res.status(200).json({
     status: 'success',
     message: `✅ Access Granted! Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}, ${member.name}!`,
@@ -227,160 +288,9 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
   });
 });
 
-// NodeMCU member verification - requires both gymOwnerId and memberId (no JWT needed)
-export const verifyNodeMCUMemberAccess = catchAsync(async (req, res, next) => {
-  console.log('NodeMCU member verification request received');
-  console.log('Request body:', req.body);
-  
-  const { gymOwnerId, memberId } = req.body;
 
-  console.log('Extracted values:', { gymOwnerId, memberId });
 
-  // Validate input
-  if (!gymOwnerId || !memberId) {
-    console.log('Validation failed - missing required IDs');
-    return res.status(400).json({
-      status: 'error',
-      message: 'Both gym owner ID and member ID are required',
-      nodeMcuResponse: 'deny',
-      data: {}
-    });
-  }
 
-  // Find the gym owner
-  const gymOwner = await User.findById(gymOwnerId);
-  if (!gymOwner || gymOwner.role !== 'gym-owner') {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Invalid gym owner or gym not found',
-      nodeMcuResponse: 'deny',
-      data: {
-        member: { membershipStatus: 'Unknown' }
-      }
-    });
-  }
-
-  // Find the member
-  const member = await User.findById(memberId);
-  if (!member || member.role !== 'member') {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Invalid member',
-      nodeMcuResponse: 'deny',
-      data: {
-        member: { membershipStatus: 'Unknown' }
-      }
-    });
-  }
-
-  // Check if member is associated with this gym
-  if (!member.createdBy || member.createdBy.toString() !== gymOwnerId) {
-    return res.status(403).json({
-      status: 'error',
-      message: 'Member is not associated with this gym',
-      nodeMcuResponse: 'deny',
-      data: {
-        member: { 
-          membershipStatus: 'Not a member',
-          name: member.name,
-          email: member.email
-        },
-        gym: {
-          id: gymOwner._id,
-          name: gymOwner.gymName || gymOwner.name + "'s Gym",
-          owner: gymOwner.name
-        }
-      }
-    });
-  }
-
-  // Check membership status
-  if (member.membershipStatus !== 'Active') {
-    return res.status(200).json({
-      status: 'error',
-      message: 'Member subscription is inactive',
-      nodeMcuResponse: 'deny',
-      data: {
-        member: { 
-          membershipStatus: member.membershipStatus || 'Inactive',
-          name: member.name,
-          email: member.email
-        },
-        gym: {
-          id: gymOwner._id,
-          name: gymOwner.gymName || gymOwner.name + "'s Gym",
-          owner: gymOwner.name
-        }
-      }
-    });
-  }
-
-  // Success - member is active, allow access
-  res.status(200).json({
-    status: 'success',
-    message: `✅ Access Granted! Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}, ${member.name}!`,
-    nodeMcuResponse: 'allow', // Send "allow" to NodeMCU only for active members
-    data: {
-      member: { 
-        membershipStatus: 'Active',
-        name: member.name,
-        email: member.email
-      },
-      gym: {
-        id: gymOwner._id,
-        name: gymOwner.gymName || gymOwner.name + "'s Gym",
-        owner: gymOwner.name
-      }
-    }
-  });
-});
-
-// Device verification - only requires gymOwnerId (for NodeMCU device access)
-export const verifyDeviceAccess = catchAsync(async (req, res, next) => {
-  console.log('Device verification request received');
-  console.log('Request body:', req.body);
-  
-  const { gymOwnerId } = req.body;
-
-  console.log('Extracted gymOwnerId:', gymOwnerId);
-
-  // Validate input
-  if (!gymOwnerId) {
-    console.log('Validation failed - missing gymOwnerId');
-    return res.status(400).json({
-      status: 'error',
-      message: 'Gym owner ID is required',
-      data: {}
-    });
-  }
-
-  // Find the gym owner
-  const gymOwner = await User.findById(gymOwnerId);
-  if (!gymOwner || gymOwner.role !== 'gym-owner') {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Invalid gym owner or gym not found',
-      data: {
-        gym: { status: 'Not found' }
-      }
-    });
-  }
-
-  // Success - gym is valid, allow device access
-  res.status(200).json({
-    status: 'success',
-    message: `✅ Device access granted for ${gymOwner.gymName || gymOwner.name + "'s Gym"}`,
-    nodeMcuResponse: 'allow', // Send "allow" to NodeMCU on successful verification
-    data: {
-      gym: {
-        id: gymOwner._id,
-        name: gymOwner.gymName || gymOwner.name + "'s Gym",
-        owner: gymOwner.name,
-        status: 'Active'
-      }
-    }
-  });
-});
 
 // Join gym functionality
 export const joinGym = catchAsync(async (req, res, next) => {
