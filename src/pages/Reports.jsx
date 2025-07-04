@@ -145,7 +145,7 @@ const Reports = () => {
           };
         }
         
-        // Calculate new members per month
+        // Calculate new members per month and revenue per month
         members.forEach(member => {
           if (!member.createdAt) return;
           
@@ -153,13 +153,28 @@ const Reports = () => {
           if (joinDate.getFullYear() === currentYear) {
             const month = joinDate.getMonth() + 1;
             monthlyStats[month].newMembers++;
-            
-            // Add revenue for each month since they joined
-            for (let m = month; m <= 12; m++) {
-              monthlyStats[m].revenue += avgMembershipFee;
-            }
           }
         });
+        
+        // Calculate revenue per month based on active members
+        for (let month = 1; month <= 12; month++) {
+          // Count active members for this month
+          const activeMembersInMonth = members.filter(member => {
+            if (!member.createdAt) return false;
+            
+            const joinDate = new Date(member.createdAt);
+            const joinMonth = joinDate.getMonth() + 1;
+            const joinYear = joinDate.getFullYear();
+            
+            // Member is active if they joined in or before this month in the current year
+            // or if they joined in a previous year
+            return (joinYear < currentYear) || 
+                   (joinYear === currentYear && joinMonth <= month);
+          }).length;
+          
+          // Calculate revenue for this month
+          monthlyStats[month].revenue = activeMembersInMonth * avgMembershipFee;
+        }
         
         // Calculate expenses per month from expenses array
         expenses.forEach(expense => {

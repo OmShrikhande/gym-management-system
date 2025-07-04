@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,8 @@ const Members = () => {
     medicalConditions: '',
     requiresTrainer: false,
     assignedTrainer: '', // Trainer ID will be stored here
-    membershipDuration: '1', // in years
+    membershipDuration: '12', // in months (default 12 months = 1 year)
+    durationType: 'preset', // 'preset' or 'custom'
     fitnessGoalDescription: ''
   });
   
@@ -57,6 +58,7 @@ const Members = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingMemberData, setPendingMemberData] = useState(null);
   const [formStep, setFormStep] = useState(1); // 1: Basic Info, 2: Membership Details, 3: Review
+  const [customDuration, setCustomDuration] = useState(''); // For custom duration input
   const [subscriptionInfo, setSubscriptionInfo] = useState({
     maxMembers: 0,
     currentMembers: 0,
@@ -83,7 +85,7 @@ const Members = () => {
   ]);
   
   // Fetch gym owner plans
-  const fetchGymOwnerPlans = async () => {
+  const fetchGymOwnerPlans = useCallback(async () => {
     if (!user || !isGymOwner) return;
     
     try {
@@ -121,58 +123,20 @@ const Members = () => {
       // Keep using the default plans
       console.log('Using default gym owner plans');
     }
-  };
+  }, [user, isGymOwner, authFetch]);
 
-  // Fetch subscription info to check member limits
-  const fetchSubscriptionInfo = async () => {
+  // Fetch subscription info to check member limits - USE CONTEXT DATA INSTEAD OF API CALLS
+  const fetchSubscriptionInfo = useCallback(() => {
     if (!user || !isGymOwner) return;
     
     try {
-      console.log('Fetching subscription info for gym owner:', user._id);
+      console.log('Processing subscription info for gym owner:', user._id);
       console.log('Current subscription from context:', subscription);
       
-      // Set default values first
+      // Use data from context instead of making API calls
       let hasActiveSubscription = subscription?.hasActiveSubscription || false;
       let plan = subscription?.subscription?.plan || 'Basic';
       let maxMembers = 200; // Default for Basic plan
-      
-      // Always get the latest subscription status directly from the API
-      // This ensures we have the most up-to-date information after renewal
-      try {
-        const statusResponse = await authFetch(`/subscriptions/status/${user._id}`);
-        console.log('Subscription status response:', statusResponse);
-        
-        // Update active status from the API response if available
-        if (statusResponse) {
-          hasActiveSubscription = statusResponse?.data?.hasActiveSubscription || 
-                                 statusResponse?.hasActiveSubscription || 
-                                 hasActiveSubscription;
-        }
-      } catch (statusError) {
-        console.error('Error fetching subscription status:', statusError);
-        // Continue with the default value from context
-      }
-      
-      console.log('Has active subscription:', hasActiveSubscription);
-      
-      // Get subscription plan details
-      try {
-        // Use the authFetch function which already has the API_URL prefix
-        const response = await authFetch(`/subscriptions/details/${user._id}`);
-        console.log('Subscription details response:', response);
-        
-        if (response && (response.success !== false || response.status === 'success')) {
-          const subscriptionData = response.data?.subscription || response.subscription;
-          if (subscriptionData) {
-            plan = subscriptionData.plan || plan;
-          }
-        }
-      } catch (apiError) {
-        console.error('API error fetching subscription details:', apiError);
-        // Continue with the default value from context
-      }
-      
-      console.log('Subscription plan:', plan);
       
       // Set max members based on plan
       if (plan === 'Premium' || plan === 'Premium Member') maxMembers = 500;
@@ -183,23 +147,30 @@ const Members = () => {
       
       console.log('Max members:', maxMembers, 'Current members:', currentMembers);
       
-      // Set the subscription info with all the data we've gathered
-      setSubscriptionInfo({
-        maxMembers,
-        currentMembers,
-        hasActiveSubscription,
-        membershipFee: 500, // Default membership fee
-        plan
+      // Only update if the values have actually changed
+      setSubscriptionInfo(prev => {
+        const newInfo = {
+          maxMembers,
+          currentMembers,
+          hasActiveSubscription,
+          membershipFee: 500, // Default membership fee
+          plan
+        };
+        
+        // Check if anything has actually changed
+        if (prev.maxMembers === newInfo.maxMembers &&
+            prev.currentMembers === newInfo.currentMembers &&
+            prev.hasActiveSubscription === newInfo.hasActiveSubscription &&
+            prev.plan === newInfo.plan) {
+          return prev; // No change, return previous state
+        }
+        
+        console.log('Subscription info set:', newInfo);
+        return newInfo;
       });
       
-      console.log('Subscription info set:', {
-        maxMembers,
-        currentMembers,
-        hasActiveSubscription,
-        plan
-      });
     } catch (error) {
-      console.error('Error fetching subscription info:', error);
+      console.error('Error processing subscription info:', error);
       // Set default values
       const currentMembers = users.filter(u => u.role === 'member').length;
       const defaultInfo = {
@@ -213,23 +184,42 @@ const Members = () => {
       setSubscriptionInfo(defaultInfo);
       console.log('Using default subscription info:', defaultInfo);
     }
-  };
+  }, [user?._id, isGymOwner, subscription?.hasActiveSubscription, subscription?.subscription?.plan, users.length]);
+
+  // Use ref to prevent multiple data loads
+  const hasInitiallyLoaded = useRef(false);
+  const lastUserId = useRef(null);
+  
+  // Reset loading flag when user changes
+  useEffect(() => {
+    if (user?._id !== lastUserId.current) {
+      hasInitiallyLoaded.current = false;
+      lastUserId.current = user?._id;
+    }
+  }, [user?._id]);
 
   // Function to fetch trainers for the current gym
-  const fetchTrainers = async () => {
+  const fetchTrainers = useCallback(() => {
     if (!user || !isGymOwner) return;
     
     try {
       // Filter trainers from users array
       const gymTrainers = users.filter(u => u.role === 'trainer');
-      setAvailableTrainers(gymTrainers);
+      setAvailableTrainers(prev => {
+        // Only update if the trainers have actually changed
+        if (prev.length !== gymTrainers.length || 
+            !prev.every(trainer => gymTrainers.some(gt => gt._id === trainer._id))) {
+          return gymTrainers;
+        }
+        return prev;
+      });
     } catch (error) {
       console.error('Error fetching trainers:', error);
     }
-  };
+  }, [user?._id, isGymOwner, users.length]);
   
   // Function to fetch members assigned to the current trainer
-  const fetchTrainerMembers = async () => {
+  const fetchTrainerMembers = useCallback(async () => {
     if (!user || !isTrainer) return;
     
     try {
@@ -272,14 +262,18 @@ const Members = () => {
     } catch (error) {
       console.error('Error fetching trainer members:', error);
     }
-  };
+  }, [user, isTrainer, authFetch]);
 
   // Combined data loading effect to reduce re-renders
   useEffect(() => {
-    // Use a debounce to prevent multiple rapid data loads
+    // Use a ref to prevent multiple loads
     let loadingTimeout;
     
     const loadData = async () => {
+      // Prevent multiple simultaneous loads
+      if (hasInitiallyLoaded.current) return;
+      hasInitiallyLoaded.current = true;
+      
       // Clear any existing timeout
       if (loadingTimeout) clearTimeout(loadingTimeout);
       
@@ -291,46 +285,19 @@ const Members = () => {
       try {
         console.log('Loading data for Members page...');
         
-        // Create an array of promises to load all data in parallel
-        const promises = [];
-        
         // Step 1: Fetch users (force refresh to get latest data)
-        const usersPromise = fetchUsers(true);
-        promises.push(usersPromise);
+        await fetchUsers(true);
         
-        // Step 2: Check subscription status if user is gym owner
-        if (user && isGymOwner && checkSubscriptionStatus) {
+        // Step 2: Check subscription status if user is gym owner (only once)
+        if (user && isGymOwner && checkSubscriptionStatus && !subscription?.hasActiveSubscription) {
           console.log('Checking subscription status for gym owner:', user._id);
-          const statusPromise = checkSubscriptionStatus(user._id, null, true);
-          promises.push(statusPromise);
+          await checkSubscriptionStatus(user._id, null, true);
         }
         
         // Step 3: Fetch gym owner plans if needed
         if (user && isGymOwner) {
           console.log('Fetching gym owner plans');
-          const plansPromise = fetchGymOwnerPlans();
-          promises.push(plansPromise);
-        }
-        
-        // Wait for all promises to resolve
-        await Promise.all(promises);
-        
-        // Now that we have users data, we can fetch subscription info
-        if (user && isGymOwner) {
-          console.log('Fetching subscription info for gym owner');
-          await fetchSubscriptionInfo();
-        }
-        
-        // Fetch trainers after users are loaded
-        if (user && isGymOwner && users.length > 0) {
-          console.log('Fetching trainers');
-          await fetchTrainers();
-        }
-        
-        // Fetch trainer members if user is a trainer
-        if (user && isTrainer) {
-          console.log('Fetching trainer members');
-          await fetchTrainerMembers();
+          await fetchGymOwnerPlans();
         }
         
         console.log('Data loading complete');
@@ -338,6 +305,7 @@ const Members = () => {
         // Clear the loading timeout
         clearTimeout(loadingTimeout);
         loadingTimeout = null;
+        setIsLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
         setMessage({ type: 'error', text: 'Failed to load data' });
@@ -357,7 +325,31 @@ const Members = () => {
     return () => {
       if (loadingTimeout) clearTimeout(loadingTimeout);
     };
-  }, [fetchUsers, user, isGymOwner, isTrainer, checkSubscriptionStatus]);
+  }, [fetchUsers, user, isGymOwner, isTrainer]); // Simplified dependencies
+
+  // Separate effect to process subscription info when users or subscription changes
+  useEffect(() => {
+    if (user && isGymOwner && subscription && users.length > 0) {
+      console.log('Processing subscription info for gym owner');
+      fetchSubscriptionInfo();
+    }
+  }, [subscription?.hasActiveSubscription, subscription?.subscription?.plan, users.length, user, isGymOwner]); // Only depend on specific values
+
+  // Separate effect to fetch trainers when users are loaded
+  useEffect(() => {
+    if (user && isGymOwner && users.length > 0) {
+      console.log('Fetching trainers');
+      fetchTrainers();
+    }
+  }, [users.length, user, isGymOwner]);
+
+  // Separate effect to fetch trainer members
+  useEffect(() => {
+    if (user && isTrainer) {
+      console.log('Fetching trainer members');
+      fetchTrainerMembers();
+    }
+  }, [user, isTrainer]);
 
   // Process users to get members - only runs when users array changes
   useEffect(() => {
@@ -380,8 +372,8 @@ const Members = () => {
           if (!membershipEndDate && member.membershipDuration && (member.membershipStartDate || member.createdAt)) {
             const startDate = new Date(member.membershipStartDate || member.createdAt);
             const endDate = new Date(startDate);
-            const duration = parseInt(member.membershipDuration || '1');
-            endDate.setFullYear(endDate.getFullYear() + duration);
+            const duration = parseInt(member.membershipDuration || '12'); // Default to 12 months if not specified
+            endDate.setMonth(endDate.getMonth() + duration);
             membershipEndDate = endDate.toISOString();
           }
           
@@ -852,7 +844,7 @@ const Members = () => {
     
     // Calculate membership fee based on duration and plan
     const monthlyFee = selectedPlan.price || subscriptionInfo.membershipFee;
-  const durationInMonths = parseInt(formData.membershipDuration) * 12; // Convert years to months
+  const durationInMonths = parseInt(formData.membershipDuration); // Duration is already in months
   const trainerFee = formData.requiresTrainer ? 2000 : 0;
     
     // Calculate total fee based on plan price, duration, and trainer fee
@@ -1521,10 +1513,15 @@ const Members = () => {
             <p className="text-gray-400 text-sm mb-1">Membership Duration</p>
             <p className="text-white">
               {selectedMember.membershipDuration
-                ? `${selectedMember.membershipDuration} ${
-                    parseInt(selectedMember.membershipDuration) > 1 ? "Years" : "Year"
-                  }`
-                : "1 Year (Default)"}
+                ? (() => {
+                    const duration = parseInt(selectedMember.membershipDuration);
+                    if (duration >= 12 && duration % 12 === 0) {
+                      const years = duration / 12;
+                      return `${years} ${years > 1 ? "Years" : "Year"}`;
+                    }
+                    return `${duration} ${duration > 1 ? "Months" : "Month"}`;
+                  })()
+                : "12 Months (Default)"}
             </p>
           </div>
           <div>
@@ -1533,8 +1530,8 @@ const Members = () => {
               {selectedMember.paymentDate
                 ? (() => {
                     const paymentDate = new Date(selectedMember.paymentDate);
-                    const duration = parseInt(selectedMember.membershipDuration || "1");
-                    paymentDate.setFullYear(paymentDate.getFullYear() + duration);
+                    const duration = parseInt(selectedMember.membershipDuration || "12");
+                    paymentDate.setMonth(paymentDate.getMonth() + duration);
                     return paymentDate.toLocaleDateString();
                   })()
                 : "Not applicable"}
@@ -1950,14 +1947,60 @@ const Members = () => {
                             id="membershipDuration"
                             name="membershipDuration"
                             value={formData.membershipDuration}
-                            onChange={handleInputChange}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setFormData({
+                                ...formData,
+                                membershipDuration: value,
+                                durationType: value === 'custom' ? 'custom' : 'preset'
+                              });
+                              // Reset custom duration when switching from custom to preset
+                              if (value !== 'custom') {
+                                setCustomDuration('');
+                              }
+                            }}
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >
-                            <option value="1">1 Year</option>
-                            <option value="2">2 Years</option>
-                            <option value="3">3 Years</option>
+                            <option value="1">1 Month</option>
+                            <option value="3">3 Months</option>
+                            <option value="6">6 Months</option>
+                            <option value="12">1 Year</option>
+                            <option value="24">2 Years</option>
+                            <option value="36">3 Years</option>
+                            <option value="custom">Custom Duration</option>
                           </select>
+                          
+                          {/* Custom duration input */}
+                          {formData.membershipDuration === 'custom' && (
+                            <div className="mt-3">
+                              <Label htmlFor="customDuration" className="mb-2 block text-gray-300">
+                                Enter months *
+                              </Label>
+                              <Input
+                                id="customDuration"
+                                type="number"
+                                min="1"
+                                max="120"
+                                value={customDuration}
+                                onChange={(e) => {
+                                  const months = e.target.value;
+                                  setCustomDuration(months);
+                                  // Update formData with custom duration
+                                  setFormData({
+                                    ...formData,
+                                    membershipDuration: months || '1'
+                                  });
+                                }}
+                                placeholder="Enter number of months"
+                                className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 text-white"
+                                required
+                              />
+                              <p className="text-xs text-gray-400 mt-1">
+                                Enter duration between 1 and 120 months (10 years)
+                              </p>
+                            </div>
+                          )}
                           <div className="mt-2 space-y-1">
                             <p className="text-sm text-gray-400">
                               Longer durations offer better value
@@ -1968,7 +2011,8 @@ const Members = () => {
                                 Expires: {(() => {
                                   const startDate = new Date();
                                   const endDate = new Date(startDate);
-                                  endDate.setFullYear(endDate.getFullYear() + parseInt(formData.membershipDuration));
+                                  const months = parseInt(formData.membershipDuration === 'custom' ? customDuration || '1' : formData.membershipDuration);
+                                  endDate.setMonth(endDate.getMonth() + months);
                                   return endDate.toLocaleDateString();
                                 })()}
                               </span>

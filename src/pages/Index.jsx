@@ -712,6 +712,9 @@ const Index = () => {
         if (userRole === 'super-admin') {
           await fetchTotalRevenue();
           await fetchNewGymOwnersCount();
+        } else if (userRole === 'gym-owner') {
+          // Fetch users for gym owner dashboard
+          await fetchUsers();
         } else if (userRole === 'trainer') {
           await fetchTrainerStats();
         } else if (userRole === 'member') {
@@ -735,7 +738,7 @@ const Index = () => {
     };
     
     loadDashboardData();
-  }, [user, userRole, location.pathname]);
+  }, [user, userRole, location.pathname, fetchUsers]);
 
   // Separate useEffect for member data calculation to prevent infinite loops
   useEffect(() => {
@@ -1055,7 +1058,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-400 text-sm">{stat.label}</p>
-                      <p className="text-2xl font-bold text-white min-h-[32px]">{stat.value}</p>
+                      <div className="text-2xl font-bold text-white min-h-[32px]">{stat.value}</div>
                     </div>
                     <div className={`p-3 rounded-full ${stat.color}`}>
                       <stat.icon className="h-6 w-6 text-white" />
@@ -1560,7 +1563,7 @@ const Index = () => {
           )}
 
           {/* Recent Activity */}
-          <Card className="bg-gray-800/50 border-gray-700">
+          {/* <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-white">Recent Activity</CardTitle>
@@ -1635,7 +1638,7 @@ const Index = () => {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
     </DashboardLayout>
