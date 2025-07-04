@@ -147,6 +147,11 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
 
       console.log('Verification response:', response.data);
       
+      // Log NodeMCU response if present
+      if (response.data.nodeMcuResponse) {
+        console.log('NodeMCU Response:', response.data.nodeMcuResponse);
+      }
+      
       const isSuccess = response.data.status === 'success';
       const membershipStatus = response.data.data?.member?.membershipStatus || 'Unknown';
       

@@ -113,8 +113,7 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
   if (!gymOwnerId || !memberId || !deviceId) {
     return res.status(400).json({
       status: 'error',
-      message: 'Gym Owner ID, Member ID, and Device ID are required',
-      nodeMcuResponse: 'INACTIVE'
+      message: 'Gym Owner ID, Member ID, and Device ID are required'
     });
   }
 
@@ -125,7 +124,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
       return res.status(200).json({
         status: 'error',
         message: 'Invalid gym owner',
-        nodeMcuResponse: 'INACTIVE',
         deviceResponse: {
           deviceId,
           action: 'DENY_ACCESS',
@@ -140,7 +138,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
       return res.status(200).json({
         status: 'error',
         message: 'Invalid member',
-        nodeMcuResponse: 'INACTIVE',
         deviceResponse: {
           deviceId,
           action: 'DENY_ACCESS',
@@ -156,7 +153,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
       return res.status(200).json({
         status: 'error',
         message: 'Device not authorized for this gym',
-        nodeMcuResponse: 'INACTIVE',
         deviceResponse: {
           deviceId,
           action: 'DENY_ACCESS',
@@ -183,7 +179,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
       return res.status(200).json({
         status: 'error',
         message: 'You are not a member of this gym',
-        nodeMcuResponse: 'INACTIVE',
         deviceResponse: {
           deviceId,
           action: 'DENY_ACCESS',
@@ -210,7 +205,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
       return res.status(200).json({
         status: 'error',
         message: 'Your membership is inactive. Please renew your subscription.',
-        nodeMcuResponse: 'INACTIVE',
         deviceResponse: {
           deviceId,
           action: 'DENY_ACCESS',
@@ -248,7 +242,7 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
     res.status(200).json({
       status: 'success',
       message: `Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}!`,
-      nodeMcuResponse: 'ACTIVE',
+      nodeMcuResponse: 'allow', // Send "allow" to NodeMCU on successful device access
       deviceResponse: {
         deviceId,
         action: 'GRANT_ACCESS',
@@ -278,7 +272,6 @@ export const validateMembershipWithDevice = catchAsync(async (req, res, next) =>
     res.status(200).json({
       status: 'error',
       message: 'System error occurred',
-      nodeMcuResponse: 'INACTIVE',
       deviceResponse: {
         deviceId: deviceId || 'unknown',
         action: 'DENY_ACCESS',
