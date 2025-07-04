@@ -30,6 +30,19 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   // Find the gym owner
   const gymOwner = await User.findById(gymOwnerId);
   if (!gymOwner || gymOwner.role !== 'gym-owner') {
+    // Update door status to false (closed) for invalid gym
+    try {
+      await firestoreService.updateDoorStatus(gymOwnerId, false);
+      await firestoreService.logQRScanAttempt(
+        memberId,
+        gymOwnerId,
+        'failed',
+        'Invalid gym owner'
+      );
+    } catch (firestoreError) {
+      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    }
+
     return res.status(404).json({
       status: 'error',
       message: 'Invalid gym owner or gym not found',
@@ -42,6 +55,19 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   // Find the member
   const member = await User.findById(memberId);
   if (!member || member.role !== 'member') {
+    // Update door status to false (closed) for invalid member
+    try {
+      await firestoreService.updateDoorStatus(gymOwnerId, false);
+      await firestoreService.logQRScanAttempt(
+        memberId,
+        gymOwnerId,
+        'failed',
+        'Invalid member'
+      );
+    } catch (firestoreError) {
+      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    }
+
     return res.status(404).json({
       status: 'error',
       message: 'Invalid member',
@@ -53,6 +79,19 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
 
   // Check if member is associated with this gym
   if (!member.createdBy || member.createdBy.toString() !== gymOwnerId) {
+    // Update door status to false (closed) for non-member
+    try {
+      await firestoreService.updateDoorStatus(gymOwnerId, false);
+      await firestoreService.logQRScanAttempt(
+        memberId,
+        gymOwnerId,
+        'failed',
+        'Not a member of this gym'
+      );
+    } catch (firestoreError) {
+      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    }
+
     return res.status(403).json({
       status: 'error',
       message: 'You are not a member of this gym',
@@ -69,6 +108,19 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
 
   // Check membership status
   if (member.membershipStatus !== 'Active') {
+    // Update door status to false (closed) for inactive membership
+    try {
+      await firestoreService.updateDoorStatus(gymOwnerId, false);
+      await firestoreService.logQRScanAttempt(
+        memberId,
+        gymOwnerId,
+        'failed',
+        'Inactive membership'
+      );
+    } catch (firestoreError) {
+      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    }
+
     return res.status(200).json({
       status: 'error',
       message: 'Your subscription is inactive. Please renew your membership.',

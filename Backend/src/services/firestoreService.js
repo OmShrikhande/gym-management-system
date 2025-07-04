@@ -46,6 +46,9 @@ class FirestoreService {
         console.log(`✅ Firestore: Created new member ${memberId} with active status`);
       }
 
+      // Update door status to true (open) for successful QR scan
+      await this.updateDoorStatus(gymOwnerId, true);
+
       return {
         success: true,
         message: 'Member status updated to active in Firestore',
@@ -123,6 +126,35 @@ class FirestoreService {
     } catch (error) {
       console.error('❌ Firestore Get Error:', error);
       throw new Error(`Failed to get member activity: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update door status in Firestore
+   * @param {string} gymOwnerId - Gym owner's MongoDB ID
+   * @param {boolean} status - Door status (true = open, false = closed)
+   */
+  async updateDoorStatus(gymOwnerId, status) {
+    try {
+      const doorRef = doc(db, 'gym', 'doorstatus');
+      
+      await setDoc(doorRef, {
+        status: status, // true for open, false for closed
+        gymOwnerId: gymOwnerId,
+        lastUpdated: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      console.log(`🚪 Firestore: Door status updated to ${status ? 'OPEN' : 'CLOSED'} for gym ${gymOwnerId}`);
+      
+      return {
+        success: true,
+        message: `Door status updated to ${status ? 'open' : 'closed'}`
+      };
+
+    } catch (error) {
+      console.error('❌ Firestore Door Status Error:', error);
+      throw new Error(`Failed to update door status in Firestore: ${error.message}`);
     }
   }
 
