@@ -2,7 +2,6 @@
 import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
-import deviceSocketService from '../services/deviceSocketService.js';
 
 // Verify membership and subscription status for QR code scanning
 // When successful, sends "allow" response to NodeMCU for access control
@@ -168,7 +167,7 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
 
   // Check if member is associated with this gym
   if (!member.createdBy || member.createdBy.toString() !== gymOwnerId) {
-    const responseData = {
+    return res.status(403).json({
       status: 'error',
       message: 'You are not a member of this gym',
       nodeMcuResponse: 'deny',
@@ -184,17 +183,12 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
           owner: gymOwner.name
         }
       }
-    };
-
-    // Send response to listening device
-    deviceSocketService.sendQRScanResponse(gymOwnerId, responseData);
-
-    return res.status(403).json(responseData);
+    });
   }
 
   // Check membership status
   if (member.membershipStatus !== 'Active') {
-    const responseData = {
+    return res.status(200).json({
       status: 'error',
       message: 'Your subscription is inactive. Please renew your membership.',
       nodeMcuResponse: 'deny',
@@ -210,16 +204,11 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
           owner: gymOwner.name
         }
       }
-    };
-
-    // Send response to listening device
-    deviceSocketService.sendQRScanResponse(gymOwnerId, responseData);
-
-    return res.status(200).json(responseData);
+    });
   }
 
   // Success - member is active, allow access
-  const successResponseData = {
+  res.status(200).json({
     status: 'success',
     message: `✅ Access Granted! Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}, ${member.name}!`,
     nodeMcuResponse: 'allow', // Send "allow" to NodeMCU only for active members
@@ -235,12 +224,7 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
         owner: gymOwner.name
       }
     }
-  };
-
-  // Send successful response to listening device
-  deviceSocketService.sendQRScanResponse(gymOwnerId, successResponseData);
-
-  res.status(200).json(successResponseData);
+  });
 });
 
 // NodeMCU member verification - requires both gymOwnerId and memberId (no JWT needed)
@@ -332,7 +316,7 @@ export const verifyNodeMCUMemberAccess = catchAsync(async (req, res, next) => {
   }
 
   // Success - member is active, allow access
-  const nodeMcuResponseData = {
+  res.status(200).json({
     status: 'success',
     message: `✅ Access Granted! Welcome to ${gymOwner.gymName || gymOwner.name + "'s Gym"}, ${member.name}!`,
     nodeMcuResponse: 'allow', // Send "allow" to NodeMCU only for active members
@@ -348,12 +332,7 @@ export const verifyNodeMCUMemberAccess = catchAsync(async (req, res, next) => {
         owner: gymOwner.name
       }
     }
-  };
-
-  // Send successful response to listening device
-  deviceSocketService.sendAccessResponse(gymOwnerId, nodeMcuResponseData);
-
-  res.status(200).json(nodeMcuResponseData);
+  });
 });
 
 // Device verification - only requires gymOwnerId (for NodeMCU device access)
