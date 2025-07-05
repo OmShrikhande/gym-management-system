@@ -180,7 +180,7 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
         onScanSuccess(response.data);
       }
 
-      setTimeout(() => resetScanner(), 5000);
+      setTimeout(() => resetScanner(), );
     } catch (error) {
       console.error('Error processing QR code:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Invalid QR code. Please scan a valid gym QR code.';
