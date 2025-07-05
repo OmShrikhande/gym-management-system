@@ -6,7 +6,7 @@ const USER_STORAGE_KEY = 'gymflow_user';
 const TOKEN_STORAGE_KEY = 'gymflow_token';
 
 // API URL
-const API_URL = 'http://localhost:8081/api';
+const API_URL = 'https://gym-management-system-ckb0.onrender.com/api';
 
 // Create the Auth Context
 const AuthContext = createContext(undefined);

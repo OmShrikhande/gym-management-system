@@ -8,7 +8,7 @@ import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
 // API URL
-const API_URL = 'http://localhost:8081/api';
+const API_URL = 'https://gym-management-system-ckb0.onrender.com/api';
 
 const SubscriptionRequired = () => {
   const { user, subscription, logout, authFetch, checkSubscriptionStatus } = useAuth();

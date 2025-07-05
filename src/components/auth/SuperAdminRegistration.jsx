@@ -7,7 +7,7 @@ import { Dumbbell, Mail, Lock, User, Key, Loader2, ShieldAlert } from "lucide-re
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = 'http://localhost:8081/api';
+const API_URL = 'https://gym-management-system-ckb0.onrender.com/api';
 
 const SuperAdminRegistration = () => {
   const [formData, setFormData] = useState({

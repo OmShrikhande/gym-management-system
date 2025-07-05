@@ -132,8 +132,8 @@ connectDB().then(async () => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📡 API available at http://localhost:${PORT}/api`);
-    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+    console.log(`📡 API available at https://gym-management-system-ckb0.onrender.com/api`);
+    console.log(`🏥 Health check: https://gym-management-system-ckb0.onrender.com/health`);
   });
 }).catch(err => {
   console.error('Failed to connect to database:', err);

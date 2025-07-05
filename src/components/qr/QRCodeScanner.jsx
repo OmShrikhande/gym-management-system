@@ -138,7 +138,7 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
       console.log('Token exists:', !!token);
 
       // Make API call to verify membership
-      const response = await axios.post('http://localhost:8081/api/attendance/verify', requestData, {
+      const response = await axios.post('https://gym-management-system-ckb0.onrender.com/api/attendance/verify', requestData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
