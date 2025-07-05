@@ -37,7 +37,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5000',
-  'https://gentle-gingersnap-9fde09.netlify.app/', // Replace with your actual frontend URL
+  'https://gentle-gingersnap-9fde09.netlify.app', // Your actual frontend URL
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
