@@ -5,8 +5,11 @@ import AppError from '../utils/appError.js';
 import { promisify } from 'util';
 
 const signToken = id => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not defined in environment variables');
+  }
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
+    expiresIn: process.env.JWT_EXPIRES_IN || '90d',
   });
 };
 
@@ -134,26 +137,58 @@ export const createUser = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('LOGIN ATTEMPT:', { email, passwordProvided: !!password });
 
     if (!email || !password) {
+      console.log('LOGIN FAILED: Missing email or password');
       return res.status(400).json({
         status: 'fail',
         message: 'Please provide email and password!',
       });
     }
 
-    const user = await User.findOne({ email }).select('+password');
+    // Check if JWT_SECRET is available
+    if (!process.env.JWT_SECRET) {
+      console.error('LOGIN ERROR: JWT_SECRET not found in environment variables');
+      return res.status(500).json({
+        status: 'error',
+        message: 'Server configuration error. Please contact administrator.',
+      });
+    }
 
-    if (!user || !(await user.correctPassword(password, user.password))) {
+    console.log('Finding user in database...');
+    const user = await User.findOne({ email }).select('+password');
+    
+    if (!user) {
+      console.log('LOGIN FAILED: User not found with email:', email);
       return res.status(401).json({
         status: 'fail',
         message: 'Incorrect email or password',
       });
     }
 
+    console.log('User found:', { id: user._id, email: user.email, role: user.role });
+
+    // Check password
+    const isPasswordCorrect = await user.correctPassword(password, user.password);
+    console.log('Password check result:', isPasswordCorrect);
+
+    if (!isPasswordCorrect) {
+      console.log('LOGIN FAILED: Incorrect password for user:', email);
+      return res.status(401).json({
+        status: 'fail',
+        message: 'Incorrect email or password',
+      });
+    }
+
+    console.log('Generating JWT token...');
     const token = signToken(user._id);
+    console.log('JWT token generated successfully');
+
     user.password = undefined; // Remove password from output
 
+    console.log('LOGIN SUCCESS:', { userId: user._id, email: user.email, role: user.role });
+    
     res.status(200).json({
       status: 'success',
       token,

@@ -80,7 +80,7 @@ dietPlanSchema.index({ trainer: 1, createdAt: -1 });
 dietPlanSchema.index({ gym: 1, createdAt: -1 });
 dietPlanSchema.index({ assignedTo: 1, createdAt: -1 });
 dietPlanSchema.index({ goalType: 1 });
-dietPlanSchema.index({ createdAt: -1 });
+// Removed duplicate createdAt index since it's already included in compound indexes above
 
 const DietPlan = mongoose.model('DietPlan', dietPlanSchema);
 

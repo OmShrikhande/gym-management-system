@@ -22,6 +22,12 @@ const LoginForm = () => {
     setIsSubmitting(true);
 
     try {
+      // Validate form data
+      if (!formData.email || !formData.password) {
+        toast.error("Please fill in all fields");
+        return;
+      }
+
       // Handle login
       const result = await login({
         email: formData.email,
@@ -32,11 +38,11 @@ const LoginForm = () => {
         toast.success(result.message);
         navigate("/"); // Redirect to home page after successful login
       } else {
-        toast.error(result.message);
+        toast.error(result.message || "Login failed. Please try again.");
       }
     } catch (error) {
-      toast.error("An unexpected error occurred");
-      console.error(error);
+      console.error('Login error:', error);
+      toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

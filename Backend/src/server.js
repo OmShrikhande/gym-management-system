@@ -33,9 +33,39 @@ dotenv.config();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5000',
+  'https://your-frontend-url.com', // Replace with your actual frontend URL
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+// Add wildcard for development
+if (process.env.NODE_ENV === 'development') {
+  allowedOrigins.push('*');
+}
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow all origins
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -84,6 +114,30 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
+});
+
+// Test route to check database and admin user
+app.get('/test', async (req, res) => {
+  try {
+    const adminUser = await User.findOne({ role: 'super-admin' });
+    const userCount = await User.countDocuments();
+    
+    res.json({
+      status: 'success',
+      data: {
+        adminExists: !!adminUser,
+        adminEmail: adminUser?.email,
+        totalUsers: userCount,
+        jwtSecretExists: !!process.env.JWT_SECRET,
+        mongoUri: process.env.MONGODB_URI ? 'SET' : 'NOT SET'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
 });
 
 // 404 handler

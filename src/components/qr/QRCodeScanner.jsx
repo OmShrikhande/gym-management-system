@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 
+// API URL - Use environment variable or fallback to production
+const API_URL = import.meta.env.VITE_API_URL || 'https://gym-management-system-ckb0.onrender.com/api';
+
 const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
   const { token, user } = useAuth();
   const [isScanning, setIsScanning] = useState(false);
@@ -138,7 +141,7 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
       console.log('Token exists:', !!token);
 
       // Make API call to verify membership
-      const response = await axios.post('https://gym-management-system-ckb0.onrender.com/api/attendance/verify', requestData, {
+      const response = await axios.post(`${API_URL}/attendance/verify`, requestData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

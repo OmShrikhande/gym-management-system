@@ -5,8 +5,8 @@ import { getStorageItem, setStorageItem, removeStorageItem } from "@/lib/storage
 const USER_STORAGE_KEY = 'gymflow_user';
 const TOKEN_STORAGE_KEY = 'gymflow_token';
 
-// API URL
-const API_URL = 'https://gym-management-system-ckb0.onrender.com/api';
+// API URL - Use environment variable or fallback to production
+const API_URL = import.meta.env.VITE_API_URL || 'https://gym-management-system-ckb0.onrender.com/api';
 
 // Create the Auth Context
 const AuthContext = createContext(undefined);
@@ -36,16 +36,22 @@ export const AuthProvider = ({ children }) => {
 
   // Verify token and load user data on initial render
   useEffect(() => {
+    let isMounted = true; // Flag to prevent state updates if component is unmounted
+    
     const initializeAuth = async () => {
       try {
         const storedToken = getStorageItem(TOKEN_STORAGE_KEY, null);
         
         if (!storedToken) {
-          setIsLoading(false);
+          if (isMounted) {
+            setIsLoading(false);
+          }
           return;
         }
         
-        setToken(storedToken);
+        if (isMounted) {
+          setToken(storedToken);
+        }
         
         // Verify token with backend (optional but recommended)
         try {
@@ -55,7 +61,7 @@ export const AuthProvider = ({ children }) => {
             }
           });
           
-          if (response.ok) {
+          if (response.ok && isMounted) {
             // Token is valid, load user data
             const storedUser = getStorageItem(USER_STORAGE_KEY, null);
             if (storedUser) {
@@ -63,31 +69,48 @@ export const AuthProvider = ({ children }) => {
               
               // If user is a gym owner, check subscription status
               if (storedUser.role === 'gym-owner') {
-                await checkSubscriptionStatus(storedUser._id, storedToken);
+                try {
+                  await checkSubscriptionStatus(storedUser._id, storedToken);
+                } catch (subscriptionError) {
+                  console.error('Subscription check failed during initialization:', subscriptionError);
+                }
               }
               
               // PERFORMANCE OPTIMIZATION: Skip loading notifications to reduce API calls
               // await fetchNotifications(storedUser._id, storedToken);
             }
-          } else {
+          } else if (isMounted) {
             // Token is invalid or expired, clear auth data
-            // PERFORMANCE OPTIMIZATION: Remove console logging
             clearAuthData();
           }
         } catch (err) {
           // If verification endpoint doesn't exist, fallback to stored user
-          // PERFORMANCE OPTIMIZATION: Remove console logging
-          const storedUser = getStorageItem(USER_STORAGE_KEY, null);
-          if (storedUser) {
-            setUser(storedUser);
+          console.error('Token verification failed:', err);
+          if (isMounted) {
+            const storedUser = getStorageItem(USER_STORAGE_KEY, null);
+            if (storedUser) {
+              setUser(storedUser);
+            }
           }
         }
+      } catch (error) {
+        console.error('Error during auth initialization:', error);
+        if (isMounted) {
+          clearAuthData();
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     
     initializeAuth();
+    
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isMounted = false;
+    };
   }, [clearAuthData]);
   
   // Check subscription status with caching
@@ -105,12 +128,19 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
+      // Create an AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch(`${API_URL}/subscriptions/status/${userId}`, {
         headers: {
           'Authorization': `Bearer ${authToken || token}`
         },
+        signal: controller.signal,
         cache: 'default'
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const data = await response.json();
@@ -131,7 +161,11 @@ export const AuthProvider = ({ children }) => {
       
       return false;
     } catch (err) {
-      console.error('Error checking subscription status:', err);
+      if (err.name === 'AbortError') {
+        console.error('Subscription check timed out');
+      } else {
+        console.error('Error checking subscription status:', err);
+      }
       return false;
     }
   }, [subscription, token]);
@@ -533,11 +567,27 @@ export const AuthProvider = ({ children }) => {
         }),
       });
       
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        let errorMessage = 'Invalid email or password';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          // If JSON parsing fails, use default error message
+          console.error('Error parsing response:', parseError);
+        }
+        setError(errorMessage);
+        return { success: false, message: errorMessage };
+      }
+      
       const data = await response.json();
       
-      if (!response.ok) {
-        setError(data.message || 'Invalid email or password');
-        return { success: false, message: data.message || 'Invalid email or password' };
+      // Validate that we have the expected data structure
+      if (!data || !data.data || !data.data.user) {
+        const errorMessage = 'Invalid response from server';
+        setError(errorMessage);
+        return { success: false, message: errorMessage };
       }
       
       // Process user data before setting it
@@ -578,16 +628,21 @@ export const AuthProvider = ({ children }) => {
       
       // If user is a gym owner, check subscription status
       if (data.data.user.role === 'gym-owner') {
-        const subscriptionActive = await checkSubscriptionStatus(data.data.user._id, data.token);
-        
-        // If subscription has expired, return a special status
-        if (!subscriptionActive) {
-          return { 
-            success: true, 
-            message: 'Login successful', 
-            requiresPayment: true,
-            subscription: subscription
-          };
+        try {
+          const subscriptionActive = await checkSubscriptionStatus(data.data.user._id, data.token);
+          
+          // If subscription has expired, return a special status
+          if (!subscriptionActive) {
+            return { 
+              success: true, 
+              message: 'Login successful', 
+              requiresPayment: true,
+              subscription: subscription
+            };
+          }
+        } catch (subscriptionError) {
+          // Don't fail login if subscription check fails
+          console.error('Subscription check failed:', subscriptionError);
         }
       }
       
@@ -596,9 +651,10 @@ export const AuthProvider = ({ children }) => {
       
       return { success: true, message: 'Login successful' };
     } catch (err) {
-      // PERFORMANCE OPTIMIZATION: Remove console logging
-      setError('Login failed. Please try again.');
-      return { success: false, message: 'Login failed. Please try again.' };
+      console.error('Login error:', err);
+      const errorMessage = err.message || 'Login failed. Please try again.';
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     } finally {
       setIsLoading(false);
     }
@@ -728,9 +784,14 @@ export const AuthProvider = ({ children }) => {
       headers['Content-Type'] = 'application/json';
     }
     
+    // Create an AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000); // 15 second default timeout
+    
     const authOptions = {
       ...options,
-      headers
+      headers,
+      signal: controller.signal
     };
     
     // Ensure the URL has the API_URL prefix if it doesn't start with http
@@ -740,6 +801,8 @@ export const AuthProvider = ({ children }) => {
       console.log(`Making ${options.method || 'GET'} request to: ${fullUrl}`);
       console.log(`User role: ${userRole}, User ID: ${user?._id}`);
       const response = await fetch(fullUrl, authOptions);
+      
+      clearTimeout(timeoutId);
       
       if (response.status === 401) {
         // Token expired or invalid
@@ -786,6 +849,18 @@ export const AuthProvider = ({ children }) => {
         };
       }
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        console.error('Request timed out:', fullUrl);
+        return {
+          success: false,
+          status: 'error',
+          message: 'Request timed out. Please try again.',
+          data: null
+        };
+      }
+      
       console.error('Error in authFetch:', error.message);
       return {
         success: false,
