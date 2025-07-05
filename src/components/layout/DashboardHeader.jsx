@@ -121,7 +121,7 @@ const DashboardHeader = () => {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src="/placeholder.svg" alt="User avatar" />
+                    <AvatarImage src={user?.avatar || "/placeholder.svg"} alt="User avatar" />
                     <AvatarFallback className="bg-gray-600 text-white">
                       {user?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>

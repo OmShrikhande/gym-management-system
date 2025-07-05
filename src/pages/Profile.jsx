@@ -607,7 +607,7 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
               <div className="relative">
                 <Avatar className="w-32 h-32">
-                  <AvatarImage src="/placeholder.svg" alt="Profile picture" />
+                  <AvatarImage src={profileData.avatar || "/placeholder.svg"} alt="Profile picture" />
                   <AvatarFallback className="bg-gray-600 text-white text-2xl">
                     {profileData.fullName.charAt(0)}
                   </AvatarFallback>
