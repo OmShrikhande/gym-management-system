@@ -89,23 +89,9 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
-      // Try to fetch from the correct endpoint - first try plans endpoint
+      // Try to fetch membership plans (member plans for the gym)
       try {
-        const response = await authFetch('/plans');
-        
-        if (response.success || response.status === 'success') {
-          if (response.data && response.data.plans) {
-            setGymOwnerPlans(response.data.plans);
-            return;
-          }
-        }
-      } catch (endpointError) {
-        // Silently fail and try the next endpoint
-      }
-      
-      // Try alternative endpoint
-      try {
-        const response = await authFetch('/membership-plans');
+        const response = await authFetch('/membership-plans/default');
         
         if (response.success || response.status === 'success') {
           if (response.data && response.data.plans) {
@@ -115,6 +101,7 @@ const Members = () => {
         }
       } catch (endpointError) {
         // Silently fail and use default plans
+        console.log('Failed to fetch membership plans, using defaults');
       }
       
       // If all API calls fail, keep the default plans

@@ -8,6 +8,7 @@ import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import subscriptionPlanRoutes from './routes/subscriptionPlanRoutes.js';
+import membershipPlanRoutes from './routes/membershipPlanRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import workoutRoutes from './routes/workoutRoutes.js';
@@ -76,9 +77,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
-// Alias route for membership-plans (points to subscription-plans)
-app.use('/api/membership-plans', subscriptionPlanRoutes);
-app.use('/api/plans', subscriptionPlanRoutes); // Another alias
+app.use('/api/membership-plans', membershipPlanRoutes); // Member plans for gym owners
+app.use('/api/plans', membershipPlanRoutes); // Alias for member plans
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/workouts', workoutRoutes);

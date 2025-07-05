@@ -62,7 +62,7 @@ const GymOwnerPlans = () => {
   const fetchGymOwnerPlans = async () => {
     setIsLoading(true);
     try {
-      const response = await authFetch('/gym-owner-plans');
+      const response = await authFetch('/subscription-plans');
       
       if (response.success || response.status === 'success') {
         setPlans(response.data.plans);
@@ -224,16 +224,13 @@ const GymOwnerPlans = () => {
       
       if (editingPlan) {
         // Update existing plan
-        response = await authFetch(`/gym-owner-plans/${editingPlan._id || editingPlan.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(planData)
-        });
+        // Gym owners cannot update system subscription plans
+        toast.error('You do not have permission to update subscription plans');
+        return;
       } else {
-        // Create new plan
-        response = await authFetch('/gym-owner-plans', {
-          method: 'POST',
-          body: JSON.stringify(planData)
-        });
+        // Gym owners cannot create system subscription plans
+        toast.error('You do not have permission to create subscription plans');
+        return;
       }
       
       if (response.success || response.status === 'success') {
@@ -258,9 +255,9 @@ const GymOwnerPlans = () => {
     }
     
     try {
-      const response = await authFetch(`/gym-owner-plans/${planId}`, {
-        method: 'DELETE'
-      });
+      // Gym owners cannot delete system subscription plans
+      toast.error('You do not have permission to delete subscription plans');
+      return;
       
       if (response.success || response.status === 'success' || response.status === 204) {
         toast.success('Plan deleted successfully');

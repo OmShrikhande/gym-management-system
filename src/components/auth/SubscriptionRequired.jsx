@@ -17,30 +17,7 @@ const SubscriptionRequired = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
   
-  // Mock plans data (this would come from your backend in a real app)
-  const plans = [
-    {
-      id: "basic",
-      name: "Basic",
-      price: 49,
-      features: ["Up to 200 members", "5 trainers", "Basic reporting", "Email support"],
-      recommended: false
-    },
-    {
-      id: "premium",
-      name: "Premium",
-      price: 99,
-      features: ["Up to 500 members", "15 trainers", "Advanced reporting", "Priority support"],
-      recommended: true
-    },
-    {
-      id: "enterprise",
-      name: "Enterprise",
-      price: 199,
-      features: ["Unlimited members", "Unlimited trainers", "Custom branding", "Dedicated support"],
-      recommended: false
-    }
-  ];
+  
 
   // Handle plan selection
   const handlePlanSelection = (plan) => {
