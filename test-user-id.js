@@ -1,5 +1,5 @@
 // Test the user ID format
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const userId = '686a9e61d8e5a11f0271c01e';
 

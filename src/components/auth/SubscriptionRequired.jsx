@@ -158,9 +158,6 @@ const SubscriptionRequired = () => {
         };
       }
       
-      console.log('About to make API call to:', endpoint);
-      console.log('Request body:', JSON.stringify(body, null, 2));
-      
       // Make API call
       const response = await authFetch(endpoint, {
         method,
@@ -169,8 +166,6 @@ const SubscriptionRequired = () => {
         },
         body: JSON.stringify(body)
       });
-      
-      console.log('API Response received:', response);
       
       if (response.success || response.status === 'success') {
         toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully in test mode!`);
@@ -181,7 +176,6 @@ const SubscriptionRequired = () => {
         // Navigate to dashboard
         navigate("/dashboard");
       } else {
-        console.error('Subscription failed:', response);
         toast.error(response.message || 'Subscription failed. Please try again.');
       }
     } catch (err) {
