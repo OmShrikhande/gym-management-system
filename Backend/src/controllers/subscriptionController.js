@@ -85,166 +85,187 @@ const calculateEndDate = (startDate, months) => {
 // Create a new subscription
 export const createSubscription = catchAsync(async (req, res, next) => {
   try {
-    console.log('=== CREATE SUBSCRIPTION DEBUG ===');
-    console.log('Request body:', req.body);
-    console.log('User:', req.user);
+    console.log('=== CREATE SUBSCRIPTION DEBUG START ===');
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    console.log('User:', JSON.stringify({
+      _id: req.user._id,
+      email: req.user.email,
+      role: req.user.role
+    }, null, 2));
     
+    console.log('Step 1: Extracting request data...');
     const { gymOwnerId, plan, price, durationMonths = 1, paymentMethod, transactionId } = req.body;
+    console.log('Extracted data:', { gymOwnerId, plan, price, durationMonths, paymentMethod, transactionId });
 
-    // Validate input
+    console.log('Step 2: Validating required fields...');
     if (!gymOwnerId || !plan || !price || !paymentMethod) {
       console.log('Missing required fields:', { gymOwnerId, plan, price, paymentMethod });
       return next(new AppError('Missing required fields: gymOwnerId, plan, price, paymentMethod', 400));
     }
 
-    // Validate and parse price
+    console.log('Step 3: Validating and parsing price...');
     const parsedPrice = parseFloat(price);
+    console.log('Parsed price:', parsedPrice);
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
       console.log('Invalid price:', price);
       return next(new AppError('Invalid price value', 400));
     }
 
-    // Validate gymOwnerId format
+    console.log('Step 4: Validating gymOwnerId format...');
     if (!mongoose.Types.ObjectId.isValid(gymOwnerId)) {
       console.log('Invalid gymOwnerId format:', gymOwnerId, typeof gymOwnerId);
       return next(new AppError('Invalid gym owner ID format', 400));
     }
+    console.log('gymOwnerId validation passed');
 
-    // Check if gym owner exists
-    console.log('Looking for gym owner with ID:', gymOwnerId);
+    console.log('Step 5: Looking for gym owner...');
+    console.log('Searching for gym owner with ID:', gymOwnerId);
     let gymOwner;
     try {
       gymOwner = await User.findById(gymOwnerId);
-      console.log('Found gym owner:', gymOwner ? gymOwner.email : 'not found');
+      console.log('Database query result:', gymOwner ? {
+        _id: gymOwner._id,
+        email: gymOwner.email,
+        role: gymOwner.role,
+        accountStatus: gymOwner.accountStatus
+      } : 'not found');
     } catch (error) {
       console.log('Error finding gym owner:', error.message);
+      console.log('Error stack:', error.stack);
       return next(new AppError('Error finding gym owner', 500));
     }
   
-  if (!gymOwner || gymOwner.role !== 'gym-owner') {
-    console.log('Gym owner validation failed:', { found: !!gymOwner, role: gymOwner?.role });
-    return next(new AppError('No gym owner found with that ID', 404));
-  }
-  
-  // Check if user is authorized to create this subscription
-  // Super-admin can create any subscription
-  // Gym owners can create their own subscription in test mode
-  console.log('Checking authorization:', {
-    userRole: req.user.role,
-    userId: req.user._id.toString(),
-    gymOwnerId: gymOwnerId,
-    paymentMethod: paymentMethod
-  });
-  
-  const isAuthorized = 
-    req.user.role === 'super-admin' || 
-    (req.user.role === 'gym-owner' && 
-     gymOwnerId === req.user._id.toString() && 
-     paymentMethod === 'test_mode');
-  
-  console.log('Authorization result:', isAuthorized);
-  
-  if (!isAuthorized) {
-    console.log('User not authorized to create subscription');
-    return next(new AppError('You are not authorized to create subscriptions', 403));
-  }
-
-  // Calculate end date
-  const startDate = new Date();
-  const endDate = calculateEndDate(startDate, durationMonths);
-  console.log('Calculated dates:', { startDate, endDate });
-
-  // Create subscription
-  let subscription;
-  try {
-    console.log('Creating subscription with data:', {
-      gymOwner: gymOwnerId,
-      plan,
-      price: parsedPrice,
-      startDate,
-      endDate,
-      isActive: true,
-      paymentStatus: 'Paid',
-      paymentHistory: [
-        {
-          amount: parsedPrice,
-          date: startDate,
-          method: paymentMethod,
-          status: 'Success',
-          transactionId
-        }
-      ],
-      autoRenew: true
-    });
-    
-    subscription = await Subscription.create({
-      gymOwner: gymOwnerId,
-      plan,
-      price: parsedPrice,
-      startDate,
-      endDate,
-      isActive: true,
-      paymentStatus: 'Paid',
-      paymentHistory: [
-        {
-          amount: parsedPrice,
-          date: startDate,
-          method: paymentMethod,
-          status: 'Success',
-          transactionId
-        }
-      ],
-      autoRenew: true
-    });
-    
-    console.log('Subscription created successfully:', subscription);
-
-    // Update gym owner account status to active if it's inactive
-    if (gymOwner.accountStatus === 'inactive') {
-      console.log('Updating gym owner account status to active...');
-      gymOwner.accountStatus = 'active';
-      await gymOwner.save();
-      console.log('Gym owner account activated');
+    console.log('Step 6: Validating gym owner...');
+    if (!gymOwner || gymOwner.role !== 'gym-owner') {
+      console.log('Gym owner validation failed:', { found: !!gymOwner, role: gymOwner?.role });
+      return next(new AppError('No gym owner found with that ID', 404));
     }
+    console.log('Gym owner validation passed');
+    
+    console.log('Step 7: Checking authorization...');
+    // Super-admin can create any subscription
+    // Gym owners can create their own subscription in test mode
+    console.log('Authorization check data:', {
+      userRole: req.user.role,
+      userId: req.user._id.toString(),
+      gymOwnerId: gymOwnerId,
+      paymentMethod: paymentMethod
+    });
+  
+    const isAuthorized = 
+      req.user.role === 'super-admin' || 
+      (req.user.role === 'gym-owner' && 
+       gymOwnerId === req.user._id.toString() && 
+       paymentMethod === 'test_mode');
+    
+    console.log('Authorization result:', isAuthorized);
+    
+    if (!isAuthorized) {
+      console.log('User not authorized to create subscription');
+      return next(new AppError('You are not authorized to create subscriptions', 403));
+    }
+    console.log('Authorization passed');
 
-    // Create notification for successful payment
+    console.log('Step 8: Calculating dates...');
+    const startDate = new Date();
+    const endDate = calculateEndDate(startDate, durationMonths);
+    console.log('Calculated dates:', { startDate, endDate });
+
+    console.log('Step 9: Creating subscription...');
+    let subscription;
     try {
-      console.log('Creating notification for recipient:', gymOwnerId);
-      const notification = await Notification.create({
-        recipient: gymOwnerId,
-        type: 'payment_success',
-        title: 'Subscription Payment Successful',
-        message: `Your payment of ₹${parsedPrice} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
-        actionLink: '/billing-plans'
-      });
-      console.log('Notification created:', notification);
-    } catch (notificationError) {
-      console.error('Error creating notification:', notificationError);
-      console.error('Notification error details:', {
-        error: notificationError.message,
-        stack: notificationError.stack
-      });
-      // Don't fail the subscription creation if notification fails
-    }
+      const subscriptionData = {
+        gymOwner: gymOwnerId,
+        plan,
+        price: parsedPrice,
+        startDate,
+        endDate,
+        isActive: true,
+        paymentStatus: 'Paid',
+        paymentHistory: [
+          {
+            amount: parsedPrice,
+            date: startDate,
+            method: paymentMethod,
+            status: 'Success',
+            transactionId
+          }
+        ],
+        autoRenew: true
+      };
+      
+      console.log('Subscription data to create:', JSON.stringify(subscriptionData, null, 2));
+      
+      console.log('About to call Subscription.create()...');
+      subscription = await Subscription.create(subscriptionData);
+      console.log('Subscription created successfully with ID:', subscription._id);
+      console.log('Created subscription:', JSON.stringify({
+        _id: subscription._id,
+        gymOwner: subscription.gymOwner,
+        plan: subscription.plan,
+        price: subscription.price,
+        isActive: subscription.isActive
+      }, null, 2));
+
+      console.log('Step 10: Updating gym owner account status...');
+      // Update gym owner account status to active if it's inactive
+      if (gymOwner.accountStatus === 'inactive') {
+        console.log('Updating gym owner account status to active...');
+        gymOwner.accountStatus = 'active';
+        await gymOwner.save();
+        console.log('Gym owner account activated');
+      } else {
+        console.log('Gym owner account already active:', gymOwner.accountStatus);
+      }
+
+      console.log('Step 11: Creating notification...');
+      // Create notification for successful payment
+      try {
+        console.log('Creating notification for recipient:', gymOwnerId);
+        const notification = await Notification.create({
+          recipient: gymOwnerId,
+          type: 'payment_success',
+          title: 'Subscription Payment Successful',
+          message: `Your payment of ₹${parsedPrice} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
+          actionLink: '/billing-plans'
+        });
+        console.log('Notification created successfully with ID:', notification._id);
+      } catch (notificationError) {
+        console.error('Error creating notification:', notificationError);
+        console.error('Notification error details:', {
+          error: notificationError.message,
+          stack: notificationError.stack
+        });
+        // Don't fail the subscription creation if notification fails
+      }
     
     } catch (subscriptionError) {
+      console.error('=== SUBSCRIPTION CREATION ERROR ===');
       console.error('Error creating subscription:', subscriptionError);
+      console.error('Error message:', subscriptionError.message);
+      console.error('Error stack:', subscriptionError.stack);
+      console.error('Error details:', {
+        name: subscriptionError.name,
+        code: subscriptionError.code,
+        codeName: subscriptionError.codeName
+      });
       return next(new AppError(`Failed to create subscription: ${subscriptionError.message}`, 500));
     }
 
-    console.log('Sending success response...');
+    console.log('Step 12: Sending success response...');
     res.status(201).json({
       status: 'success',
       data: {
         subscription
       }
     });
-    console.log('Success response sent');
+    console.log('=== SUCCESS: Subscription created and response sent ===');
   } catch (error) {
-    console.error('=== SUBSCRIPTION CREATION ERROR ===');
+    console.error('=== GLOBAL SUBSCRIPTION ERROR ===');
     console.error('Error:', error);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
+    console.error('Error name:', error.name);
     return next(new AppError(`Subscription creation failed: ${error.message}`, 500));
   }
 });

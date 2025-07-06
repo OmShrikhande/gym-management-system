@@ -831,6 +831,29 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
+      if (response.status === 500) {
+        console.error('Server error (500):', fullUrl);
+        // Try to get the error message from the response
+        try {
+          const errorData = await response.json();
+          console.error('Server error details:', errorData);
+          return {
+            success: false,
+            status: 'error',
+            message: errorData.message || 'Internal server error',
+            data: null
+          };
+        } catch (parseError) {
+          console.error('Could not parse error response:', parseError);
+          return {
+            success: false,
+            status: 'error',
+            message: 'Internal server error',
+            data: null
+          };
+        }
+      }
+      
       // Check if the response is JSON
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
