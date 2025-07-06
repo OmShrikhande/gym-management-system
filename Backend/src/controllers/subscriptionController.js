@@ -95,10 +95,22 @@ export const createSubscription = catchAsync(async (req, res, next) => {
     return next(new AppError('Missing required fields: gymOwnerId, plan, price, paymentMethod', 400));
   }
 
+  // Validate gymOwnerId format
+  if (!gymOwnerId.match(/^[0-9a-fA-F]{24}$/)) {
+    console.log('Invalid gymOwnerId format:', gymOwnerId);
+    return next(new AppError('Invalid gym owner ID format', 400));
+  }
+
   // Check if gym owner exists
   console.log('Looking for gym owner with ID:', gymOwnerId);
-  const gymOwner = await User.findById(gymOwnerId);
-  console.log('Found gym owner:', gymOwner ? gymOwner.email : 'not found');
+  let gymOwner;
+  try {
+    gymOwner = await User.findById(gymOwnerId);
+    console.log('Found gym owner:', gymOwner ? gymOwner.email : 'not found');
+  } catch (error) {
+    console.log('Error finding gym owner:', error.message);
+    return next(new AppError('Error finding gym owner', 500));
+  }
   
   if (!gymOwner || gymOwner.role !== 'gym-owner') {
     console.log('Gym owner validation failed:', { found: !!gymOwner, role: gymOwner?.role });
@@ -134,6 +146,7 @@ export const createSubscription = catchAsync(async (req, res, next) => {
   console.log('Calculated dates:', { startDate, endDate });
 
   // Create subscription
+  let subscription;
   try {
     console.log('Creating subscription with data:', {
       gymOwner: gymOwnerId,
@@ -155,7 +168,7 @@ export const createSubscription = catchAsync(async (req, res, next) => {
       autoRenew: true
     });
     
-    const subscription = await Subscription.create({
+    subscription = await Subscription.create({
       gymOwner: gymOwnerId,
       plan,
       price,
@@ -198,6 +211,10 @@ export const createSubscription = catchAsync(async (req, res, next) => {
       console.log('Notification created:', notification);
     } catch (notificationError) {
       console.error('Error creating notification:', notificationError);
+      console.error('Notification error details:', {
+        error: notificationError.message,
+        stack: notificationError.stack
+      });
       // Don't fail the subscription creation if notification fails
     }
     
