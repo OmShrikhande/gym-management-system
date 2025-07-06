@@ -115,41 +115,6 @@ app.use('/api/enquiries', enquiryRoutes);
 
 
 
-// Test subscription creation endpoint (for debugging)
-app.post('/test-subscription', async (req, res) => {
-  try {
-    const { userId } = req.body;
-    
-    // Check if user exists
-    const User = (await import('./models/userModel.js')).default;
-    const user = await User.findById(userId);
-    
-    if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-        userId: userId
-      });
-    }
-    
-    res.json({
-      status: 'success',
-      message: 'User found',
-      user: {
-        _id: user._id,
-        email: user.email,
-        role: user.role,
-        accountStatus: user.accountStatus
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
 // Health check route
 app.get('/', (req, res) => {
   res.json({

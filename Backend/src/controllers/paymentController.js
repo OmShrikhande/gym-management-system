@@ -5,7 +5,7 @@ import AppError from '../utils/appError.js';
 import crypto from 'crypto';
 
 // Import Razorpay configuration
-import { razorpay, validateRazorpayCredentials, verifyRazorpaySignature, getRazorpayPublicKey } from '../config/razorpay.js';
+import { getRazorpayInstance, isRazorpayAvailable, validateRazorpayCredentials, verifyRazorpaySignature, getRazorpayPublicKey } from '../config/razorpay.js';
 
 // Validate credentials on startup
 validateRazorpayCredentials();
@@ -16,6 +16,11 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
   
   if (!amount || amount <= 0) {
     return next(new AppError('Please provide a valid amount', 400));
+  }
+  
+  // Check if Razorpay is available
+  if (!isRazorpayAvailable()) {
+    return next(new AppError('Payment service is not available. Please try again later.', 503));
   }
   
   try {
@@ -33,7 +38,7 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
     
     // Create a Razorpay order using the initialized Razorpay instance
     // This will create a real order in Razorpay's test environment
-    
+    const razorpay = getRazorpayInstance();
     const order = await razorpay.orders.create({
       amount: amount * 100, // Razorpay expects amount in paise
       currency,
@@ -283,6 +288,10 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
 
 // Get Razorpay public key for frontend
 export const getRazorpayKey = catchAsync(async (req, res, next) => {
+  if (!isRazorpayAvailable()) {
+    return next(new AppError('Payment service is not available', 503));
+  }
+  
   const keyId = getRazorpayPublicKey();
   
   if (!keyId) {
