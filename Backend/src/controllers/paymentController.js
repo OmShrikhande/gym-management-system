@@ -4,14 +4,11 @@ import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import crypto from 'crypto';
 
-// Import the actual Razorpay SDK
-import Razorpay from 'razorpay';
+// Import Razorpay configuration
+import { razorpay, validateRazorpayCredentials, verifyRazorpaySignature, getRazorpayPublicKey } from '../config/razorpay.js';
 
-// Initialize Razorpay with your test credentials
-const razorpay = new Razorpay({
-  key_id: 'rzp_test_VUpggvAt3u75cZ',     // Your Razorpay Test Key ID
-  key_secret: 'qVBlGWU6FlyGNp53zci52eqV' // Your Razorpay Test Secret Key
-});
+// Validate credentials on startup
+validateRazorpayCredentials();
 
 // Create a Razorpay order
 export const createRazorpayOrder = catchAsync(async (req, res, next) => {
@@ -74,7 +71,10 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     console.log('Skipping signature verification for testing');
     
     // The following code would be used in production:
-    // const generated_signature = crypto.createHmac('sha256', 'qVBlGWU6FlyGNp53zci52eqV')
+    // const razorpay_secret = process.env.NODE_ENV === 'production' 
+    //   ? process.env.RAZORPAY_LIVE_KEY_SECRET 
+    //   : process.env.RAZORPAY_TEST_KEY_SECRET;
+    // const generated_signature = crypto.createHmac('sha256', razorpay_secret)
     //   .update(razorpay_order_id + "|" + razorpay_payment_id)
     //   .digest('hex');
     // 
@@ -173,6 +173,29 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     }
     
     // Get the selected plan details
+    const plans = [
+      {
+        id: "basic",
+        name: "Basic",
+        price: 49,
+        maxMembers: 200,
+        maxTrainers: 5
+      },
+      {
+        id: "premium",
+        name: "Premium",
+        price: 99,
+        maxMembers: 500,
+        maxTrainers: 15
+      },
+      {
+        id: "enterprise",
+        name: "Enterprise",
+        price: 199,
+        maxMembers: 1000,
+        maxTrainers: 50
+      }
+    ];
   
     const selectedPlan = plans.find(p => p.id === planId);
     
@@ -258,6 +281,23 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
   }
 });
 
+// Get Razorpay public key for frontend
+export const getRazorpayKey = catchAsync(async (req, res, next) => {
+  const keyId = getRazorpayPublicKey();
+  
+  if (!keyId) {
+    return next(new AppError('Razorpay key not configured', 500));
+  }
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      keyId,
+      mode: process.env.NODE_ENV === 'production' ? 'live' : 'test'
+    }
+  });
+});
+
 // Generate a QR code for payment
 export const generatePaymentQR = catchAsync(async (req, res, next) => {
   const { orderId, amount } = req.body;
@@ -277,4 +317,232 @@ export const generatePaymentQR = catchAsync(async (req, res, next) => {
       qrCodeUrl
     }
   });
+});
+
+// Verify payment and activate gym owner account
+export const verifyActivationPayment = catchAsync(async (req, res, next) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planData } = req.body;
+  
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return next(new AppError('Missing payment verification parameters', 400));
+  }
+  
+  if (!planData) {
+    return next(new AppError('Plan data is required', 400));
+  }
+  
+  try {
+    // In a production environment, we would verify the signature
+    // For testing purposes, we'll skip the signature verification
+    console.log('Skipping signature verification for testing');
+    
+    // Get the gym owner from the request (should be authenticated)
+    const gymOwner = req.user;
+    
+    if (!gymOwner || gymOwner.role !== 'gym-owner') {
+      return next(new AppError('Only gym owners can activate accounts', 403));
+    }
+    
+    if (gymOwner.accountStatus === 'active') {
+      return next(new AppError('Account is already active', 400));
+    }
+    
+    console.log('Activating account for gym owner:', gymOwner._id);
+    
+    // Step 1: Update gym owner account status to active
+    const updatedGymOwner = await User.findByIdAndUpdate(
+      gymOwner._id,
+      { accountStatus: 'active' },
+      { new: true }
+    );
+    
+    if (!updatedGymOwner) {
+      return next(new AppError('Failed to update gym owner account status', 500));
+    }
+    
+    // Step 2: Create subscription for the gym owner
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+    
+    let subscription;
+    try {
+      // Check if a subscription already exists for this user
+      const existingSubscription = await Subscription.findOne({ gymOwner: gymOwner._id });
+      
+      if (existingSubscription) {
+        console.log('Updating existing subscription for gym owner:', gymOwner._id);
+        
+        // Update the existing subscription
+        existingSubscription.plan = planData.name;
+        existingSubscription.price = planData.price;
+        existingSubscription.startDate = startDate;
+        existingSubscription.endDate = endDate;
+        existingSubscription.isActive = true;
+        existingSubscription.paymentStatus = 'Paid';
+        
+        // Add new payment to history
+        existingSubscription.paymentHistory.push({
+          amount: planData.price,
+          date: startDate,
+          method: 'razorpay',
+          status: 'Success',
+          transactionId: razorpay_payment_id
+        });
+        
+        subscription = await existingSubscription.save();
+        console.log('Subscription updated successfully:', subscription);
+      } else {
+        // Create a new subscription
+        subscription = await Subscription.create({
+          gymOwner: gymOwner._id,
+          plan: planData.name,
+          price: planData.price,
+          startDate,
+          endDate,
+          isActive: true,
+          paymentStatus: 'Paid',
+          paymentHistory: [
+            {
+              amount: planData.price,
+              date: startDate,
+              method: 'razorpay',
+              status: 'Success',
+              transactionId: razorpay_payment_id
+            }
+          ],
+          autoRenew: true
+        });
+        
+        console.log('New subscription created successfully:', subscription);
+      }
+    } catch (subscriptionError) {
+      console.error('Error creating/updating subscription:', subscriptionError);
+      return next(new AppError(`Failed to create/update subscription: ${subscriptionError.message}`, 500));
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Account activated successfully',
+      data: {
+        user: updatedGymOwner,
+        subscription
+      }
+    });
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    return next(new AppError(`Failed to verify payment: ${error.message}`, 500));
+  }
+});
+
+// Test mode activation (for development)
+export const testModeActivation = catchAsync(async (req, res, next) => {
+  const { gymOwnerId, planData, transactionId } = req.body;
+  
+  if (!gymOwnerId || !planData || !transactionId) {
+    return next(new AppError('Missing required parameters', 400));
+  }
+  
+  try {
+    // Get the gym owner
+    const gymOwner = await User.findById(gymOwnerId);
+    
+    if (!gymOwner) {
+      return next(new AppError('Gym owner not found', 404));
+    }
+    
+    if (gymOwner.role !== 'gym-owner') {
+      return next(new AppError('Only gym owners can activate accounts', 403));
+    }
+    
+    if (gymOwner.accountStatus === 'active') {
+      return next(new AppError('Account is already active', 400));
+    }
+    
+    console.log('Test mode activation for gym owner:', gymOwner._id);
+    
+    // Step 1: Update gym owner account status to active
+    const updatedGymOwner = await User.findByIdAndUpdate(
+      gymOwner._id,
+      { accountStatus: 'active' },
+      { new: true }
+    );
+    
+    if (!updatedGymOwner) {
+      return next(new AppError('Failed to update gym owner account status', 500));
+    }
+    
+    // Step 2: Create subscription for the gym owner
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+    
+    let subscription;
+    try {
+      // Check if a subscription already exists for this user
+      const existingSubscription = await Subscription.findOne({ gymOwner: gymOwner._id });
+      
+      if (existingSubscription) {
+        console.log('Updating existing subscription for gym owner:', gymOwner._id);
+        
+        // Update the existing subscription
+        existingSubscription.plan = planData.name;
+        existingSubscription.price = planData.price;
+        existingSubscription.startDate = startDate;
+        existingSubscription.endDate = endDate;
+        existingSubscription.isActive = true;
+        existingSubscription.paymentStatus = 'Paid';
+        
+        // Add new payment to history
+        existingSubscription.paymentHistory.push({
+          amount: planData.price,
+          date: startDate,
+          method: 'test-mode',
+          status: 'Success',
+          transactionId: transactionId
+        });
+        
+        subscription = await existingSubscription.save();
+        console.log('Subscription updated successfully:', subscription);
+      } else {
+        // Create a new subscription
+        subscription = await Subscription.create({
+          gymOwner: gymOwner._id,
+          plan: planData.name,
+          price: planData.price,
+          startDate,
+          endDate,
+          isActive: true,
+          paymentStatus: 'Paid',
+          paymentHistory: [
+            {
+              amount: planData.price,
+              date: startDate,
+              method: 'test-mode',
+              status: 'Success',
+              transactionId: transactionId
+            }
+          ],
+          autoRenew: true
+        });
+        
+        console.log('New subscription created successfully:', subscription);
+      }
+    } catch (subscriptionError) {
+      console.error('Error creating/updating subscription:', subscriptionError);
+      return next(new AppError(`Failed to create/update subscription: ${subscriptionError.message}`, 500));
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'Account activated successfully in test mode',
+      data: {
+        user: updatedGymOwner,
+        subscription
+      }
+    });
+  } catch (error) {
+    console.error('Test mode activation error:', error);
+    return next(new AppError(`Failed to activate account: ${error.message}`, 500));
+  }
 });

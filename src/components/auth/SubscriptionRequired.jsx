@@ -15,9 +15,100 @@ const SubscriptionRequired = () => {
   const { user, subscription, logout, authFetch, checkSubscriptionStatus } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   
-  
+  // Fetch plans from API (created by super admin)
+  const fetchPlans = async () => {
+    setIsLoading(true);
+    try {
+      const response = await authFetch('/subscription-plans');
+      
+      if (response.success || response.status === 'success') {
+        setPlans(response.data.plans || []);
+      } else {
+        console.error('Failed to fetch plans:', response.message);
+        // Use default plans as fallback
+        setPlans([
+          {
+            id: "basic",
+            name: "Basic",
+            price: 49,
+            duration: "monthly",
+            maxMembers: 200,
+            maxTrainers: 5,
+            features: ["Member Management", "Basic Reports", "Email Support", "Attendance Tracking"],
+            status: "Active"
+          },
+          {
+            id: "premium",
+            name: "Premium",
+            price: 99,
+            duration: "monthly",
+            maxMembers: 500,
+            maxTrainers: 15,
+            features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support", "Workout Plans"],
+            status: "Active",
+            recommended: true
+          },
+          {
+            id: "enterprise",
+            name: "Enterprise",
+            price: 199,
+            duration: "monthly",
+            maxMembers: 1000,
+            maxTrainers: 50,
+            features: ["All Premium Features", "Multi-location Support", "Advanced Analytics", "24/7 Support", "Custom Branding"],
+            status: "Active"
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      // Use default plans as fallback
+      setPlans([
+        {
+          id: "basic",
+          name: "Basic",
+          price: 49,
+          duration: "monthly",
+          maxMembers: 200,
+          maxTrainers: 5,
+          features: ["Member Management", "Basic Reports", "Email Support", "Attendance Tracking"],
+          status: "Active"
+        },
+        {
+          id: "premium",
+          name: "Premium",
+          price: 99,
+          duration: "monthly",
+          maxMembers: 500,
+          maxTrainers: 15,
+          features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support", "Workout Plans"],
+          status: "Active",
+          recommended: true
+        },
+        {
+          id: "enterprise",
+          name: "Enterprise",
+          price: 199,
+          duration: "monthly",
+          maxMembers: 1000,
+          maxTrainers: 50,
+          features: ["All Premium Features", "Multi-location Support", "Advanced Analytics", "24/7 Support", "Custom Branding"],
+          status: "Active"
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch plans when component mounts
+  useEffect(() => {
+    fetchPlans();
+  }, []);
 
   // Handle plan selection
   const handlePlanSelection = (plan) => {
@@ -301,7 +392,20 @@ const SubscriptionRequired = () => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          {plans.map((plan) => (
+          {isLoading ? (
+            // Loading state
+            <div className="col-span-full text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-gray-400 mt-4">Loading subscription plans...</p>
+            </div>
+          ) : plans.length === 0 ? (
+            // No plans found
+            <div className="col-span-full text-center py-8">
+              <p className="text-gray-400">No subscription plans available at the moment.</p>
+            </div>
+          ) : (
+            // Plans list
+            plans.map((plan) => (
             <Card 
               key={plan.id}
               className={`bg-gray-800/50 border-gray-700 relative ${
@@ -318,7 +422,7 @@ const SubscriptionRequired = () => {
               <CardHeader>
                 <CardTitle className="text-white">{plan.name}</CardTitle>
                 <CardDescription className="text-gray-400">
-                  <span className="text-2xl font-bold text-white">${plan.price}</span> / month
+                  <span className="text-2xl font-bold text-white">₹{plan.price}</span> / month
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -344,7 +448,8 @@ const SubscriptionRequired = () => {
                 </Button>
               </CardFooter>
             </Card>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Payment Section */}
@@ -366,12 +471,12 @@ const SubscriptionRequired = () => {
                   </div>
                   <div className="flex justify-between mb-2">
                     <span className="text-gray-300">Price:</span>
-                    <span className="text-white font-medium">${selectedPlan.price}</span>
+                    <span className="text-white font-medium">₹{selectedPlan.price}</span>
                   </div>
                   <div className="border-t border-gray-600 my-2 pt-2">
                     <div className="flex justify-between">
                       <span className="text-gray-300">Total:</span>
-                      <span className="text-white font-bold">${selectedPlan.price}</span>
+                      <span className="text-white font-bold">₹{selectedPlan.price}</span>
                     </div>
                   </div>
                 </div>

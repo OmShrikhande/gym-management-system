@@ -58,6 +58,23 @@ const createUserWithRole = async (req, res, role) => {
         }
       });
     }
+    
+    // Add additional fields for gym-owner
+    if (role === 'gym-owner') {
+      // Add gym owner specific fields
+      const gymOwnerFields = [
+        'phone', 'whatsapp', 'address', 'gymName', 'totalMembers'
+      ];
+      
+      gymOwnerFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          userData[field] = req.body[field];
+        }
+      });
+      
+      // Set account status to inactive for gym owners
+      userData.accountStatus = 'inactive';
+    }
 
     console.log(`Creating new ${role} in database...`);
     const newUser = await User.create(userData);

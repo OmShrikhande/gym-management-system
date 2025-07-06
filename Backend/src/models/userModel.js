@@ -32,6 +32,15 @@ const userSchema = new mongoose.Schema({
     default: true,
     select: false
   },
+  // Account status for gym owners - determines if they can access their dashboard
+  accountStatus: {
+    type: String,
+    enum: ['active', 'inactive', 'pending'],
+    default: function() {
+      // Only gym owners start as inactive, all others are active
+      return this.role === 'gym-owner' ? 'inactive' : 'active';
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now

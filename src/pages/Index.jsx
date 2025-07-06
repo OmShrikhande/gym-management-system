@@ -824,8 +824,25 @@ const Index = () => {
           const memberCapacity = memberCount > 0 ? Math.round((memberCount / maxMembers) * 100) : 0;
           const hasActiveSubscription = subscription?.hasActiveSubscription || false;
           const daysRemaining = subscription?.daysRemaining || 0;
+          const accountStatus = user?.accountStatus || 'active';
           
           return [
+            { 
+              label: "Account Status", 
+              value: (
+                <div className="flex flex-col">
+                  <span className={accountStatus === 'active' ? "text-green-400" : "text-red-400"}>
+                    {accountStatus === 'active' ? "Active" : "Inactive"}
+                  </span>
+                  {accountStatus === 'inactive' && (
+                    <span className="text-xs text-yellow-400">Payment Required</span>
+                  )}
+                </div>
+              ), 
+              icon: User, 
+              color: accountStatus === 'active' ? "bg-green-500" : "bg-red-500",
+              onClick: accountStatus === 'inactive' ? () => navigate("/gym-owner-plans") : undefined
+            },
             { 
               label: "Total Members", 
               value: (
@@ -853,17 +870,6 @@ const Index = () => {
               icon: CreditCard, 
               color: "bg-purple-500",
               onClick: () => navigate("/gym-owner-plans")
-            },
-            { 
-              label: "Member Capacity", 
-              value: (
-                <div className="flex flex-col">
-                  <span>{maxMembers - memberCount}</span>
-                  <span className="text-xs text-gray-400">slots available</span>
-                </div>
-              ), 
-              icon: Plus, 
-              color: "bg-orange-500" 
             }
           ];
         }
@@ -1045,6 +1051,32 @@ const Index = () => {
               )}
             </div>
           </div>
+
+          {/* Account Status Alert for Inactive Gym Owners */}
+          {userRole === 'gym-owner' && user?.accountStatus === 'inactive' && (
+            <div className="bg-red-900/50 border-2 border-red-500 rounded-lg p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-red-500 rounded-full">
+                    <AlertCircle className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Account Inactive</h3>
+                    <p className="text-gray-300 mt-1">
+                      Your account is currently inactive. Please complete your subscription payment to activate your account and access all features.
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => navigate("/gym-owner-plans")}
+                  className="bg-red-600 hover:bg-red-700 text-white px-6"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Activate Account
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

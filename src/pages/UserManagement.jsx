@@ -318,8 +318,8 @@ function UserManagement() {
     setQrCodeUrl(null);
   };
   
-  // Function to validate and prepare for gym owner creation
-  const handlePrepareGymOwnerCreation = () => {
+  // Function to create gym owner without payment
+  const handleCreateGymOwnerWithoutPayment = async () => {
     // Validate basic form data
     if (!formData.name || !formData.email || !formData.password) {
       setMessage({ type: 'error', text: 'Name, email, and password are required' });
@@ -343,20 +343,30 @@ function UserManagement() {
       return false;
     }
     
-    if (!formData.subscriptionPlan) {
-      setMessage({ type: 'error', text: 'Please select a subscription plan' });
-      return false;
+    // Set loading state
+    setIsLoading(true);
+    setMessage({ type: 'info', text: 'Creating gym owner...' });
+    
+    try {
+      // Create gym owner directly without payment
+      const result = await createGymOwner(formData);
+      
+      if (result.success) {
+        setMessage({ 
+          type: 'success', 
+          text: 'Gym owner created successfully! They can now log in and complete their subscription payment to activate their account.' 
+        });
+        resetForm();
+        fetchUsers(); // Refresh user list
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+      console.error('Error creating gym owner:', error);
+      setMessage({ type: 'error', text: 'An error occurred while creating the gym owner' });
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Show payment section
-    setShowPaymentSection(true);
-    
-    // For QR code payment, we'll generate the QR when the user clicks the payment button
-    // For other payment methods, show a message
-    setMessage({ type: 'info', text: 'Please complete payment to create the gym owner account' });
-    
-    // Scroll to payment section
-    document.getElementById('payment-section')?.scrollIntoView({ behavior: 'smooth' });
     
     return true;
   };
@@ -575,9 +585,9 @@ function UserManagement() {
   };
 
   const handleCreateUser = async (userType) => {
-    // For gym owners, we now use a different flow with subscription and payment
+    // For gym owners, we now create them without payment
     if (userType === 'gym-owner') {
-      return handlePrepareGymOwnerCreation();
+      return handleCreateGymOwnerWithoutPayment();
     }
     
     // Validate basic form data
@@ -929,45 +939,14 @@ function UserManagement() {
                         </div>
                       </div>
                       
-                      {/* Subscription Plan Selection */}
+                      {/* Note about subscription payment */}
                       <div className="mb-5">
-                        <Label className="mb-2 block text-gray-300">Subscription Plan</Label>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                          {isLoadingPlans ? (
-                            <div className="col-span-3 flex justify-center py-8">
-                              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-                            </div>
-                          ) : (
-                            plans.filter(plan => plan.status === 'Active').map((plan) => (
-                              <div 
-                                key={plan._id || plan.id}
-                                className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                                  formData.subscriptionPlan === (plan._id || plan.id)
-                                    ? 'bg-blue-900/30 border-blue-500' 
-                                    : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800'
-                                }`}
-                                onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: plan._id || plan.id }))}
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                  <div>
-                                    <h3 className="font-bold text-white">{plan.name}</h3>
-                                    <p className="text-gray-400">
-                                      <span className="text-lg font-bold text-white">₹{plan.price}</span>/month
-                                    </p>
-                                  </div>
-                                  {plan.recommended && (
-                                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
-                                      Recommended
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-gray-300">
-                                  <p>Max Members: {plan.maxMembers}</p>
-                                  <p>Max Trainers: {plan.maxTrainers}</p>
-                                </div>
-                              </div>
-                            ))
-                          )}
+                        <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+                          <h4 className="text-blue-300 font-medium mb-2">📋 Account Activation</h4>
+                          <p className="text-sm text-gray-300">
+                            The gym owner account will be created with an <strong>inactive</strong> status. 
+                            The gym owner must log in and complete their subscription payment to activate their account and access the dashboard.
+                          </p>
                         </div>
                       </div>
                     </>
@@ -1014,301 +993,7 @@ function UserManagement() {
                 </div>
               )}
               
-              {/* Payment Section for Gym Owner Creation */}
-              {isSuperAdmin && showPaymentSection && (
-                <div id="payment-section" className="mt-8 bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Complete Payment</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h4 className="text-lg font-medium text-white mb-2">Order Summary</h4>
-                      <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4">
-                        {formData.subscriptionPlan && (
-                          <>
-                            <div className="flex justify-between mb-2">
-                              <span className="text-gray-300">Plan:</span>
-                              <span className="text-white font-medium">
-                                {plans.find(p => (p._id || p.id) === formData.subscriptionPlan)?.name}
-                              </span>
-                            </div>
-                            <div className="flex justify-between mb-2">
-                              <span className="text-gray-300">Duration:</span>
-                              <span className="text-white font-medium">1 Month</span>
-                            </div>
-                            <div className="flex justify-between mb-2">
-                              <span className="text-gray-300">Price:</span>
-                              <span className="text-white font-medium">
-                                ${plans.find(p => p.id === formData.subscriptionPlan)?.price}
-                              </span>
-                            </div>
-                            <div className="border-t border-gray-600 my-2 pt-2">
-                              <div className="flex justify-between">
-                                <span className="text-gray-300">Total:</span>
-                                <span className="text-white font-bold">
-                                  ${plans.find(p => p.id === formData.subscriptionPlan)?.price}
-                                </span>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <h4 className="text-lg font-medium text-white mb-2">Payment Method</h4>
-                      <div className="bg-gray-700/50 border border-gray-600 rounded-lg p-4">
-                        <div className="space-y-4">
-                          <div>
-                            <Label className="block text-gray-300 mb-2">Select Payment Method</Label>
-                            <div className="grid grid-cols-1 gap-3">
-                              <div 
-                                className={`flex items-center p-3 rounded-lg cursor-pointer ${
-                                  formData.paymentMethod === 'credit_card' 
-                                    ? 'bg-blue-900/30 border border-blue-500' 
-                                    : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'
-                                }`}
-                                onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'credit_card' }))}
-                              >
-                                <div className="h-5 w-5 rounded-full border border-gray-400 flex items-center justify-center mr-3">
-                                  {formData.paymentMethod === 'credit_card' && (
-                                    <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                                  )}
-                                </div>
-                                <span className="text-white">Credit/Debit Card</span>
-                              </div>
-                              
-                              <div 
-                                className={`flex items-center p-3 rounded-lg cursor-pointer ${
-                                  formData.paymentMethod === 'netbanking' 
-                                    ? 'bg-blue-900/30 border border-blue-500' 
-                                    : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'
-                                }`}
-                                onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'netbanking' }))}
-                              >
-                                <div className="h-5 w-5 rounded-full border border-gray-400 flex items-center justify-center mr-3">
-                                  {formData.paymentMethod === 'netbanking' && (
-                                    <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                                  )}
-                                </div>
-                                <span className="text-white">Net Banking</span>
-                              </div>
-                              
-                              <div 
-                                className={`flex items-center p-3 rounded-lg cursor-pointer ${
-                                  formData.paymentMethod === 'qr_scanner' 
-                                    ? 'bg-blue-900/30 border border-blue-500' 
-                                    : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'
-                                }`}
-                                onClick={() => setFormData(prev => ({ ...prev, paymentMethod: 'qr_scanner' }))}
-                              >
-                                <div className="h-5 w-5 rounded-full border border-gray-400 flex items-center justify-center mr-3">
-                                  {formData.paymentMethod === 'qr_scanner' && (
-                                    <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                                  )}
-                                </div>
-                                <span className="text-white">QR Code / Scanner</span>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {formData.paymentMethod === 'credit_card' && (
-                            <div className="mt-4">
-                              <div className="mb-4 bg-gradient-to-r from-blue-900 to-purple-900 rounded-lg p-4 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full -mr-6 -mt-6"></div>
-                                <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/10 rounded-full -ml-6 -mb-6"></div>
-                                
-                                <div className="flex justify-between items-start mb-6">
-                                  <div className="text-xs text-gray-300">Credit/Debit Card</div>
-                                  <div className="flex space-x-1">
-                                    <div className="w-8 h-5 bg-yellow-500 rounded"></div>
-                                    <div className="w-8 h-5 bg-red-500 rounded-full"></div>
-                                  </div>
-                                </div>
-                                
-                                <div className="mb-6">
-                                  <div className="text-xs text-gray-300 mb-1">Card Number</div>
-                                  <div className="text-white tracking-widest">4242 4242 4242 4242</div>
-                                </div>
-                                
-                                <div className="flex justify-between">
-                                  <div>
-                                    <div className="text-xs text-gray-300 mb-1">Card Holder</div>
-                                    <div className="text-white">{user?.name || "John Doe"}</div>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs text-gray-300 mb-1">Expires</div>
-                                    <div className="text-white">12/25</div>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs text-gray-300 mb-1">CVC</div>
-                                    <div className="text-white">***</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          
-                          {formData.paymentMethod === 'netbanking' && (
-                            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mt-4">
-                              <h4 className="text-white text-sm font-medium mb-3">Select Your Bank</h4>
-                              <div className="grid grid-cols-2 gap-3">
-                                {['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank', 'Kotak Bank', 'Yes Bank'].map((bank) => (
-                                  <div 
-                                    key={bank}
-                                    className="flex items-center p-3 rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600 transition-colors"
-                                    onClick={() => {
-                                      // In a real implementation, this would be handled by Razorpay
-                                      toast.info(`${bank} selected for payment`);
-                                    }}
-                                  >
-                                    <div className="w-4 h-4 bg-blue-500/20 rounded-full mr-2 flex items-center justify-center">
-                                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                    </div>
-                                    <span className="text-white text-sm">{bank}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              <p className="text-xs text-gray-400 mt-3 text-center">
-                                You will be redirected to your bank's website to complete the payment
-                              </p>
-                            </div>
-                          )}
-                          
-                          {formData.paymentMethod === 'qr_scanner' && (
-                            <div className="flex justify-center p-4 bg-white rounded-lg">
-                              <div className="text-center">
-                                {qrCodeUrl ? (
-                                  <>
-                                    <div className="border-4 border-blue-500 inline-block p-2 rounded-lg">
-                                      <img 
-                                        src={qrCodeUrl} 
-                                        alt="Payment QR Code" 
-                                        className="w-48 h-48"
-                                      />
-                                    </div>
-                                    <p className="mt-2 text-gray-800 text-sm font-medium">Scan this QR code to complete payment</p>
-                                    <p className="text-gray-600 text-xs mt-1">
-                                      Amount: ₹{plans.find(p => p.id === formData.subscriptionPlan)?.price || 0}
-                                    </p>
-                                    <div className="mt-3 flex justify-center">
-                                      <Button 
-                                        variant="outline" 
-                                        size="sm"
-                                        className="text-xs border-gray-300 text-gray-700"
-                                        disabled={isProcessingPayment}
-                                        onClick={() => {
-                                          // Get the pending order ID from session storage
-                                          const orderId = sessionStorage.getItem('pendingOrderId');
-                                          
-                                          if (!orderId) {
-                                            toast.error('No pending payment found');
-                                            return;
-                                          }
-                                          
-                                          // Simulate payment verification after QR scan
-                                          setIsProcessingPayment(true);
-                                          setMessage({ type: 'info', text: 'Verifying payment and creating account...' });
-                                          
-                                          // In a real implementation, Razorpay would notify your backend via webhook
-                                          // For testing, we'll simulate a successful payment
-                                          setTimeout(() => {
-                                            const mockResponse = {
-                                              razorpay_payment_id: `pay_${Math.random().toString(36).substring(2, 15)}`,
-                                              razorpay_order_id: orderId,
-                                              razorpay_signature: `${Math.random().toString(36).substring(2, 15)}`
-                                            };
-                                            verifyPaymentAndCreateGymOwner(mockResponse);
-                                          }, 1500);
-                                        }}
-                                      >
-                                        {isProcessingPayment ? (
-                                          <>Processing...</>
-                                        ) : (
-                                          <>Verify Payment & Create Account</>
-                                        )}
-                                      </Button>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="border-4 border-blue-500 inline-block p-2 rounded-lg">
-                                      <div className="w-48 h-48 bg-gray-200 flex items-center justify-center">
-                                        <span className="text-gray-500 text-sm">
-                                          Click "Generate Payment QR" below to create a QR code for payment
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="mt-2 text-gray-800 text-sm">
-                                      Amount: ₹{plans.find(p => p.id === formData.subscriptionPlan)?.price || 0}
-                                    </p>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          
-                          <div className="pt-4">
-                            {formData.subscriptionPlan && (
-                              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 mb-4 text-center">
-                                <p className="text-white font-medium">Payment Amount</p>
-                                <p className="text-2xl font-bold text-blue-400">
-                                  ₹{plans.find(p => p.id === formData.subscriptionPlan)?.price || 0}
-                                </p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  For {plans.find(p => p.id === formData.subscriptionPlan)?.name || ''} Plan (1 month)
-                                </p>
-                              </div>
-                            )}
-                            
-                            <div className="flex flex-col sm:flex-row gap-4">
-                              <Button 
-                                className="bg-green-600 hover:bg-green-700 flex items-center flex-1"
-                                size="lg"
-                                disabled={isProcessingPayment || (formData.paymentMethod === 'qr_scanner' && qrCodeUrl)}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  initializeRazorpayPayment();
-                                }}
-                              >
-                                {isProcessingPayment ? (
-                                  <>Processing Payment...</>
-                                ) : (
-                                  <>
-                                    {formData.paymentMethod === 'qr_scanner' 
-                                      ? (qrCodeUrl ? 'Verify Payment & Create Account' : 'Generate Payment QR') 
-                                      : formData.paymentMethod === 'netbanking'
-                                        ? 'Proceed to Net Banking'
-                                        : 'Complete Payment & Create Account'
-                                    }
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                            
-                            <div className="flex items-center justify-center mt-4">
-                              <div className="flex items-center border border-gray-600 rounded-full px-3 py-1 bg-gray-800/50">
-                                <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
-                                <p className="text-xs text-gray-400">Secure Payment</p>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-4 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
-                              <p className="text-sm text-center text-blue-300">
-                                <strong>TEST MODE:</strong> Using Razorpay Test Environment
-                              </p>
-                              <p className="text-xs text-center text-gray-400 mt-1">
-                                This is connected to Razorpay's test environment using your test API keys.
-                                No actual money will be charged, but you can test the full payment flow.
-                                For production, replace test keys with live Razorpay API keys.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+
 
               <div className="flex flex-wrap gap-4 mt-6 justify-end">
                 <Button 
@@ -1324,7 +1009,7 @@ function UserManagement() {
                 </Button>
                 
                 {/* Super Admin can ONLY create Gym Owners */}
-                {isSuperAdmin && !showPaymentSection && (
+                {isSuperAdmin && (
                   <Button 
                     onClick={(e) => {
                       e.preventDefault();
@@ -1333,7 +1018,7 @@ function UserManagement() {
                     className="bg-green-600 hover:bg-green-700 px-6"
                     disabled={isLoading}
                   >
-                    {isLoading ? 'Validating...' : 'Continue to Payment'}
+                    {isLoading ? 'Creating...' : 'Create Gym Owner'}
                   </Button>
                 )}
                 

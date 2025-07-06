@@ -67,37 +67,37 @@ const GymOwnerPlans = () => {
       if (response.success || response.status === 'success') {
         setPlans(response.data.plans);
       } else {
-        // If API fails, use default plans
+        // If API fails, use default gym owner subscription plans
         setPlans([
           {
-            id: "basic-member",
-            name: "Basic Member",
-            price: 19,
+            id: "basic",
+            name: "Basic",
+            price: 49,
             duration: "monthly",
-            maxMembers: 50,
-            maxTrainers: 2,
-            features: ["Member Management", "Basic Attendance Tracking", "Email Support"],
+            maxMembers: 200,
+            maxTrainers: 5,
+            features: ["Member Management", "Basic Reports", "Email Support", "Attendance Tracking"],
             status: "Active"
           },
           {
-            id: "premium-member",
-            name: "Premium Member",
-            price: 39,
+            id: "premium",
+            name: "Premium",
+            price: 99,
             duration: "monthly",
-            maxMembers: 100,
-            maxTrainers: 5,
-            features: ["All Basic Features", "Fitness Progress Tracking", "Workout Plans", "Priority Support"],
+            maxMembers: 500,
+            maxTrainers: 15,
+            features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support", "Workout Plans"],
             status: "Active",
             recommended: true
           },
           {
-            id: "elite-member",
-            name: "Elite Member",
-            price: 79,
+            id: "enterprise",
+            name: "Enterprise",
+            price: 199,
             duration: "monthly",
-            maxMembers: 200,
-            maxTrainers: 10,
-            features: ["All Premium Features", "Nutrition Planning", "Personal Training Sessions", "24/7 Support"],
+            maxMembers: 1000,
+            maxTrainers: 50,
+            features: ["All Premium Features", "Multi-location Support", "Advanced Analytics", "24/7 Support", "Custom Branding"],
             status: "Active"
           }
         ]);
@@ -106,37 +106,37 @@ const GymOwnerPlans = () => {
       console.error('Error fetching gym owner plans:', error);
       toast.error('Failed to load gym owner plans');
       
-      // Use default plans if API fails
+      // Use default gym owner subscription plans if API fails
       setPlans([
         {
-          id: "basic-member",
-          name: "Basic Member",
-          price: 19,
+          id: "basic",
+          name: "Basic",
+          price: 49,
           duration: "monthly",
-          maxMembers: 50,
-          maxTrainers: 2,
-          features: ["Member Management", "Basic Attendance Tracking", "Email Support"],
+          maxMembers: 200,
+          maxTrainers: 5,
+          features: ["Member Management", "Basic Reports", "Email Support", "Attendance Tracking"],
           status: "Active"
         },
         {
-          id: "premium-member",
-          name: "Premium Member",
-          price: 39,
+          id: "premium",
+          name: "Premium",
+          price: 99,
           duration: "monthly",
-          maxMembers: 100,
-          maxTrainers: 5,
-          features: ["All Basic Features", "Fitness Progress Tracking", "Workout Plans", "Priority Support"],
+          maxMembers: 500,
+          maxTrainers: 15,
+          features: ["All Basic Features", "Advanced Reports", "SMS Integration", "Priority Support", "Workout Plans"],
           status: "Active",
           recommended: true
         },
         {
-          id: "elite-member",
-          name: "Elite Member",
-          price: 79,
+          id: "enterprise",
+          name: "Enterprise",
+          price: 199,
           duration: "monthly",
-          maxMembers: 200,
-          maxTrainers: 10,
-          features: ["All Premium Features", "Nutrition Planning", "Personal Training Sessions", "24/7 Support"],
+          maxMembers: 1000,
+          maxTrainers: 50,
+          features: ["All Premium Features", "Multi-location Support", "Advanced Analytics", "24/7 Support", "Custom Branding"],
           status: "Active"
         }
       ]);
@@ -460,6 +460,192 @@ const GymOwnerPlans = () => {
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
 
+  // Handle account activation by purchasing a plan
+  const handleActivateAccount = async (plan) => {
+    try {
+      setIsProcessing(true);
+      
+      // Step 1: Create a Razorpay order
+      const orderResponse = await authFetch(`/payments/razorpay/create-order`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: plan.price,
+          currency: 'INR',
+          receipt: `activation_${Date.now()}`,
+          notes: {
+            planId: plan.id,
+            gymOwnerId: user._id,
+            planName: plan.name,
+            isActivation: true
+          }
+        })
+      });
+      
+      console.log('Activation order response:', orderResponse);
+      
+      if (!orderResponse || (!orderResponse.success && orderResponse.status !== 'success')) {
+        toast.error('Failed to create payment order');
+        setIsProcessing(false);
+        return;
+      }
+      
+      const order = orderResponse.data?.order;
+      if (!order) {
+        toast.error('Invalid order response');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 2: Load Razorpay script
+      const loadRazorpayScript = () => {
+        return new Promise((resolve) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => {
+            resolve(true);
+          };
+          script.onerror = () => {
+            resolve(false);
+          };
+          document.body.appendChild(script);
+        });
+      };
+      
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error('Failed to load Razorpay checkout');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 3: Open Razorpay checkout
+      const options = {
+        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        amount: order.amount,
+        currency: order.currency,
+        name: 'GymFlow',
+        description: `Account Activation - ${plan.name}`,
+        order_id: order.id,
+        handler: async function(response) {
+          try {
+            // Step 4: Verify payment and activate account
+            const activationResponse = await authFetch(`/payments/razorpay/verify-activation`, {
+              method: 'POST',
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature,
+                planData: {
+                  id: plan.id,
+                  name: plan.name,
+                  price: plan.price,
+                  maxMembers: plan.maxMembers,
+                  maxTrainers: plan.maxTrainers
+                }
+              })
+            });
+            
+            if (activationResponse.success || activationResponse.status === 'success') {
+              toast.success('Account activated successfully! Welcome to GymFlow!');
+              
+              // Update user in context (they should now be active)
+              if (activationResponse.data?.user) {
+                // Update user object with new account status
+                const updatedUser = { ...user, accountStatus: 'active' };
+                // You might need to call a function to update the user in context
+                // This depends on your AuthContext implementation
+                window.location.reload(); // Temporary solution to refresh the page
+              }
+              
+              // Refresh subscription status
+              await checkSubscriptionStatus(user._id, null, true);
+            } else {
+              toast.error(activationResponse.message || 'Account activation failed');
+            }
+          } catch (error) {
+            console.error('Error activating account:', error);
+            toast.error('Failed to activate account');
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone || ''
+        },
+        notes: {
+          gymOwnerId: user._id,
+          planId: plan.id,
+          isActivation: true
+        },
+        theme: {
+          color: '#3B82F6'
+        }
+      };
+      
+      const razorpay = new window.Razorpay(options);
+      razorpay.on('payment.failed', function(response) {
+        toast.error('Payment failed: ' + response.error.description);
+        setIsProcessing(false);
+      });
+      
+      razorpay.open();
+    } catch (error) {
+      console.error('Error during account activation:', error);
+      toast.error('An error occurred during account activation');
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle test mode activation (for development)
+  const handleTestModeActivation = async (plan) => {
+    try {
+      setIsProcessing(true);
+      
+      // Create a mock transaction for testing
+      const mockTransactionId = `mock_${Date.now()}`;
+      
+      const activationResponse = await authFetch(`/payments/test-activation`, {
+        method: 'POST',
+        body: JSON.stringify({
+          gymOwnerId: user._id,
+          planData: {
+            id: plan.id,
+            name: plan.name,
+            price: plan.price,
+            maxMembers: plan.maxMembers,
+            maxTrainers: plan.maxTrainers
+          },
+          transactionId: mockTransactionId
+        })
+      });
+      
+      if (activationResponse.success || activationResponse.status === 'success') {
+        toast.success('Account activated successfully in test mode!');
+        
+        // Update user in context (they should now be active)
+        if (activationResponse.data?.user) {
+          // Update user object with new account status
+          const updatedUser = { ...user, accountStatus: 'active' };
+          // You might need to call a function to update the user in context
+          // This depends on your AuthContext implementation
+          window.location.reload(); // Temporary solution to refresh the page
+        }
+        
+        // Refresh subscription status
+        await checkSubscriptionStatus(user._id, null, true);
+      } else {
+        toast.error(activationResponse.message || 'Account activation failed');
+      }
+    } catch (error) {
+      console.error('Error activating account in test mode:', error);
+      toast.error('Failed to activate account');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Get current subscription info
   const currentSubscription = subscription?.subscription;
   const hasActiveSubscription = subscription?.hasActiveSubscription;
@@ -505,20 +691,82 @@ const GymOwnerPlans = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">Member Plans</h1>
-            <p className="text-gray-400">Manage subscription plans for your gym members</p>
+            <h1 className="text-3xl font-bold text-white">
+              {user?.accountStatus === 'inactive' ? 'Activate Your Account' : 'Subscription Plans'}
+            </h1>
+            <p className="text-gray-400">
+              {user?.accountStatus === 'inactive' 
+                ? 'Choose a subscription plan to activate your gym owner account'
+                : 'Manage your gym subscription and billing'
+              }
+            </p>
           </div>
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={handleCreatePlan}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Create New Plan
-          </Button>
+          {user?.accountStatus === 'active' && (
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={handleCreatePlan}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Plan
+            </Button>
+          )}
         </div>
 
+        {/* Account Activation Section for Inactive Gym Owners */}
+        {isGymOwner && user?.accountStatus === 'inactive' && (
+          <Card className="bg-red-900/20 border-red-800">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center">
+                <AlertTriangle className="mr-2 h-5 w-5 text-red-400" />
+                Account Activation Required
+              </CardTitle>
+              <CardDescription className="text-gray-400">
+                Your gym owner account is currently inactive. Please complete your first subscription payment to activate your account and access all features.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="text-white">
+                  <p className="mb-2">✨ Complete your account activation by:</p>
+                  <ul className="list-disc list-inside text-gray-300 space-y-1">
+                    <li>Choosing a subscription plan below</li>
+                    <li>Completing the payment process</li>
+                    <li>Gaining full access to your gym management dashboard</li>
+                  </ul>
+                </div>
+                
+                <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+                  <p className="text-blue-300 font-medium mb-2">🎯 What you'll get after activation:</p>
+                  <ul className="text-blue-200 text-sm space-y-1">
+                    <li>• Full access to member management system</li>
+                    <li>• Trainer management and assignment features</li>
+                    <li>• Workout and diet plan management</li>
+                    <li>• QR code generation for member check-ins</li>
+                    <li>• Detailed reports and analytics</li>
+                  </ul>
+                </div>
+                
+                <div className="text-center">
+                  <Button 
+                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 text-lg"
+                    onClick={() => {
+                      const plansSection = document.getElementById('subscription-plans');
+                      if (plansSection) {
+                        plansSection.scrollIntoView({ behavior: 'smooth' });
+                      }
+                    }}
+                  >
+                    <CreditCard className="h-5 w-5 mr-2" />
+                    Choose Your Plan & Activate Account
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Current Subscription Status */}
-        {isGymOwner && currentSubscription && (
+        {isGymOwner && currentSubscription && user?.accountStatus === 'active' && (
           <Card className={`${hasActiveSubscription ? 'bg-green-900/20 border-green-800' : 'bg-red-900/20 border-red-800'}`}>
             <CardHeader>
               <CardTitle className="text-white flex items-center">
@@ -607,36 +855,43 @@ const GymOwnerPlans = () => {
         )}
 
         {/* Tabs */}
-        <div className="flex space-x-4 border-b border-gray-700">
-          <button
-            onClick={() => setActiveTab("plans")}
-            className={`pb-4 px-2 font-medium transition-colors ${
-              activeTab === "plans" 
-                ? "text-blue-400 border-b-2 border-blue-400" 
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            Member Plans
-          </button>
-          <button
-            onClick={() => setActiveTab("subscriptions")}
-            className={`pb-4 px-2 font-medium transition-colors ${
-              activeTab === "subscriptions" 
-                ? "text-blue-400 border-b-2 border-blue-400" 
-                : "text-gray-400 hover:text-white"
-            }`}
-          >
-            Member Subscriptions
-          </button>
-        </div>
+        {user?.accountStatus === 'active' && (
+          <div className="flex space-x-4 border-b border-gray-700">
+            <button
+              onClick={() => setActiveTab("plans")}
+              className={`pb-4 px-2 font-medium transition-colors ${
+                activeTab === "plans" 
+                  ? "text-blue-400 border-b-2 border-blue-400" 
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Member Plans
+            </button>
+            <button
+              onClick={() => setActiveTab("subscriptions")}
+              className={`pb-4 px-2 font-medium transition-colors ${
+                activeTab === "subscriptions" 
+                  ? "text-blue-400 border-b-2 border-blue-400" 
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              Member Subscriptions
+            </button>
+          </div>
+        )}
 
         {/* Plans Tab */}
-        {activeTab === "plans" && (
-          <Card className="bg-gray-800/50 border-gray-700">
+        {(activeTab === "plans" || user?.accountStatus === 'inactive') && (
+          <Card id="subscription-plans" className="bg-gray-800/50 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Member Subscription Plans</CardTitle>
+              <CardTitle className="text-white">
+                {user?.accountStatus === 'inactive' ? 'Choose Your Subscription Plan' : 'Available Subscription Plans'}
+              </CardTitle>
               <CardDescription className="text-gray-400">
-                Manage plans for your gym members
+                {user?.accountStatus === 'inactive' 
+                  ? 'Select a plan to activate your gym owner account and start managing your gym'
+                  : 'Manage your gym subscription and billing'
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -659,7 +914,7 @@ const GymOwnerPlans = () => {
                         {plan.duration === 'monthly' ? 'Monthly' : 'Annual'} Plan
                       </CardDescription>
                       <div className="text-2xl font-bold text-white mt-2">
-                        ${plan.price}<span className="text-sm font-normal text-gray-400">/month</span>
+                        ₹{plan.price}<span className="text-sm font-normal text-gray-400">/month</span>
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -689,21 +944,47 @@ const GymOwnerPlans = () => {
                       </div>
                     </CardContent>
                     <CardFooter className="flex justify-between border-t border-gray-600 pt-4">
-                      <Button 
-                        variant="outline" 
-                        className="border-gray-600 text-gray-300 hover:bg-gray-600"
-                        onClick={() => handleEditPlan(plan)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="destructive"
-                        onClick={() => handleDeletePlan(plan._id || plan.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
+                      {user?.accountStatus === 'inactive' ? (
+                        // Show activation buttons for inactive accounts
+                        <div className="flex flex-col w-full space-y-2">
+                          <Button 
+                            className="w-full bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => handleActivateAccount(plan)}
+                            disabled={isProcessing}
+                          >
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            {isProcessing ? 'Processing...' : 'Activate Account'}
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            className="w-full border-amber-600 text-amber-500 hover:bg-amber-900/20"
+                            onClick={() => handleTestModeActivation(plan)}
+                            disabled={isProcessing}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
+                          </Button>
+                        </div>
+                      ) : (
+                        // Show normal plan management buttons for active accounts
+                        <>
+                          <Button 
+                            variant="outline" 
+                            className="border-gray-600 text-gray-300 hover:bg-gray-600"
+                            onClick={() => handleEditPlan(plan)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="destructive"
+                            onClick={() => handleDeletePlan(plan._id || plan.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </Button>
+                        </>
+                      )}
                     </CardFooter>
                   </Card>
                 ))}
@@ -713,7 +994,7 @@ const GymOwnerPlans = () => {
         )}
 
         {/* Subscriptions Tab */}
-        {activeTab === "subscriptions" && (
+        {activeTab === "subscriptions" && user?.accountStatus === 'active' && (
           <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

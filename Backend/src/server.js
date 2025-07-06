@@ -48,28 +48,46 @@ if (process.env.NODE_ENV === 'development') {
 
 app.use(cors({
   origin: function (origin, callback) {
+    console.log('CORS Request from origin:', origin);
+    
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('CORS: Allowing request with no origin');
+      return callback(null, true);
+    }
     
     // In development, allow all origins
     if (process.env.NODE_ENV === 'development') {
+      console.log('CORS: Development mode - allowing all origins');
       return callback(null, true);
     }
     
     if (allowedOrigins.includes(origin)) {
+      console.log('CORS: Origin allowed:', origin);
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
+      console.log('Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
+
+// Handle preflight OPTIONS requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -129,7 +147,14 @@ app.get('/test', async (req, res) => {
         adminEmail: adminUser?.email,
         totalUsers: userCount,
         jwtSecretExists: !!process.env.JWT_SECRET,
-        mongoUri: process.env.MONGODB_URI ? 'SET' : 'NOT SET'
+        mongoUri: process.env.MONGODB_URI ? 'SET' : 'NOT SET',
+        razorpayConfig: {
+          testKeyId: process.env.RAZORPAY_TEST_KEY_ID ? '✓ SET' : '✗ MISSING',
+          testKeySecret: process.env.RAZORPAY_TEST_KEY_SECRET ? '✓ SET' : '✗ MISSING',
+          liveKeyId: process.env.RAZORPAY_LIVE_KEY_ID ? '✓ SET' : '✗ MISSING',
+          liveKeySecret: process.env.RAZORPAY_LIVE_KEY_SECRET ? '✓ SET' : '✗ MISSING',
+          currentMode: process.env.NODE_ENV === 'production' ? 'LIVE' : 'TEST'
+        }
       }
     });
   } catch (error) {
@@ -138,6 +163,28 @@ app.get('/test', async (req, res) => {
       message: error.message
     });
   }
+});
+
+// CORS test endpoint
+app.get('/cors-test', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'CORS is working correctly',
+    origin: req.headers.origin,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// PATCH test endpoint
+app.patch('/patch-test', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'PATCH method is working correctly',
+    origin: req.headers.origin,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // 404 handler

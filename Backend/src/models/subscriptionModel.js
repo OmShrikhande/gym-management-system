@@ -8,8 +8,8 @@ const subscriptionSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['Basic', 'Premium', 'Enterprise'],
-    default: 'Basic'
+    required: [true, 'Subscription must have a plan'],
+    trim: true
   },
   price: {
     type: Number,
