@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Subscription from '../models/subscriptionModel.js';
 import Notification from '../models/notificationModel.js';
 import User from '../models/userModel.js';
@@ -83,34 +84,42 @@ const calculateEndDate = (startDate, months) => {
 
 // Create a new subscription
 export const createSubscription = catchAsync(async (req, res, next) => {
-  console.log('=== CREATE SUBSCRIPTION DEBUG ===');
-  console.log('Request body:', req.body);
-  console.log('User:', req.user);
-  
-  const { gymOwnerId, plan, price, durationMonths = 1, paymentMethod, transactionId } = req.body;
-
-  // Validate input
-  if (!gymOwnerId || !plan || !price || !paymentMethod) {
-    console.log('Missing required fields:', { gymOwnerId, plan, price, paymentMethod });
-    return next(new AppError('Missing required fields: gymOwnerId, plan, price, paymentMethod', 400));
-  }
-
-  // Validate gymOwnerId format
-  if (!gymOwnerId.match(/^[0-9a-fA-F]{24}$/)) {
-    console.log('Invalid gymOwnerId format:', gymOwnerId);
-    return next(new AppError('Invalid gym owner ID format', 400));
-  }
-
-  // Check if gym owner exists
-  console.log('Looking for gym owner with ID:', gymOwnerId);
-  let gymOwner;
   try {
-    gymOwner = await User.findById(gymOwnerId);
-    console.log('Found gym owner:', gymOwner ? gymOwner.email : 'not found');
-  } catch (error) {
-    console.log('Error finding gym owner:', error.message);
-    return next(new AppError('Error finding gym owner', 500));
-  }
+    console.log('=== CREATE SUBSCRIPTION DEBUG ===');
+    console.log('Request body:', req.body);
+    console.log('User:', req.user);
+    
+    const { gymOwnerId, plan, price, durationMonths = 1, paymentMethod, transactionId } = req.body;
+
+    // Validate input
+    if (!gymOwnerId || !plan || !price || !paymentMethod) {
+      console.log('Missing required fields:', { gymOwnerId, plan, price, paymentMethod });
+      return next(new AppError('Missing required fields: gymOwnerId, plan, price, paymentMethod', 400));
+    }
+
+    // Validate and parse price
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      console.log('Invalid price:', price);
+      return next(new AppError('Invalid price value', 400));
+    }
+
+    // Validate gymOwnerId format
+    if (!mongoose.Types.ObjectId.isValid(gymOwnerId)) {
+      console.log('Invalid gymOwnerId format:', gymOwnerId, typeof gymOwnerId);
+      return next(new AppError('Invalid gym owner ID format', 400));
+    }
+
+    // Check if gym owner exists
+    console.log('Looking for gym owner with ID:', gymOwnerId);
+    let gymOwner;
+    try {
+      gymOwner = await User.findById(gymOwnerId);
+      console.log('Found gym owner:', gymOwner ? gymOwner.email : 'not found');
+    } catch (error) {
+      console.log('Error finding gym owner:', error.message);
+      return next(new AppError('Error finding gym owner', 500));
+    }
   
   if (!gymOwner || gymOwner.role !== 'gym-owner') {
     console.log('Gym owner validation failed:', { found: !!gymOwner, role: gymOwner?.role });
@@ -151,14 +160,14 @@ export const createSubscription = catchAsync(async (req, res, next) => {
     console.log('Creating subscription with data:', {
       gymOwner: gymOwnerId,
       plan,
-      price,
+      price: parsedPrice,
       startDate,
       endDate,
       isActive: true,
       paymentStatus: 'Paid',
       paymentHistory: [
         {
-          amount: price,
+          amount: parsedPrice,
           date: startDate,
           method: paymentMethod,
           status: 'Success',
@@ -171,14 +180,14 @@ export const createSubscription = catchAsync(async (req, res, next) => {
     subscription = await Subscription.create({
       gymOwner: gymOwnerId,
       plan,
-      price,
+      price: parsedPrice,
       startDate,
       endDate,
       isActive: true,
       paymentStatus: 'Paid',
       paymentHistory: [
         {
-          amount: price,
+          amount: parsedPrice,
           date: startDate,
           method: paymentMethod,
           status: 'Success',
@@ -205,7 +214,7 @@ export const createSubscription = catchAsync(async (req, res, next) => {
         recipient: gymOwnerId,
         type: 'payment_success',
         title: 'Subscription Payment Successful',
-        message: `Your payment of ₹${price} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
+        message: `Your payment of ₹${parsedPrice} for the ${plan} plan was successful. Your subscription is valid until ${endDate.toLocaleDateString()}.`,
         actionLink: '/billing-plans'
       });
       console.log('Notification created:', notification);
@@ -218,19 +227,26 @@ export const createSubscription = catchAsync(async (req, res, next) => {
       // Don't fail the subscription creation if notification fails
     }
     
-  } catch (subscriptionError) {
-    console.error('Error creating subscription:', subscriptionError);
-    return next(new AppError(`Failed to create subscription: ${subscriptionError.message}`, 500));
-  }
-
-  console.log('Sending success response...');
-  res.status(201).json({
-    status: 'success',
-    data: {
-      subscription
+    } catch (subscriptionError) {
+      console.error('Error creating subscription:', subscriptionError);
+      return next(new AppError(`Failed to create subscription: ${subscriptionError.message}`, 500));
     }
-  });
-  console.log('Success response sent');
+
+    console.log('Sending success response...');
+    res.status(201).json({
+      status: 'success',
+      data: {
+        subscription
+      }
+    });
+    console.log('Success response sent');
+  } catch (error) {
+    console.error('=== SUBSCRIPTION CREATION ERROR ===');
+    console.error('Error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    return next(new AppError(`Subscription creation failed: ${error.message}`, 500));
+  }
 });
 
 // Get subscription by ID
