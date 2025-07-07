@@ -604,18 +604,6 @@ function UserManagement() {
       return;
     }
     
-    // Additional validation for trainer
-    if (userType === 'trainer') {
-      if (!formData.phone) {
-        setMessage({ type: 'error', text: 'Phone number is required for trainers' });
-        return;
-      }
-      if (!formData.trainerFee || isNaN(parseInt(formData.trainerFee)) || parseInt(formData.trainerFee) < 0) {
-        setMessage({ type: 'error', text: 'Please enter a valid trainer fee (minimum 0)' });
-        return;
-      }
-    }
-    
     // Additional validation for member
     if (userType === 'member') {
       if (!formData.phone) {

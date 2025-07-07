@@ -338,14 +338,15 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for trainer
       if (userType === 'trainer') {
-        const trainerFee = parseInt(userData.trainerFee) || 2000;
+        console.log('Creating trainer with fee:', userData.trainerFee);
         requestBody = {
           ...requestBody,
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
-          trainerFee: trainerFee // Ensure it's a valid number
+          trainerFee: parseInt(userData.trainerFee) || 2000 // Default trainer fee
         };
+        console.log('Trainer request body:', requestBody);
       }
       
       // Add additional fields for gym owner
@@ -365,11 +366,11 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for member
       if (userType === 'member') {
-        // Calculate membership end date based on duration (in months)
+        // Calculate membership end date based on duration
         const membershipDuration = parseInt(userData.membershipDuration || '1');
         const startDate = new Date();
         const endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + membershipDuration); // Use setMonth instead of setFullYear
+        endDate.setFullYear(endDate.getFullYear() + membershipDuration);
         
         requestBody = {
           ...requestBody,
@@ -704,6 +705,12 @@ export const AuthProvider = ({ children }) => {
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched users:', data.data.users);
+        
+        // Debug trainer fees
+        const trainers = data.data.users.filter(u => u.role === 'trainer');
+        console.log('Trainers with fees:', trainers.map(t => ({ name: t.name, fee: t.trainerFee })));
+        
         setUsers(data.data.users);
         
         // Store last fetch timestamp

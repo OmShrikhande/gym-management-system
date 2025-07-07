@@ -858,7 +858,10 @@ const Members = () => {
   let trainerFee = 0;
   if (formData.requiresTrainer && formData.assignedTrainer) {
     const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+    console.log('Selected trainer:', selectedTrainer);
+    console.log('Trainer fee from trainer object:', selectedTrainer?.trainerFee);
     trainerFee = selectedTrainer?.trainerFee || 2000; // Use trainer's fee or default to 2000
+    console.log('Final trainer fee used:', trainerFee);
   }
     
     // Calculate total fee based on plan price, duration, and trainer fee
