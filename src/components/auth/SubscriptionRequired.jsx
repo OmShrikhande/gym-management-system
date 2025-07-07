@@ -174,7 +174,7 @@ const SubscriptionRequired = () => {
         await checkSubscriptionStatus(user._id, null, true);
         
         // Navigate to dashboard
-        navigate("/dashboard");
+        navigate("/");
       } else {
         toast.error(response.message || 'Subscription failed. Please try again.');
       }
@@ -324,7 +324,7 @@ const SubscriptionRequired = () => {
               await checkSubscriptionStatus(user._id, null, true);
               
               // Navigate to dashboard
-              navigate("/dashboard");
+              navigate("/");
             } else {
               toast.error(verifyResponse.message || 'Subscription failed. Please try again.');
             }
@@ -358,7 +358,7 @@ const SubscriptionRequired = () => {
   // If user is not a gym owner, redirect to dashboard
   useEffect(() => {
     if (user && user.role !== 'gym-owner') {
-      navigate("/dashboard");
+      navigate("/");
     }
   }, [user, navigate]);
 
