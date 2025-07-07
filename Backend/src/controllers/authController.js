@@ -328,3 +328,69 @@ export const getUsers = async (req, res) => {
     });
   }
 };
+
+// Update user (trainer/member) - only by gym owner who created them or super admin
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    
+    // Find the user to update
+    const userToUpdate = await User.findById(id);
+    
+    if (!userToUpdate) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'User not found'
+      });
+    }
+    
+    // Check permissions
+    if (req.user.role === 'gym-owner') {
+      // Gym owners can only update users they created
+      if (userToUpdate.createdBy.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          status: 'fail',
+          message: 'You can only update users you created'
+        });
+      }
+      
+      // Gym owners can only update trainers and members
+      if (!['trainer', 'member'].includes(userToUpdate.role)) {
+        return res.status(403).json({
+          status: 'fail',
+          message: 'You can only update trainers and members'
+        });
+      }
+    }
+    
+    // Remove sensitive fields that shouldn't be updated via this route
+    delete updateData.password;
+    delete updateData.role;
+    delete updateData.createdBy;
+    delete updateData._id;
+    delete updateData.__v;
+    
+    // Update the user
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    ).select('-password -__v');
+    
+    res.status(200).json({
+      status: 'success',
+      message: 'User updated successfully',
+      data: {
+        user: updatedUser
+      }
+    });
+    
+  } catch (err) {
+    console.error('UPDATE USER ERROR 💥', err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error updating user. Please try again later.'
+    });
+  }
+};

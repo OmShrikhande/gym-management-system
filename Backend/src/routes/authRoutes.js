@@ -18,5 +18,6 @@ router.post('/create-user', protect, restrictTo('gym-owner'), authController.cre
 router.get('/verify-token', protect, authController.verifyToken);
 router.get('/me', protect, authController.getMe);
 router.get('/users', protect, restrictTo('super-admin', 'gym-owner'), authController.getUsers);
+router.put('/users/:id', protect, restrictTo('super-admin', 'gym-owner'), authController.updateUser);
 
 export default router;

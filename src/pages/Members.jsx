@@ -44,7 +44,7 @@ const Members = () => {
     medicalConditions: '',
     requiresTrainer: false,
     assignedTrainer: '', // Trainer ID will be stored here
-    membershipDuration: '12', // in months (default 12 months = 1 year)
+    membershipDuration: '1', // in months (default 1 month)
     durationType: 'preset', // 'preset' or 'custom'
     fitnessGoalDescription: ''
   });
@@ -380,7 +380,7 @@ const Members = () => {
           if (!membershipEndDate && member.membershipDuration && (member.membershipStartDate || member.createdAt)) {
             const startDate = new Date(member.membershipStartDate || member.createdAt);
             const endDate = new Date(startDate);
-            const duration = parseInt(member.membershipDuration || '12'); // Default to 12 months if not specified
+            const duration = parseInt(member.membershipDuration || '1'); // Default to 1 month if not specified
             endDate.setMonth(endDate.getMonth() + duration);
             membershipEndDate = endDate.toISOString();
           }
@@ -858,7 +858,14 @@ const Members = () => {
   let trainerFee = 0;
   if (formData.requiresTrainer && formData.assignedTrainer) {
     const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
-    trainerFee = selectedTrainer?.trainerFee || 2000; // Use trainer's fee or default to 2000
+    if (selectedTrainer) {
+      // Use trainer's fee if available, otherwise use default
+      trainerFee = selectedTrainer.trainerFee || 2000;
+      console.log(`Using trainer fee: ₹${trainerFee} for trainer: ${selectedTrainer.name}`);
+    } else {
+      console.warn('Selected trainer not found in available trainers list');
+      trainerFee = 2000; // Default fee
+    }
   }
     
     // Calculate total fee based on plan price, duration, and trainer fee

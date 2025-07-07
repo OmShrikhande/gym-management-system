@@ -351,13 +351,24 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
+      // Add additional fields for trainer
+      if (userType === 'trainer') {
+        requestBody = {
+          ...requestBody,
+          phone: userData.phone || '',
+          whatsapp: userData.whatsapp || '',
+          address: userData.address || '',
+          trainerFee: parseInt(userData.trainerFee) || 2000 // Include trainer fee
+        };
+      }
+      
       // Add additional fields for member
       if (userType === 'member') {
-        // Calculate membership end date based on duration
+        // Calculate membership end date based on duration (in months)
         const membershipDuration = parseInt(userData.membershipDuration || '1');
         const startDate = new Date();
         const endDate = new Date(startDate);
-        endDate.setFullYear(endDate.getFullYear() + membershipDuration);
+        endDate.setMonth(endDate.getMonth() + membershipDuration);
         
         requestBody = {
           ...requestBody,
