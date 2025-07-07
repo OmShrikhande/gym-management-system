@@ -14,6 +14,7 @@ import workoutRoutes from './routes/workoutRoutes.js';
 import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
+import gymOwnerPlanRoutes from './routes/gymOwnerPlanRoutes.js';
 
 import attendanceRoutes from './routes/attendanceRoutes.js';
 
@@ -96,13 +97,15 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/subscription-plans', subscriptionPlanRoutes);
 // Alias route for membership-plans (points to subscription-plans)
 app.use('/api/membership-plans', subscriptionPlanRoutes);
-app.use('/api/plans', subscriptionPlanRoutes); // Another alias
+// Use gym owner plans for /api/plans endpoint
+app.use('/api/plans', gymOwnerPlanRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/gym-owner-plans', gymOwnerPlanRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
 

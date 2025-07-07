@@ -62,7 +62,7 @@ const GymOwnerPlans = () => {
   const fetchGymOwnerPlans = async () => {
     setIsLoading(true);
     try {
-      const response = await authFetch('/subscription-plans');
+      const response = await authFetch('/gym-owner-plans/default');
       
       if (response.success || response.status === 'success') {
         setPlans(response.data.plans);

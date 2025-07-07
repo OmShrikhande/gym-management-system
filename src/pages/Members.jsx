@@ -89,37 +89,31 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
-      // Try to fetch from the correct endpoint - first try plans endpoint
-      try {
-        const response = await authFetch('/plans');
-        
-        if (response.success || response.status === 'success') {
-          if (response.data && response.data.plans) {
-            setGymOwnerPlans(response.data.plans);
-            return;
+      console.log('Fetching gym owner plans for:', user._id);
+      
+      // Try to fetch from the gym owner plans endpoint with default fallback
+      const response = await authFetch('/gym-owner-plans/default');
+      
+      if (response.success || response.status === 'success') {
+        if (response.data && response.data.plans) {
+          console.log('Gym owner plans fetched successfully:', response.data.plans.length);
+          setGymOwnerPlans(response.data.plans);
+          
+          // Update the default planType if needed
+          if (response.data.plans.length > 0) {
+            setFormData(prev => ({
+              ...prev,
+              planType: response.data.plans[0].name
+            }));
           }
+          return;
         }
-      } catch (endpointError) {
-        // Silently fail and try the next endpoint
       }
       
-      // Try alternative endpoint
-      try {
-        const response = await authFetch('/membership-plans');
-        
-        if (response.success || response.status === 'success') {
-          if (response.data && response.data.plans) {
-            setGymOwnerPlans(response.data.plans);
-            return;
-          }
-        }
-      } catch (endpointError) {
-        // Silently fail and use default plans
-      }
-      
-      // If all API calls fail, keep the default plans
+      // If API call fails, keep the default plans
       console.log('Using default gym owner plans');
     } catch (error) {
+      console.error('Error fetching gym owner plans:', error);
       // Keep using the default plans
       console.log('Using default gym owner plans');
     }
