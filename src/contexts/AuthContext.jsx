@@ -336,19 +336,6 @@ export const AuthProvider = ({ children }) => {
         password: userData.password
       };
       
-      // Add additional fields for trainer
-      if (userType === 'trainer') {
-        console.log('Creating trainer with fee:', userData.trainerFee);
-        requestBody = {
-          ...requestBody,
-          phone: userData.phone || '',
-          whatsapp: userData.whatsapp || '',
-          address: userData.address || '',
-          trainerFee: parseInt(userData.trainerFee) || 2000 // Default trainer fee
-        };
-        console.log('Trainer request body:', requestBody);
-      }
-      
       // Add additional fields for gym owner
       if (userType === 'gym-owner') {
         requestBody = {
@@ -705,12 +692,6 @@ export const AuthProvider = ({ children }) => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched users:', data.data.users);
-        
-        // Debug trainer fees
-        const trainers = data.data.users.filter(u => u.role === 'trainer');
-        console.log('Trainers with fees:', trainers.map(t => ({ name: t.name, fee: t.trainerFee })));
-        
         setUsers(data.data.users);
         
         // Store last fetch timestamp

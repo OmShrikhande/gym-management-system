@@ -44,7 +44,7 @@ const Members = () => {
     medicalConditions: '',
     requiresTrainer: false,
     assignedTrainer: '', // Trainer ID will be stored here
-    membershipDuration: '1', // in months (default 1 month)
+    membershipDuration: '12', // in months (default 12 months = 1 year)
     durationType: 'preset', // 'preset' or 'custom'
     fitnessGoalDescription: ''
   });
@@ -858,10 +858,7 @@ const Members = () => {
   let trainerFee = 0;
   if (formData.requiresTrainer && formData.assignedTrainer) {
     const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
-    console.log('Selected trainer:', selectedTrainer);
-    console.log('Trainer fee from trainer object:', selectedTrainer?.trainerFee);
     trainerFee = selectedTrainer?.trainerFee || 2000; // Use trainer's fee or default to 2000
-    console.log('Final trainer fee used:', trainerFee);
   }
     
     // Calculate total fee based on plan price, duration, and trainer fee
@@ -1279,7 +1276,7 @@ const Members = () => {
                   <option value="">Select a trainer</option>
                   {availableTrainers.map((trainer) => (
                     <option key={trainer._id} value={trainer._id}>
-                      {trainer.name} (Fee: ₹{trainer.trainerFee || 2000})
+                      {trainer.name}
                     </option>
                   ))}
                 </select>
@@ -1895,7 +1892,7 @@ const Members = () => {
                               <option value="">-- Select a Trainer --</option>
                               {availableTrainers.map(trainer => (
                                 <option key={trainer._id} value={trainer._id}>
-                                  {trainer.name} - Fee: ₹{trainer.trainerFee || 2000} ({trainer.specialization || 'General Fitness'})
+                                  {trainer.name} - {trainer.specialization || 'General Fitness'}
                                 </option>
                               ))}
                             </select>
@@ -1932,28 +1929,7 @@ const Members = () => {
                             id="planType"
                             name="planType"
                             value={formData.planType}
-                            onChange={(e) => {
-                              const selectedPlanName = e.target.value;
-                              const selectedPlan = gymOwnerPlans.find(plan => plan.name === selectedPlanName);
-                              
-                              // Auto-adjust duration based on plan type
-                              let suggestedDuration = '1'; // Default to 1 month
-                              if (selectedPlan) {
-                                if (selectedPlan.duration === 'monthly') {
-                                  suggestedDuration = '1';
-                                } else if (selectedPlan.duration === 'quarterly') {
-                                  suggestedDuration = '3';
-                                } else if (selectedPlan.duration === 'yearly') {
-                                  suggestedDuration = '12';
-                                }
-                              }
-                              
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                planType: selectedPlanName,
-                                membershipDuration: suggestedDuration
-                              }));
-                            }}
+                            onChange={handleInputChange}
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >
