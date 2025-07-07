@@ -853,7 +853,13 @@ const Members = () => {
     // Calculate membership fee based on duration and plan
     const monthlyFee = selectedPlan.price || subscriptionInfo.membershipFee;
   const durationInMonths = parseInt(formData.membershipDuration); // Duration is already in months
-  const trainerFee = formData.requiresTrainer ? 2000 : 0;
+  
+  // Calculate trainer fee based on selected trainer's actual fee
+  let trainerFee = 0;
+  if (formData.requiresTrainer && formData.assignedTrainer) {
+    const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+    trainerFee = selectedTrainer?.trainerFee || 2000; // Use trainer's fee or default to 2000
+  }
     
     // Calculate total fee based on plan price, duration, and trainer fee
     const totalFee = (monthlyFee * durationInMonths) + trainerFee;
@@ -866,7 +872,7 @@ const Members = () => {
     });
      setShowPaymentModal(true);
   setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
-}, [formData, subscriptionInfo, gymOwnerPlans, setMessage, setPendingMemberData, setShowPaymentModal]);
+}, [formData, subscriptionInfo, gymOwnerPlans, availableTrainers, setMessage, setPendingMemberData, setShowPaymentModal]);
 
   return (
     <DashboardLayout>

@@ -100,6 +100,10 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  trainerFee: {
+    type: Number,
+    default: 2000 // Default trainer fee
+  },
   
   // Attendance and Access Control fields
   attendance: [{

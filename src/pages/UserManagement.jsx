@@ -63,6 +63,7 @@ function UserManagement() {
     address: '',
     totalMembers: '',
     gymName: '',
+    trainerFee: '2000', // Default trainer fee
     // New fields for subscription
     subscriptionPlan: '',
     paymentMethod: 'credit_card'
@@ -310,6 +311,7 @@ function UserManagement() {
       address: '',
       totalMembers: '',
       gymName: '',
+      trainerFee: '2000', // Default trainer fee
       subscriptionPlan: '',
       paymentMethod: 'credit_card'
     });
@@ -660,7 +662,8 @@ function UserManagement() {
   // Filter users based on current user's role
   const filteredUsers = users.filter(u => {
     if (isSuperAdmin) {
-      return true; // Super admin can see all users
+      // Super admin should only see gym owners in the main directory, not members
+      return u.role === 'gym-owner';
     } else if (isGymOwner) {
       // In the member directory view, gym owners should only see members
       return u.role === 'member';
@@ -990,6 +993,27 @@ function UserManagement() {
                       />
                     </div>
                   </div>
+                  
+                  {/* Trainer Fee field - only shown to Gym Owner when creating trainers */}
+                  {isGymOwner && (
+                    <div className="mt-5">
+                      <div>
+                        <Label htmlFor="trainerFee" className="mb-2 block text-gray-300">Trainer Fee (₹)</Label>
+                        <Input
+                          id="trainerFee"
+                          name="trainerFee"
+                          type="number"
+                          value={formData.trainerFee}
+                          onChange={handleInputChange}
+                          placeholder="Enter trainer fee amount"
+                          className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
+                        />
+                        <p className="text-sm text-gray-400 mt-1">
+                          This fee will be added when members are assigned to this trainer
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               

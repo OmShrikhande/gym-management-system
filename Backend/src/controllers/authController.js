@@ -59,6 +59,20 @@ const createUserWithRole = async (req, res, role) => {
       });
     }
     
+    // Add additional fields for trainer
+    if (role === 'trainer') {
+      // Add trainer specific fields
+      const trainerFields = [
+        'phone', 'whatsapp', 'address', 'trainerFee'
+      ];
+      
+      trainerFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          userData[field] = req.body[field];
+        }
+      });
+    }
+    
     // Add additional fields for gym-owner
     if (role === 'gym-owner') {
       // Add gym owner specific fields
