@@ -44,7 +44,7 @@ const Members = () => {
     medicalConditions: '',
     requiresTrainer: false,
     assignedTrainer: '', // Trainer ID will be stored here
-    membershipDuration: '12', // in months (default 12 months = 1 year)
+    membershipDuration: '1', // in months (default 1 month)
     durationType: 'preset', // 'preset' or 'custom'
     fitnessGoalDescription: ''
   });
@@ -1276,7 +1276,7 @@ const Members = () => {
                   <option value="">Select a trainer</option>
                   {availableTrainers.map((trainer) => (
                     <option key={trainer._id} value={trainer._id}>
-                      {trainer.name}
+                      {trainer.name} (Fee: ₹{trainer.trainerFee || 2000})
                     </option>
                   ))}
                 </select>
@@ -1892,7 +1892,7 @@ const Members = () => {
                               <option value="">-- Select a Trainer --</option>
                               {availableTrainers.map(trainer => (
                                 <option key={trainer._id} value={trainer._id}>
-                                  {trainer.name} - {trainer.specialization || 'General Fitness'}
+                                  {trainer.name} - Fee: ₹{trainer.trainerFee || 2000} ({trainer.specialization || 'General Fitness'})
                                 </option>
                               ))}
                             </select>
@@ -1929,7 +1929,28 @@ const Members = () => {
                             id="planType"
                             name="planType"
                             value={formData.planType}
-                            onChange={handleInputChange}
+                            onChange={(e) => {
+                              const selectedPlanName = e.target.value;
+                              const selectedPlan = gymOwnerPlans.find(plan => plan.name === selectedPlanName);
+                              
+                              // Auto-adjust duration based on plan type
+                              let suggestedDuration = '1'; // Default to 1 month
+                              if (selectedPlan) {
+                                if (selectedPlan.duration === 'monthly') {
+                                  suggestedDuration = '1';
+                                } else if (selectedPlan.duration === 'quarterly') {
+                                  suggestedDuration = '3';
+                                } else if (selectedPlan.duration === 'yearly') {
+                                  suggestedDuration = '12';
+                                }
+                              }
+                              
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                planType: selectedPlanName,
+                                membershipDuration: suggestedDuration
+                              }));
+                            }}
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >

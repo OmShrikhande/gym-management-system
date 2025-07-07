@@ -336,6 +336,18 @@ export const AuthProvider = ({ children }) => {
         password: userData.password
       };
       
+      // Add additional fields for trainer
+      if (userType === 'trainer') {
+        const trainerFee = parseInt(userData.trainerFee) || 2000;
+        requestBody = {
+          ...requestBody,
+          phone: userData.phone || '',
+          whatsapp: userData.whatsapp || '',
+          address: userData.address || '',
+          trainerFee: trainerFee // Ensure it's a valid number
+        };
+      }
+      
       // Add additional fields for gym owner
       if (userType === 'gym-owner') {
         requestBody = {
@@ -353,11 +365,11 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for member
       if (userType === 'member') {
-        // Calculate membership end date based on duration
+        // Calculate membership end date based on duration (in months)
         const membershipDuration = parseInt(userData.membershipDuration || '1');
         const startDate = new Date();
         const endDate = new Date(startDate);
-        endDate.setFullYear(endDate.getFullYear() + membershipDuration);
+        endDate.setMonth(endDate.getMonth() + membershipDuration); // Use setMonth instead of setFullYear
         
         requestBody = {
           ...requestBody,
