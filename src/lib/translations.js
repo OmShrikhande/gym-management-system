@@ -23,6 +23,7 @@ const en = {
   home: "Home",
   members: "Members",
   trainers: "Trainers",
+  membershipPlans: "Membership Plans",
   workouts: "Workouts",
   dietPlans: "Diet Plans",
   billing: "Billing & Plans",

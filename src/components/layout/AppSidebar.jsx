@@ -10,7 +10,8 @@ import {
   Home,
   Building2,
   UserCheck,
-  HelpCircle
+  HelpCircle,
+  Package
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
 import { useTranslation } from "@/contexts/TranslationContext";
@@ -55,6 +56,7 @@ export function AppSidebar() {
           ...baseItems,
           { label: t('members'), icon: Users, href: "/members" },
           { label: t('trainers'), icon: UserCheck, href: "/trainers" },
+          { label: t('membershipPlans'), icon: Package, href: "/membership-plans" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
           { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },

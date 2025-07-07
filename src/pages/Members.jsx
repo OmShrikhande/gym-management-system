@@ -67,22 +67,7 @@ const Members = () => {
   });
   
   // State for gym owner plans
-  const [gymOwnerPlans, setGymOwnerPlans] = useState([
-    {
-      id: 'default-1',
-      name: 'Basic Member',
-      price: 500,
-      duration: 'month',
-      features: ['Standard gym access', 'Basic equipment usage']
-    },
-    {
-      id: 'default-2', 
-      name: 'Premium Member',
-      price: 1000,
-      duration: 'month',
-      features: ['Full gym access', 'All equipment', 'Group classes']
-    }
-  ]);
+  const [gymOwnerPlans, setGymOwnerPlans] = useState([]);
   
   // Fetch gym owner plans
   const fetchGymOwnerPlans = useCallback(async () => {
@@ -91,31 +76,60 @@ const Members = () => {
     try {
       console.log('Fetching gym owner plans for:', user._id);
       
-      // Try to fetch from the gym owner plans endpoint with default fallback
-      const response = await authFetch('/gym-owner-plans/default');
+      // Try to fetch existing plans first
+      const response = await authFetch('/gym-owner-plans');
       
       if (response.success || response.status === 'success') {
-        if (response.data && response.data.plans) {
-          console.log('Gym owner plans fetched successfully:', response.data.plans.length);
-          setGymOwnerPlans(response.data.plans);
+        const plans = response.data?.plans || [];
+        
+        // If no plans exist, create default ones
+        if (plans.length === 0) {
+          console.log('No plans found, creating default plans');
+          const defaultResponse = await authFetch('/gym-owner-plans/default');
+          
+          if (defaultResponse.success || defaultResponse.status === 'success') {
+            const defaultPlans = defaultResponse.data?.plans || [];
+            console.log('Default plans created:', defaultPlans.length);
+            setGymOwnerPlans(defaultPlans);
+            
+            // Update the default planType
+            if (defaultPlans.length > 0) {
+              setFormData(prev => ({
+                ...prev,
+                planType: defaultPlans[0].name
+              }));
+            }
+          }
+        } else {
+          console.log('Gym owner plans fetched successfully:', plans.length);
+          setGymOwnerPlans(plans);
           
           // Update the default planType if needed
-          if (response.data.plans.length > 0) {
+          if (plans.length > 0) {
             setFormData(prev => ({
               ...prev,
-              planType: response.data.plans[0].name
+              planType: plans[0].name
             }));
           }
-          return;
         }
       }
-      
-      // If API call fails, keep the default plans
-      console.log('Using default gym owner plans');
     } catch (error) {
       console.error('Error fetching gym owner plans:', error);
-      // Keep using the default plans
-      console.log('Using default gym owner plans');
+      // If everything fails, provide minimal fallback
+      const fallbackPlans = [
+        {
+          _id: 'fallback-1',
+          name: 'Basic Member',
+          price: 500,
+          duration: 'monthly',
+          features: ['Standard gym access', 'Basic equipment usage']
+        }
+      ];
+      setGymOwnerPlans(fallbackPlans);
+      setFormData(prev => ({
+        ...prev,
+        planType: fallbackPlans[0].name
+      }));
     }
   }, [user, isGymOwner, authFetch]);
 
@@ -1913,11 +1927,13 @@ const Members = () => {
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >
-                            {gymOwnerPlans.map(plan => (
-                              <option key={plan.id} value={plan.name}>
+                            {gymOwnerPlans.length > 0 ? gymOwnerPlans.map(plan => (
+                              <option key={plan._id || plan.id} value={plan.name}>
                                 {plan.name} (₹{plan.price}/{plan.duration})
                               </option>
-                            ))}
+                            )) : (
+                              <option value="">Loading plans...</option>
+                            )}
                           </select>
                           <p className="text-sm text-gray-400 mt-1">
                             {gymOwnerPlans.find(plan => plan.name === formData.planType)?.features?.[0] || 
