@@ -417,7 +417,9 @@ const Members = () => {
             // Membership details
             membershipStartDate: member.membershipStartDate || member.createdAt,
             membershipEndDate: membershipEndDate,
-            membershipDuration: member.membershipDuration || '1'
+            membershipDuration: member.membershipDuration || '1',
+            // Attendance data
+            attendance: member.attendance || []
           };
         });
       

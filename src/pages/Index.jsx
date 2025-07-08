@@ -48,6 +48,15 @@ const Index = () => {
   // QR Scanner state for members
   const [showQRScanner, setShowQRScanner] = useState(false);
   
+  // Attendance stats for gym owners
+  const [attendanceStats, setAttendanceStats] = useState({
+    todayAttendance: 0,
+    weekAttendance: 0,
+    monthAttendance: 0,
+    totalAttendance: 0
+  });
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState(true);
+  
   // Ref to prevent multiple simultaneous API calls
   const isLoadingActivitiesRef = useRef(false);
   
@@ -684,6 +693,39 @@ const Index = () => {
     }
   };
 
+  // Fetch attendance statistics for gym owners
+  const fetchAttendanceStats = async () => {
+    if (!user || userRole !== 'gym-owner') {
+      return;
+    }
+    
+    try {
+      setIsAttendanceLoading(true);
+      const response = await authFetch('/attendance/gym/stats');
+      
+      if (response.success || response.status === 'success') {
+        const stats = response.data?.summary || {};
+        setAttendanceStats({
+          todayAttendance: stats.totalAttendanceToday || 0,
+          weekAttendance: stats.totalAttendanceThisWeek || 0,
+          monthAttendance: stats.totalAttendanceThisMonth || 0,
+          totalAttendance: stats.totalAttendanceAllTime || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching attendance stats:', error);
+      // Set default values on error
+      setAttendanceStats({
+        todayAttendance: 0,
+        weekAttendance: 0,
+        monthAttendance: 0,
+        totalAttendance: 0
+      });
+    } finally {
+      setIsAttendanceLoading(false);
+    }
+  };
+
   // Add an event listener to refresh trainer stats when a member is assigned to a trainer
   useEffect(() => {
     // Only add the event listener if the user is a trainer
@@ -715,6 +757,8 @@ const Index = () => {
         } else if (userRole === 'gym-owner') {
           // Fetch users for gym owner dashboard
           await fetchUsers();
+          // Fetch attendance statistics
+          await fetchAttendanceStats();
         } else if (userRole === 'trainer') {
           await fetchTrainerStats();
         } else if (userRole === 'member') {
@@ -855,6 +899,20 @@ const Index = () => {
               color: "bg-blue-500" 
             },
             { label: "Active Trainers", value: users.filter(u => u.role === 'trainer').length.toString(), icon: Dumbbell, color: "bg-green-500" },
+            { 
+              label: "Today's Attendance", 
+              value: isAttendanceLoading ? <LoadingIndicator /> : (
+                <div className="flex flex-col">
+                  <span>{attendanceStats.todayAttendance.toString()}</span>
+                  <span className="text-xs text-gray-400">
+                    {attendanceStats.weekAttendance} this week
+                  </span>
+                </div>
+              ), 
+              icon: Calendar, 
+              color: "bg-orange-500",
+              onClick: () => navigate("/members")
+            },
             { 
               label: "Subscription Status", 
               value: (
