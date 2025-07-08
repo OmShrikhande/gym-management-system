@@ -102,7 +102,7 @@ const userSchema = new mongoose.Schema({
   },
   trainerFee: {
     type: Number,
-    default: 2000 // Default trainer fee
+    // Remove default value - let gym owners set the actual fee
   },
   
   // Attendance and Access Control fields

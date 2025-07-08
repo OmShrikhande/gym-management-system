@@ -1348,7 +1348,12 @@ const Profile = () => {
                     }`}
                     onClick={() => {
                       setSelectedTrainer(trainer);
-                      setPaymentAmount(trainer.trainerFee || 2000); // Default fee if not set
+                      // Use trainer's actual fee, check both trainerFee and salary fields
+                      const actualFee = trainer.trainerFee || parseInt(trainer.salary) || 0;
+                      setPaymentAmount(actualFee);
+                      if (actualFee === 0) {
+                        console.warn(`No fee set for trainer: ${trainer.name}`);
+                      }
                     }}
                   >
                     <div className="flex items-center">

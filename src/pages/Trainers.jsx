@@ -415,8 +415,12 @@ const Trainers = () => {
                       <p className="text-white">{selectedTrainer.joiningDate ? new Date(selectedTrainer.joiningDate).toLocaleDateString() : 'Not recorded'}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400 text-sm mb-1">Salary</p>
-                      <p className="text-white">{selectedTrainer.salary ? `₹${selectedTrainer.salary}` : 'Not specified'}</p>
+                      <p className="text-gray-400 text-sm mb-1">Trainer Fee</p>
+                      <p className="text-white">
+                        {selectedTrainer.trainerFee ? `₹${selectedTrainer.trainerFee}` : 
+                         selectedTrainer.salary ? `₹${selectedTrainer.salary}` : 
+                         'Not specified'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -610,7 +614,7 @@ const Trainers = () => {
                   <h4 className="text-lg font-semibold mb-4 text-white">Employment Details</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <Label htmlFor="salary" className="mb-2 block text-gray-300">Salary (₹)</Label>
+                      <Label htmlFor="salary" className="mb-2 block text-gray-300">Trainer Fee (₹)</Label>
                       <Input
                         id="salary"
                         name="salary"

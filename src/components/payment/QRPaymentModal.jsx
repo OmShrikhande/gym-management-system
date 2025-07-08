@@ -15,7 +15,7 @@ const QRPaymentModal = ({
   onClose, 
   onPaymentComplete, 
   memberData, 
-  paymentAmount = 500,
+  paymentAmount,
   paymentDescription = "Gym Membership Fee"
 }) => {
   const [copied, setCopied] = useState(false);

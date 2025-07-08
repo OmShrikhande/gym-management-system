@@ -13,6 +13,12 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 
+// Helper function to get trainer fee consistently
+const getTrainerFee = (trainer) => {
+  if (!trainer) return 0;
+  return trainer.trainerFee || parseInt(trainer.salary) || 0;
+};
+
 // const Members = () => {
 const Members = () => {
   const { createMember, isGymOwner, isTrainer, users, fetchUsers, user, subscription, authFetch, checkSubscriptionStatus, updateMember, deleteMember } = useAuth();
@@ -859,12 +865,21 @@ const Members = () => {
   if (formData.requiresTrainer && formData.assignedTrainer) {
     const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
     if (selectedTrainer) {
-      // Use trainer's fee if available, otherwise use default
-      trainerFee = selectedTrainer.trainerFee || 2000;
+      // Use trainer's fee if available, check both trainerFee and salary fields
+      trainerFee = getTrainerFee(selectedTrainer);
       console.log(`Using trainer fee: ₹${trainerFee} for trainer: ${selectedTrainer.name}`);
+      
+      if (trainerFee === 0) {
+        console.warn(`No fee set for trainer: ${selectedTrainer.name}. Please set trainer fee in trainer profile.`);
+        setMessage({ 
+          type: 'error', 
+          text: `Cannot proceed: No fee is set for trainer "${selectedTrainer.name}". Please update the trainer's fee in their profile before creating a member with this trainer.` 
+        });
+        return; // Stop execution - don't show payment modal
+      }
     } else {
       console.warn('Selected trainer not found in available trainers list');
-      trainerFee = 2000; // Default fee
+      trainerFee = 0; // Don't use default, let gym owner know fee is not set
     }
   }
     
@@ -1281,11 +1296,14 @@ const Members = () => {
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
                 >
                   <option value="">Select a trainer</option>
-                  {availableTrainers.map((trainer) => (
-                    <option key={trainer._id} value={trainer._id}>
-                      {trainer.name}
-                    </option>
-                  ))}
+                  {availableTrainers.map((trainer) => {
+                    const trainerFee = getTrainerFee(trainer);
+                    return (
+                      <option key={trainer._id} value={trainer._id}>
+                        {trainer.name} {trainerFee > 0 ? `(₹${trainerFee})` : '(Fee not set)'}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
@@ -2201,10 +2219,16 @@ const Members = () => {
                               <p className="text-gray-300">Duration</p>
                               <p className="text-white">x{formData.membershipDuration} year(s)</p>
                             </div>
-                            {formData.requiresTrainer && (
+                            {formData.requiresTrainer && formData.assignedTrainer && (
                               <div className="flex justify-between">
                                 <p className="text-gray-300">Trainer Fee</p>
-                                <p className="text-white">₹2,000</p>
+                                <p className="text-white">₹{
+                                  (() => {
+                                    const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+                                    const trainerFee = getTrainerFee(selectedTrainer);
+                                    return trainerFee > 0 ? trainerFee : 'Not Set';
+                                  })()
+                                }</p>
                               </div>
                             )}
                             <div className="border-t border-blue-800 pt-2 mt-2">
@@ -2214,7 +2238,11 @@ const Members = () => {
                                   (subscriptionInfo.membershipFee * 
                                    parseInt(formData.membershipDuration) * 
                                    (formData.planType === 'Premium' ? 1.5 : 1)) + 
-                                  (formData.requiresTrainer ? 2000 : 0)
+                                  (formData.requiresTrainer && formData.assignedTrainer ? 
+                                    (() => {
+                                      const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+                                      return getTrainerFee(selectedTrainer);
+                                    })() : 0)
                                 }</p>
                               </div>
                             </div>

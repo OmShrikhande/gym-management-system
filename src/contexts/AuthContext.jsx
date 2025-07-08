@@ -358,7 +358,8 @@ export const AuthProvider = ({ children }) => {
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
-          trainerFee: parseInt(userData.trainerFee) || 2000 // Include trainer fee
+          // Map salary field to trainerFee for backend compatibility
+          trainerFee: parseInt(userData.salary || userData.trainerFee) || null // Don't set default, let backend handle it
         };
       }
       
