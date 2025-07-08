@@ -141,7 +141,7 @@ const SystemSettings = () => {
     // Apply settings immediately for visual changes
     if (category === 'branding') {
       // Apply settings based on user role
-      applySettings(updatedSettings);
+      applyAppSettings(updatedSettings, user?._id);
       
       // Show toast message about settings scope
       if (!isSuperAdmin) {
@@ -150,6 +150,14 @@ const SystemSettings = () => {
           position: 'bottom-right'
         });
       }
+    }
+    
+    // If app name is changed, dispatch event to update header immediately
+    if (category === 'global' && key === 'appName') {
+      // Dispatch custom event to notify components about settings change
+      window.dispatchEvent(new CustomEvent('settingsUpdated', {
+        detail: { category, key, value, settings: updatedSettings }
+      }));
     }
   };
   
@@ -188,13 +196,18 @@ const SystemSettings = () => {
         // Apply settings immediately, but only to the current user's dashboard
         if (isSuperAdmin) {
           // Super admin can apply global settings
-          applySettings(settings);
+          applyAppSettings(settings);
           toast.info('Global settings applied to all users');
         } else {
           // Other users apply settings only to their dashboard
           applyAppSettings(settings, user._id);
           toast.info('Settings will be applied to your dashboard only');
         }
+        
+        // Dispatch event to notify all components about settings update
+        window.dispatchEvent(new CustomEvent('settingsUpdated', {
+          detail: { settings, userId: user._id }
+        }));
       } else {
         toast.error(response.message || t('error'));
       }
@@ -221,9 +234,6 @@ const SystemSettings = () => {
   const tabs = [
     { id: "global", label: t('globalSettings'), icon: Globe },
     { id: "branding", label: t('branding'), icon: Palette },
-    { id: "notifications", label: t('notifications'), icon: Bell },
-    { id: "messaging", label: t('messageTemplates'), icon: MessageSquare },
-    { id: "integration", label: t('integrations'), icon: Settings }
   ];
 
   // Check if user has access to this page
@@ -425,44 +435,7 @@ const SystemSettings = () => {
                         </div>
                       </div>
                     </>
-                  )}
-                
-
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-white">Communication Services</h3>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-gray-300">Email Service</Label>
-                          <p className="text-sm text-gray-400">Enable email notifications and communication</p>
-                        </div>
-                        <Switch
-                          checked={settings.global.emailEnabled}
-                          onCheckedChange={(checked) => handleSettingChange("global", "emailEnabled", checked)}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-gray-300">SMS Service</Label>
-                          <p className="text-sm text-gray-400">Enable SMS notifications and communication</p>
-                        </div>
-                        <Switch
-                          checked={settings.global.smsEnabled}
-                          onCheckedChange={(checked) => handleSettingChange("global", "smsEnabled", checked)}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-gray-300">WhatsApp Service</Label>
-                          <p className="text-sm text-gray-400">Enable WhatsApp notifications and communication</p>
-                        </div>
-                        <Switch
-                          checked={settings.global.whatsappEnabled}
-                          onCheckedChange={(checked) => handleSettingChange("global", "whatsappEnabled", checked)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  )}                                                                   
                 </CardContent>
               </Card>
             )}
