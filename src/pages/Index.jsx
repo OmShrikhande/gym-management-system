@@ -26,6 +26,7 @@ const Index = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [gymOwnerCount, setGymOwnerCount] = useState(0);
+  const [activeGymCount, setActiveGymCount] = useState(0);
   const [memberCount, setMemberCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(null);
   const [newGymOwnersCount, setNewGymOwnersCount] = useState(null);
@@ -62,7 +63,7 @@ const Index = () => {
   
   // We don't need these state variables anymore as we're using dedicated pages
 
-  // Fetch total revenue for super admin
+  // Fetch total revenue from active subscriptions only for super admin
   const fetchTotalRevenue = async () => {
     if (userRole !== 'super-admin') {
       setIsLoading(false);
@@ -110,6 +111,27 @@ const Index = () => {
       setGrowthPercentage(0);
     } finally {
       setIsGrowthLoading(false);
+    }
+  };
+
+  // Fetch active gym count for super admin
+  const fetchActiveGymCount = async () => {
+    if (userRole !== 'super-admin') {
+      return;
+    }
+    
+    try {
+      const response = await authFetch(`/subscriptions/active-gyms/count`);
+      
+      if (response.success || response.status === 'success') {
+        setActiveGymCount(response.data.activeGymCount);
+      } else {
+        throw new Error(response.message || 'Failed to fetch active gym count');
+      }
+    } catch (error) {
+      console.error('Error fetching active gym count:', error);
+      // Set default value
+      setActiveGymCount(0);
     }
   };
 
@@ -754,6 +776,7 @@ const Index = () => {
         if (userRole === 'super-admin') {
           await fetchTotalRevenue();
           await fetchNewGymOwnersCount();
+          await fetchActiveGymCount();
         } else if (userRole === 'gym-owner') {
           // Fetch users for gym owner dashboard
           await fetchUsers();
@@ -838,10 +861,9 @@ const Index = () => {
     switch (userRole) {
       case 'super-admin':
         return [
-          { label: "Total Gyms", value: gymOwnerCount.toString(), icon: Users, color: "bg-blue-500" },
-          { label: "Active Users", value: users.length.toString(), icon: Users, color: "bg-green-500" },
+          { label: "Active Gyms", value: activeGymCount.toString(), icon: Users, color: "bg-blue-500" },
           { 
-            label: "Total Revenue", 
+            label: "Active Members Revenue", 
             value: isLoading ? revenueLoadingIndicator : (totalRevenue !== null ? `₹${totalRevenue.toLocaleString()}` : "₹0"), 
             icon: CreditCard, 
             color: "bg-purple-500" 

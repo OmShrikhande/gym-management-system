@@ -5,10 +5,19 @@ import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 
-// Get total revenue
+// Get total revenue from active subscriptions only
 export const getTotalRevenue = catchAsync(async (req, res, next) => {
-  // Aggregate all successful payments
+  const today = new Date();
+  
+  // Aggregate revenue from active subscriptions only
   const result = await Subscription.aggregate([
+    // Match only active subscriptions that haven't expired
+    { 
+      $match: { 
+        isActive: true,
+        endDate: { $gte: today }
+      } 
+    },
     // Unwind the payment history array to get individual payments
     { $unwind: "$paymentHistory" },
     // Filter for successful payments only
@@ -31,6 +40,44 @@ export const getTotalRevenue = catchAsync(async (req, res, next) => {
     data: {
       totalRevenue,
       paymentCount
+    }
+  });
+});
+
+// Get count of active gyms (gyms with active subscriptions)
+export const getActiveGymCount = catchAsync(async (req, res, next) => {
+  const today = new Date();
+  
+  // Count unique gym owners with active subscriptions
+  const result = await Subscription.aggregate([
+    // Match only active subscriptions that haven't expired
+    { 
+      $match: { 
+        isActive: true,
+        endDate: { $gte: today }
+      } 
+    },
+    // Group by gym owner to get unique gym owners
+    { 
+      $group: { 
+        _id: "$gymOwner"
+      } 
+    },
+    // Count the number of unique gym owners
+    { 
+      $group: { 
+        _id: null, 
+        activeGymCount: { $sum: 1 }
+      } 
+    }
+  ]);
+
+  const activeGymCount = result.length > 0 ? result[0].activeGymCount : 0;
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      activeGymCount
     }
   });
 });

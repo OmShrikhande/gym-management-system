@@ -29,6 +29,11 @@ router.get('/revenue/total',
   subscriptionController.getTotalRevenue
 );
 
+router.get('/active-gyms/count', 
+  authController.restrictTo('super-admin'),
+  subscriptionController.getActiveGymCount
+);
+
 // Routes for super admin only
 router.use(authController.restrictTo('super-admin'));
 

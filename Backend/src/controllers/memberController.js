@@ -433,7 +433,7 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
 // Join gym functionality
 export const joinGym = catchAsync(async (req, res, next) => {
   const { gymOwnerId } = req.body;
-  const memberId = req.user.id;
+  const memberId = req.user._id;
 
   if (!gymOwnerId) {
     return next(new AppError('Gym owner ID is required', 400));
@@ -484,7 +484,7 @@ export const markAttendance = catchAsync(async (req, res, next) => {
   }
 
   // Check if the requesting user is the member
-  if (req.user.id !== memberId) {
+  if (req.user._id.toString() !== memberId) {
     return next(new AppError('You can only mark attendance for yourself', 403));
   }
 
@@ -540,7 +540,7 @@ export const markAttendance = catchAsync(async (req, res, next) => {
 // Get attendance data for a specific member
 export const getAttendanceData = catchAsync(async (req, res, next) => {
   const { memberId } = req.params;
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   // Find the member
   const member = await User.findById(memberId);
@@ -577,7 +577,7 @@ export const getAttendanceData = catchAsync(async (req, res, next) => {
 
 // Get gym-wide attendance statistics
 export const getGymAttendanceStats = catchAsync(async (req, res, next) => {
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   // Only gym owners can view gym-wide stats
   if (req.user.role !== 'gym-owner') {
