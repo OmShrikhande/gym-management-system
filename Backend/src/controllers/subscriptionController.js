@@ -9,13 +9,28 @@ import AppError from '../utils/appError.js';
 export const getTotalRevenue = catchAsync(async (req, res, next) => {
   const today = new Date();
   
+  // First, update any expired subscriptions to inactive
+  await Subscription.updateMany(
+    { 
+      isActive: true,
+      endDate: { $lt: today }
+    },
+    { 
+      $set: { 
+        isActive: false,
+        paymentStatus: 'Overdue'
+      }
+    }
+  );
+  
   // Aggregate revenue from active subscriptions only
   const result = await Subscription.aggregate([
     // Match only active subscriptions that haven't expired
     { 
       $match: { 
         isActive: true,
-        endDate: { $gte: today }
+        endDate: { $gte: today },
+        paymentStatus: { $ne: 'Overdue' }
       } 
     },
     // Unwind the payment history array to get individual payments
@@ -48,13 +63,28 @@ export const getTotalRevenue = catchAsync(async (req, res, next) => {
 export const getActiveGymCount = catchAsync(async (req, res, next) => {
   const today = new Date();
   
-  // Count unique gym owners with active subscriptions
+  // First, update any expired subscriptions to inactive
+  await Subscription.updateMany(
+    { 
+      isActive: true,
+      endDate: { $lt: today }
+    },
+    { 
+      $set: { 
+        isActive: false,
+        paymentStatus: 'Overdue'
+      }
+    }
+  );
+  
+  // Count unique gym owners with truly active subscriptions
   const result = await Subscription.aggregate([
     // Match only active subscriptions that haven't expired
     { 
       $match: { 
         isActive: true,
-        endDate: { $gte: today }
+        endDate: { $gte: today },
+        paymentStatus: { $ne: 'Overdue' }
       } 
     },
     // Group by gym owner to get unique gym owners

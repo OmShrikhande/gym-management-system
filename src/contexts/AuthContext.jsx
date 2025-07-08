@@ -906,6 +906,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Add event listener for attendance marking
+  useEffect(() => {
+    const handleAttendanceMarked = (event) => {
+      console.log('Attendance marked, refreshing user data');
+      // Refresh users data when attendance is marked
+      fetchUsers(true);
+    };
+
+    window.addEventListener('attendanceMarked', handleAttendanceMarked);
+    
+    return () => {
+      window.removeEventListener('attendanceMarked', handleAttendanceMarked);
+    };
+  }, [fetchUsers]);
+
   return (
     <AuthContext.Provider value={{ 
       user, 

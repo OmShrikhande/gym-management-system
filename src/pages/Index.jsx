@@ -124,7 +124,9 @@ const Index = () => {
       const response = await authFetch(`/subscriptions/active-gyms/count`);
       
       if (response.success || response.status === 'success') {
-        setActiveGymCount(response.data.activeGymCount);
+        const count = response.data.activeGymCount || 0;
+        setActiveGymCount(count);
+        console.log('Active gym count fetched successfully:', count);
       } else {
         throw new Error(response.message || 'Failed to fetch active gym count');
       }
@@ -132,6 +134,8 @@ const Index = () => {
       console.error('Error fetching active gym count:', error);
       // Set default value
       setActiveGymCount(0);
+      // Show user-friendly error message
+      toast.error('Failed to fetch active gym count. Please refresh the page.');
     }
   };
 

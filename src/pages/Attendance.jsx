@@ -26,6 +26,22 @@ const Attendance = () => {
 
   useEffect(() => {
     fetchAttendanceData();
+  }, [memberId, users]); // Also depend on users array to refresh when data changes
+
+  // Add event listener for attendance marking
+  useEffect(() => {
+    const handleAttendanceMarked = (event) => {
+      if (event.detail.memberId === memberId) {
+        console.log('Attendance marked for this member, refreshing data');
+        fetchAttendanceData();
+      }
+    };
+
+    window.addEventListener('attendanceMarked', handleAttendanceMarked);
+    
+    return () => {
+      window.removeEventListener('attendanceMarked', handleAttendanceMarked);
+    };
   }, [memberId]);
 
   const fetchAttendanceData = async () => {

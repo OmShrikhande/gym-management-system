@@ -26,6 +26,7 @@ import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 import User from './models/userModel.js';
 import Subscription from './models/subscriptionModel.js';
+import { startSubscriptionCleanup } from './utils/subscriptionCleanup.js';
 
 // Load environment variables
 dotenv.config();
@@ -143,12 +144,29 @@ app.get('/test', async (req, res) => {
     const adminUser = await User.findOne({ role: 'super-admin' });
     const userCount = await User.countDocuments();
     
+    // Check subscription stats
+    const today = new Date();
+    const totalSubscriptions = await Subscription.countDocuments();
+    const activeSubscriptions = await Subscription.countDocuments({
+      isActive: true,
+      endDate: { $gte: today }
+    });
+    const expiredSubscriptions = await Subscription.countDocuments({
+      isActive: true,
+      endDate: { $lt: today }
+    });
+    
     res.json({
       status: 'success',
       data: {
         adminExists: !!adminUser,
         adminEmail: adminUser?.email,
         totalUsers: userCount,
+        subscriptionStats: {
+          totalSubscriptions,
+          activeSubscriptions,
+          expiredButStillMarkedActive: expiredSubscriptions
+        },
         jwtSecretExists: !!process.env.JWT_SECRET,
         mongoUri: process.env.MONGODB_URI ? 'SET' : 'NOT SET',
         razorpayConfig: {
@@ -188,6 +206,33 @@ app.patch('/patch-test', (req, res) => {
     method: req.method,
     timestamp: new Date().toISOString()
   });
+});
+
+// Test endpoint for subscription cleanup
+app.get('/test-subscription-cleanup', async (req, res) => {
+  try {
+    const { cleanupExpiredSubscriptions, getAccurateActiveGymCount } = await import('./utils/subscriptionCleanup.js');
+    
+    // Run cleanup
+    const cleanupResult = await cleanupExpiredSubscriptions();
+    
+    // Get accurate count
+    const accurateCount = await getAccurateActiveGymCount();
+    
+    res.json({
+      status: 'success',
+      data: {
+        cleanupResult,
+        accurateActiveGymCount: accurateCount,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
 });
 
 // 404 handler
@@ -232,6 +277,9 @@ process.on('SIGINT', () => {
 connectDB().then(async () => {
   // Create super admin user if it doesn't exist
   await setupSuperAdmin();
+  
+  // Start subscription cleanup scheduler
+  startSubscriptionCleanup();
   
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);

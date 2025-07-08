@@ -204,7 +204,15 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
         onScanSuccess(response.data);
       }
 
-      setTimeout(() => resetScanner(), );
+      // Refresh user data after successful attendance marking
+      if (isSuccess) {
+        // Trigger a refresh of member data
+        window.dispatchEvent(new CustomEvent('attendanceMarked', { 
+          detail: { memberId: memberId || user?._id } 
+        }));
+      }
+
+      setTimeout(() => resetScanner(), 3000);
     } catch (error) {
       console.error('Error processing QR code:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Invalid QR code. Please scan a valid gym QR code.';
