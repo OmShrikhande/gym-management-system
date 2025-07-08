@@ -41,7 +41,7 @@ const Members = () => {
     gender: 'Male',
     dob: '',
     goal: 'weight-loss',
-    planType: 'Basic Member', // Will be updated after gymOwnerPlans is loaded
+    planType: '', // Will be updated after gymOwnerPlans is loaded
     address: '',
     whatsapp: '',
     height: '',
@@ -69,7 +69,7 @@ const Members = () => {
     maxMembers: 0,
     currentMembers: 0,
     hasActiveSubscription: false,
-    membershipFee: 500 // Default membership fee
+    plan: 'Basic'
   });
   
   // State for gym owner plans
@@ -121,21 +121,9 @@ const Members = () => {
       }
     } catch (error) {
       console.error('Error fetching gym owner plans:', error);
-      // If everything fails, provide minimal fallback
-      const fallbackPlans = [
-        {
-          _id: 'fallback-1',
-          name: 'Basic Member',
-          price: 500,
-          duration: 'monthly',
-          features: ['Standard gym access', 'Basic equipment usage']
-        }
-      ];
-      setGymOwnerPlans(fallbackPlans);
-      setFormData(prev => ({
-        ...prev,
-        planType: fallbackPlans[0].name
-      }));
+      // No fallback - user should create plans first
+      setGymOwnerPlans([]);
+      toast.error('Failed to load membership plans. Please create your membership plans first.');
     }
   }, [user, isGymOwner, authFetch]);
 
@@ -167,7 +155,6 @@ const Members = () => {
           maxMembers,
           currentMembers,
           hasActiveSubscription,
-          membershipFee: 500, // Default membership fee
           plan
         };
         
@@ -191,7 +178,6 @@ const Members = () => {
         maxMembers: 200,
         currentMembers,
         hasActiveSubscription: subscription?.hasActiveSubscription || false,
-        membershipFee: 500,
         plan: 'Basic'
       };
       
@@ -521,8 +507,8 @@ const Members = () => {
   }, []);
 
   const resetForm = () => {
-    // Get the first plan name from gymOwnerPlans, or use "Basic Member" as fallback
-    const defaultPlanName = gymOwnerPlans.length > 0 ? gymOwnerPlans[0].name : "Basic Member";
+    // Get the first plan name from gymOwnerPlans, or leave empty if none available
+    const defaultPlanName = gymOwnerPlans.length > 0 ? gymOwnerPlans[0].name : '';
     
     setFormData({
       name: '',
@@ -542,8 +528,10 @@ const Members = () => {
       requiresTrainer: false,
       assignedTrainer: '',
       membershipDuration: '1',
+      durationType: 'preset',
       fitnessGoalDescription: ''
     });
+    setCustomDuration('');
     setMessage({ type: '', text: '' });
     setFormStep(1); // Reset to first step
   };
@@ -813,6 +801,24 @@ const Members = () => {
         return;
       }
       
+      // Validate plan selection
+      if (!formData.planType) {
+        setMessage({ type: 'error', text: 'Please select a membership plan' });
+        return;
+      }
+      
+      // Validate that plans are available
+      if (gymOwnerPlans.length === 0) {
+        setMessage({ type: 'error', text: 'No membership plans available. Please create plans first.' });
+        return;
+      }
+      
+      // Validate duration
+      if (!formData.membershipDuration || formData.membershipDuration === 'custom' && !customDuration) {
+        setMessage({ type: 'error', text: 'Please select a valid membership duration' });
+        return;
+      }
+      
       // Validate trainer selection if requiresTrainer is true
       if (formData.requiresTrainer && !formData.assignedTrainer) {
         setMessage({ type: 'error', text: 'Please select a trainer' });
@@ -855,47 +861,94 @@ const Members = () => {
       return;
     }
     
-    // Find the selected plan
-    const selectedPlan = gymOwnerPlans.find(plan => plan.name === formData.planType) || gymOwnerPlans[0];
+    // Check if plans are available
+    if (gymOwnerPlans.length === 0) {
+      setMessage({ 
+        type: 'error', 
+        text: 'No membership plans available. Please create your membership plans first.' 
+      });
+      return;
+    }
     
-    // Calculate membership fee based on duration and plan
-    const monthlyFee = selectedPlan.price || subscriptionInfo.membershipFee;
-  const durationInMonths = parseInt(formData.membershipDuration); // Duration is already in months
-  
-  // Calculate trainer fee based on selected trainer's actual fee
-  let trainerFee = 0;
-  if (formData.requiresTrainer && formData.assignedTrainer) {
-    const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
-    if (selectedTrainer) {
-      // Use trainer's fee if available, check both trainerFee and salary fields
-      trainerFee = getTrainerFee(selectedTrainer);
-      console.log(`Using trainer fee: ₹${trainerFee} for trainer: ${selectedTrainer.name}`);
-      
-      if (trainerFee === 0) {
-        console.warn(`No fee set for trainer: ${selectedTrainer.name}. Please set trainer fee in trainer profile.`);
+    // Find the selected plan
+    const selectedPlan = gymOwnerPlans.find(plan => plan.name === formData.planType);
+    
+    if (!selectedPlan) {
+      setMessage({ 
+        type: 'error', 
+        text: 'Please select a valid membership plan.' 
+      });
+      return;
+    }
+    
+    const durationInMonths = parseInt(formData.membershipDuration); // Duration is already in months
+    
+    // Calculate plan cost based on duration
+    let planCost = 0;
+    const planPrice = parseFloat(selectedPlan.price) || 0;
+    const planDuration = selectedPlan.duration;
+    
+    // Calculate cost based on plan duration type and selected duration
+    if (planDuration === 'monthly') {
+      planCost = planPrice * durationInMonths;
+    } else if (planDuration === 'yearly') {
+      planCost = planPrice * Math.ceil(durationInMonths / 12);
+    } else if (planDuration === 'quarterly') {
+      planCost = planPrice * Math.ceil(durationInMonths / 3);
+    } else {
+      // Default to monthly if duration type is unclear
+      planCost = planPrice * durationInMonths;
+    }
+    
+    // Calculate trainer fee based on selected trainer's actual fee
+    let totalTrainerCost = 0;
+    if (formData.requiresTrainer && formData.assignedTrainer) {
+      const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+      if (selectedTrainer) {
+        // Use trainer's fee if available, check both trainerFee and salary fields
+        const monthlyTrainerFee = getTrainerFee(selectedTrainer);
+        console.log(`Using trainer fee: ₹${monthlyTrainerFee} for trainer: ${selectedTrainer.name}`);
+        
+        if (monthlyTrainerFee === 0) {
+          console.warn(`No fee set for trainer: ${selectedTrainer.name}. Please set trainer fee in trainer profile.`);
+          setMessage({ 
+            type: 'error', 
+            text: `Cannot proceed: No fee is set for trainer "${selectedTrainer.name}". Please update the trainer's fee in their profile before creating a member with this trainer.` 
+          });
+          return; // Stop execution - don't show payment modal
+        }
+        
+        totalTrainerCost = monthlyTrainerFee * durationInMonths;
+      } else {
+        console.warn('Selected trainer not found in available trainers list');
         setMessage({ 
           type: 'error', 
-          text: `Cannot proceed: No fee is set for trainer "${selectedTrainer.name}". Please update the trainer's fee in their profile before creating a member with this trainer.` 
+          text: 'Selected trainer not found. Please select a valid trainer.' 
         });
-        return; // Stop execution - don't show payment modal
+        return;
       }
-    } else {
-      console.warn('Selected trainer not found in available trainers list');
-      trainerFee = 0; // Don't use default, let gym owner know fee is not set
     }
-  }
     
-    // Calculate total fee based on plan price, duration, and trainer fee
-    const totalFee = (monthlyFee * durationInMonths) + trainerFee;
+    // Calculate total fee based on plan cost and trainer cost
+    const totalFee = planCost + totalTrainerCost;
   
     
     // Store the member data with calculated fee and show payment modal
     setPendingMemberData({
       ...formData,
-      calculatedFee: totalFee
+      calculatedFee: totalFee,
+      paymentBreakdown: {
+        planName: selectedPlan.name,
+        planPrice: planPrice,
+        planDuration: planDuration,
+        planCost: planCost,
+        selectedDuration: durationInMonths,
+        trainerCost: totalTrainerCost,
+        totalAmount: totalFee
+      }
     });
-     setShowPaymentModal(true);
-  setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
+    setShowPaymentModal(true);
+    setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
 }, [formData, subscriptionInfo, gymOwnerPlans, availableTrainers, setMessage, setPendingMemberData, setShowPaymentModal]);
 
   return (
@@ -2004,18 +2057,29 @@ const Members = () => {
                             className="w-full bg-gray-700 border-gray-600 focus:border-blue-500 rounded-md p-2"
                             required
                           >
-                            {gymOwnerPlans.length > 0 ? gymOwnerPlans.map(plan => (
-                              <option key={plan._id || plan.id} value={plan.name}>
-                                {plan.name} (₹{plan.price}/{plan.duration})
-                              </option>
-                            )) : (
-                              <option value="">Loading plans...</option>
+                            {gymOwnerPlans.length > 0 ? (
+                              <>
+                                <option value="">-- Select a Plan --</option>
+                                {gymOwnerPlans.map(plan => (
+                                  <option key={plan._id || plan.id} value={plan.name}>
+                                    {plan.name} (₹{plan.price}/{plan.duration})
+                                  </option>
+                                ))}
+                              </>
+                            ) : (
+                              <option value="">No plans available - Create plans first</option>
                             )}
                           </select>
-                          <p className="text-sm text-gray-400 mt-1">
-                            {gymOwnerPlans.find(plan => plan.name === formData.planType)?.features?.[0] || 
-                             'Plan includes standard gym access'}
-                          </p>
+                          {gymOwnerPlans.length > 0 ? (
+                            <p className="text-sm text-gray-400 mt-1">
+                              {formData.planType && gymOwnerPlans.find(plan => plan.name === formData.planType)?.features?.[0] || 
+                               'Select a plan to view features'}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-red-400 mt-1">
+                              No membership plans available. Please create plans first.
+                            </p>
+                          )}
                           <div className="mt-2">
                             <Button 
                               type="button" 
@@ -2050,11 +2114,14 @@ const Members = () => {
                             required
                           >
                             <option value="1">1 Month</option>
+                            <option value="2">2 Months</option>
                             <option value="3">3 Months</option>
                             <option value="6">6 Months</option>
-                            <option value="12">1 Year</option>
-                            <option value="24">2 Years</option>
-                            <option value="36">3 Years</option>
+                            <option value="9">9 Months</option>
+                            <option value="12">1 Year (12 Months)</option>
+                            <option value="18">18 Months</option>
+                            <option value="24">2 Years (24 Months)</option>
+                            <option value="36">3 Years (36 Months)</option>
                             <option value="custom">Custom Duration</option>
                           </select>
                           
@@ -2230,7 +2297,16 @@ const Members = () => {
                             </div>
                             <div>
                               <p className="text-gray-400 text-sm">Duration</p>
-                              <p className="text-white">{formData.membershipDuration} Year(s)</p>
+                              <p className="text-white">{(() => {
+                                const duration = parseInt(formData.membershipDuration);
+                                if (duration === 1) return '1 Month';
+                                if (duration < 12) return `${duration} Months`;
+                                if (duration === 12) return '1 Year';
+                                if (duration === 24) return '2 Years';
+                                if (duration === 36) return '3 Years';
+                                if (duration % 12 === 0) return `${duration / 12} Year${duration / 12 > 1 ? 's' : ''}`;
+                                return `${duration} Months`;
+                              })()}</p>
                             </div>
                             <div>
                               <p className="text-gray-400 text-sm">Start Date</p>
@@ -2241,7 +2317,8 @@ const Members = () => {
                               <p className="text-white">{(() => {
                                 const startDate = new Date();
                                 const endDate = new Date(startDate);
-                                endDate.setFullYear(endDate.getFullYear() + parseInt(formData.membershipDuration));
+                                const months = parseInt(formData.membershipDuration);
+                                endDate.setMonth(endDate.getMonth() + months);
                                 return endDate.toLocaleDateString();
                               })()}</p>
                             </div>
@@ -2251,47 +2328,80 @@ const Members = () => {
                         <div className="bg-blue-900/30 p-4 rounded-lg border border-blue-800">
                           <h5 className="font-medium text-blue-400 mb-2">Payment Summary</h5>
                           <div className="space-y-2">
-                            {/* Find the selected plan */}
+                            {/* Find the selected plan and calculate pricing */}
                             {(() => {
                               const selectedPlan = gymOwnerPlans.find(plan => plan.name === formData.planType) || gymOwnerPlans[0];
+                              const selectedDuration = parseInt(formData.membershipDuration);
+                              const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
+                              const trainerFee = formData.requiresTrainer && selectedTrainer ? getTrainerFee(selectedTrainer) : 0;
+                              
+                              // Calculate plan cost based on duration
+                              let planCost = 0;
+                              if (selectedPlan) {
+                                const planPrice = parseFloat(selectedPlan.price) || 0;
+                                const planDuration = selectedPlan.duration;
+                                
+                                // Calculate cost based on plan duration type and selected duration
+                                if (planDuration === 'monthly') {
+                                  planCost = planPrice * selectedDuration;
+                                } else if (planDuration === 'yearly') {
+                                  planCost = planPrice * Math.ceil(selectedDuration / 12);
+                                } else if (planDuration === 'quarterly') {
+                                  planCost = planPrice * Math.ceil(selectedDuration / 3);
+                                } else {
+                                  // Default to monthly if duration type is unclear
+                                  planCost = planPrice * selectedDuration;
+                                }
+                              }
+                              
+                              // Calculate trainer cost for the entire duration
+                              const totalTrainerCost = trainerFee > 0 ? trainerFee * selectedDuration : 0;
+                              
+                              const totalAmount = planCost + totalTrainerCost;
+                              
                               return (
-                                <div className="flex justify-between">
-                                  <p className="text-gray-300">{selectedPlan.name} Plan</p>
-                                  <p className="text-white">₹{selectedPlan.price}/{selectedPlan.duration}</p>
-                                </div>
+                                <>
+                                  <div className="flex justify-between">
+                                    <p className="text-gray-300">{selectedPlan?.name || 'Unknown'} Plan</p>
+                                    <p className="text-white">₹{selectedPlan?.price || 0}/{selectedPlan?.duration || 'month'}</p>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <p className="text-gray-300">Duration Selected</p>
+                                    <p className="text-white">
+                                      {selectedDuration === 1 ? '1 Month' :
+                                       selectedDuration < 12 ? `${selectedDuration} Months` :
+                                       selectedDuration === 12 ? '1 Year' :
+                                       selectedDuration === 24 ? '2 Years' :
+                                       selectedDuration === 36 ? '3 Years' :
+                                       selectedDuration % 12 === 0 ? `${selectedDuration / 12} Year${selectedDuration / 12 > 1 ? 's' : ''}` :
+                                       `${selectedDuration} Months`}
+                                    </p>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <p className="text-gray-300">Plan Cost</p>
+                                    <p className="text-white">₹{planCost.toFixed(2)}</p>
+                                  </div>
+                                  {formData.requiresTrainer && formData.assignedTrainer && (
+                                    <>
+                                      <div className="flex justify-between">
+                                        <p className="text-gray-300">Trainer: {selectedTrainer?.name || 'Unknown'}</p>
+                                        <p className="text-white">₹{trainerFee}/month</p>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <p className="text-gray-300">Total Trainer Cost</p>
+                                        <p className="text-white">₹{totalTrainerCost.toFixed(2)}</p>
+                                      </div>
+                                    </>
+                                  )}
+                                  <div className="border-t border-blue-800 pt-2 mt-2">
+                                    <div className="flex justify-between font-bold">
+                                      <p className="text-gray-300">Total Amount</p>
+                                      <p className="text-white">₹{totalAmount.toFixed(2)}</p>
+                                    </div>
+                                  </div>
+                                </>
                               );
                             })()}
-                            <div className="flex justify-between">
-                              <p className="text-gray-300">Duration</p>
-                              <p className="text-white">x{formData.membershipDuration} year(s)</p>
-                            </div>
-                            {formData.requiresTrainer && formData.assignedTrainer && (
-                              <div className="flex justify-between">
-                                <p className="text-gray-300">Trainer Fee</p>
-                                <p className="text-white">₹{
-                                  (() => {
-                                    const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
-                                    const trainerFee = getTrainerFee(selectedTrainer);
-                                    return trainerFee > 0 ? trainerFee : 'Not Set';
-                                  })()
-                                }</p>
-                              </div>
-                            )}
-                            <div className="border-t border-blue-800 pt-2 mt-2">
-                              <div className="flex justify-between font-bold">
-                                <p className="text-gray-300">Total Amount</p>
-                                <p className="text-white">₹{
-                                  (subscriptionInfo.membershipFee * 
-                                   parseInt(formData.membershipDuration) * 
-                                   (formData.planType === 'Premium' ? 1.5 : 1)) + 
-                                  (formData.requiresTrainer && formData.assignedTrainer ? 
-                                    (() => {
-                                      const selectedTrainer = availableTrainers.find(trainer => trainer._id === formData.assignedTrainer);
-                                      return getTrainerFee(selectedTrainer);
-                                    })() : 0)
-                                }</p>
-                              </div>
-                            </div>
                           </div>
                         </div>
                       </div>

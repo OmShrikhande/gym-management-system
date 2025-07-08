@@ -29,10 +29,11 @@ const QRPaymentModal = ({
   useEffect(() => {
     // This is a placeholder. In a real app, you would generate a QR code for the specific payment
     // or fetch it from your backend
+    const amount = typeof paymentAmount === 'number' ? paymentAmount.toFixed(2) : paymentAmount;
     setQrImageUrl("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=" + 
       encodeURIComponent(upiId) + 
       "&pn=GymFlow&am=" + 
-      paymentAmount + 
+      amount + 
       "&tn=" + 
       encodeURIComponent(paymentDescription));
   }, [upiId, paymentAmount, paymentDescription]);
@@ -109,14 +110,61 @@ const QRPaymentModal = ({
         <CardContent className="space-y-6">
           {/* Payment Details */}
           <div className="bg-gray-700/50 p-4 rounded-lg">
-            <div className="flex justify-between mb-2">
-              <span className="text-gray-300">Amount:</span>
-              <span className="text-white font-medium">₹{paymentAmount}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">Description:</span>
-              <span className="text-white">{paymentDescription}</span>
-            </div>
+            <h4 className="text-white font-medium mb-3">Payment Breakdown</h4>
+            
+            {/* Show payment breakdown if available */}
+            {memberData?.paymentBreakdown ? (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Plan:</span>
+                  <span className="text-white">{memberData.paymentBreakdown.planName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Plan Price:</span>
+                  <span className="text-white">₹{memberData.paymentBreakdown.planPrice}/{memberData.paymentBreakdown.planDuration}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Duration:</span>
+                  <span className="text-white">
+                    {memberData.paymentBreakdown.selectedDuration === 1 ? '1 Month' :
+                     memberData.paymentBreakdown.selectedDuration < 12 ? `${memberData.paymentBreakdown.selectedDuration} Months` :
+                     memberData.paymentBreakdown.selectedDuration === 12 ? '1 Year' :
+                     memberData.paymentBreakdown.selectedDuration === 24 ? '2 Years' :
+                     memberData.paymentBreakdown.selectedDuration === 36 ? '3 Years' :
+                     memberData.paymentBreakdown.selectedDuration % 12 === 0 ? `${memberData.paymentBreakdown.selectedDuration / 12} Year${memberData.paymentBreakdown.selectedDuration / 12 > 1 ? 's' : ''}` :
+                     `${memberData.paymentBreakdown.selectedDuration} Months`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Plan Cost:</span>
+                  <span className="text-white">₹{memberData.paymentBreakdown.planCost}</span>
+                </div>
+                {memberData.paymentBreakdown.trainerCost > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Trainer Cost:</span>
+                    <span className="text-white">₹{memberData.paymentBreakdown.trainerCost}</span>
+                  </div>
+                )}
+                <div className="border-t border-gray-600 pt-2 mt-2">
+                  <div className="flex justify-between font-medium">
+                    <span className="text-gray-300">Total Amount:</span>
+                    <span className="text-white">₹{memberData.paymentBreakdown.totalAmount}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Fallback if no breakdown is available
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Amount:</span>
+                  <span className="text-white font-medium">₹{paymentAmount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Description:</span>
+                  <span className="text-white">{paymentDescription}</span>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* QR Code */}
