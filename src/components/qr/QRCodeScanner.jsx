@@ -157,6 +157,30 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
       
       const isSuccess = response.data.status === 'success';
       const membershipStatus = response.data.data?.member?.membershipStatus || 'Unknown';
+
+      // If verification is successful, automatically mark attendance
+      if (isSuccess) {
+        try {
+          const attendanceResponse = await axios.post(`${API_URL}/attendance/mark`, requestData, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('Attendance marked:', attendanceResponse.data);
+          
+          if (attendanceResponse.data.status === 'success') {
+            toast.success('✅ Attendance marked successfully!', {
+              duration: 3000,
+            });
+          }
+        } catch (attendanceError) {
+          console.error('Error marking attendance:', attendanceError);
+          // Don't fail the main verification if attendance marking fails
+          toast.warning('Verification successful but attendance marking failed');
+        }
+      }
       
       setVerificationResult({
         status: response.data.status,

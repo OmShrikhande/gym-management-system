@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Users, User, Edit, Trash2, Calendar, X, Award, Dumbbell } from "lucide-react";
+import { Search, Plus, Users, User, Edit, Trash2, Calendar, X, Award, Dumbbell, Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -30,7 +30,7 @@ const Trainers = () => {
     bio: '',
     address: '',
     whatsapp: '',
-    salary: '',
+    trainerFee: '',
     joiningDate: ''
   });
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -78,6 +78,7 @@ const Trainers = () => {
           availability: trainer.availability || '',
           bio: trainer.bio || '',
           salary: trainer.salary || '',
+          trainerFee: trainer.trainerFee || '',
           joiningDate: trainer.joiningDate || '',
           rating: trainer.rating || '4.5',
           status: trainer.status || 'Active'
@@ -137,7 +138,7 @@ const Trainers = () => {
       bio: '',
       address: '',
       whatsapp: '',
-      salary: '',
+      trainerFee: '',
       joiningDate: ''
     });
     setMessage({ type: '', text: '' });
@@ -614,16 +615,19 @@ const Trainers = () => {
                   <h4 className="text-lg font-semibold mb-4 text-white">Employment Details</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <Label htmlFor="salary" className="mb-2 block text-gray-300">Trainer Fee (₹)</Label>
+                      <Label htmlFor="trainerFee" className="mb-2 block text-gray-300">Trainer Fee (₹)</Label>
                       <Input
-                        id="salary"
-                        name="salary"
+                        id="trainerFee"
+                        name="trainerFee"
                         type="number"
-                        value={formData.salary}
+                        value={formData.trainerFee}
                         onChange={handleInputChange}
-                        placeholder="Enter monthly salary"
+                        placeholder="Enter trainer fee per member"
                         className="w-full bg-gray-700 border-gray-600 focus:border-blue-500"
                       />
+                      <p className="text-sm text-gray-400 mt-1">
+                        This fee will be charged when members are assigned to this trainer
+                      </p>
                     </div>
                     <div>
                       <Label htmlFor="joiningDate" className="mb-2 block text-gray-300">Joining Date</Label>

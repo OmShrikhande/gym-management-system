@@ -63,7 +63,7 @@ function UserManagement() {
     address: '',
     totalMembers: '',
     gymName: '',
-    trainerFee: '2000', // Default trainer fee
+    trainerFee: '', // Trainer fee - to be set by gym owner
     // New fields for subscription
     subscriptionPlan: '',
     paymentMethod: 'credit_card'
@@ -311,7 +311,7 @@ function UserManagement() {
       address: '',
       totalMembers: '',
       gymName: '',
-      trainerFee: '2000', // Default trainer fee
+      trainerFee: '', // Trainer fee - to be set by gym owner
       subscriptionPlan: '',
       paymentMethod: 'credit_card'
     });

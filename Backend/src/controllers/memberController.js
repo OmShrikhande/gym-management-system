@@ -536,3 +536,121 @@ export const markAttendance = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Get attendance data for a specific member
+export const getAttendanceData = catchAsync(async (req, res, next) => {
+  const { memberId } = req.params;
+  const userId = req.user.id;
+
+  // Find the member
+  const member = await User.findById(memberId);
+  if (!member || member.role !== 'member') {
+    return next(new AppError('Member not found', 404));
+  }
+
+  // Check if the requesting user has permission to view this member's attendance
+  // Gym owners can view their members' attendance, trainers can view their assigned members
+  if (req.user.role === 'gym-owner') {
+    if (!member.createdBy || member.createdBy.toString() !== userId) {
+      return next(new AppError('You can only view attendance of your gym members', 403));
+    }
+  } else if (req.user.role === 'trainer') {
+    if (!member.assignedTrainer || member.assignedTrainer.toString() !== userId) {
+      return next(new AppError('You can only view attendance of your assigned members', 403));
+    }
+  } else {
+    return next(new AppError('Insufficient permissions', 403));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      member: {
+        id: member._id,
+        name: member.name,
+        email: member.email,
+        attendance: member.attendance || []
+      }
+    }
+  });
+});
+
+// Get gym-wide attendance statistics
+export const getGymAttendanceStats = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+
+  // Only gym owners can view gym-wide stats
+  if (req.user.role !== 'gym-owner') {
+    return next(new AppError('Only gym owners can view gym-wide attendance statistics', 403));
+  }
+
+  // Get all members of this gym
+  const members = await User.find({ 
+    createdBy: userId, 
+    role: 'member' 
+  }).select('name email attendance membershipStatus');
+
+  // Calculate statistics
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const thisWeekStart = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let totalAttendanceToday = 0;
+  let totalAttendanceThisWeek = 0;
+  let totalAttendanceThisMonth = 0;
+  let totalAttendanceAllTime = 0;
+
+  const memberStats = members.map(member => {
+    const attendance = member.attendance || [];
+    
+    const todayAttendance = attendance.filter(record => {
+      const recordDate = new Date(record.timestamp);
+      return recordDate >= today;
+    }).length;
+
+    const weekAttendance = attendance.filter(record => {
+      const recordDate = new Date(record.timestamp);
+      return recordDate >= thisWeekStart;
+    }).length;
+
+    const monthAttendance = attendance.filter(record => {
+      const recordDate = new Date(record.timestamp);
+      return recordDate >= thisMonthStart;
+    }).length;
+
+    totalAttendanceToday += todayAttendance;
+    totalAttendanceThisWeek += weekAttendance;
+    totalAttendanceThisMonth += monthAttendance;
+    totalAttendanceAllTime += attendance.length;
+
+    return {
+      id: member._id,
+      name: member.name,
+      email: member.email,
+      membershipStatus: member.membershipStatus,
+      attendanceToday: todayAttendance,
+      attendanceThisWeek: weekAttendance,
+      attendanceThisMonth: monthAttendance,
+      attendanceAllTime: attendance.length,
+      lastAttendance: attendance.length > 0 ? 
+        new Date(Math.max(...attendance.map(a => new Date(a.timestamp)))).toISOString() : null
+    };
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      summary: {
+        totalMembers: members.length,
+        activeMembers: members.filter(m => m.membershipStatus === 'Active').length,
+        totalAttendanceToday,
+        totalAttendanceThisWeek,
+        totalAttendanceThisMonth,
+        totalAttendanceAllTime,
+        averageAttendancePerMember: members.length > 0 ? Math.round(totalAttendanceAllTime / members.length) : 0
+      },
+      members: memberStats
+    }
+  });
+});

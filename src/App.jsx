@@ -29,6 +29,7 @@ import MyDiet from "./pages/MyDiet.jsx";
 import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
 import Enquiries from "./pages/Enquiries.jsx";
+import Attendance from "./pages/Attendance.jsx";
 
 const queryClient = new QueryClient();
 
@@ -97,6 +98,11 @@ const App = () => (
           <Route path="/members" element={
             <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer']}>
               <Members />
+            </ProtectedRoute>
+          } />
+          <Route path="/attendance/:memberId" element={
+            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer']}>
+              <Attendance />
             </ProtectedRoute>
           } />
           <Route path="/trainers" element={

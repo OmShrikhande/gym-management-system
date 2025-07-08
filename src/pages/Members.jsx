@@ -1610,21 +1610,65 @@ const Members = () => {
 
       {/* Attendance Information */}
       <div className="bg-gray-800/30 p-6 rounded-lg border border-gray-700">
-        <h4 className="text-lg font-semibold mb-4 text-white">Attendance Information</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold text-white">Attendance Information</h4>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
+            onClick={() => navigate(`/attendance/${selectedMember.id}`)}
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            View Full History
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
             <p className="text-gray-400 text-sm mb-1">Last Check-in</p>
             <p className="text-white">
-              {selectedMember.lastCheckIn
-                ? new Date(selectedMember.lastCheckIn).toLocaleString()
+              {selectedMember.attendance && selectedMember.attendance.length > 0
+                ? new Date(selectedMember.attendance[selectedMember.attendance.length - 1].timestamp).toLocaleString()
                 : "No check-ins recorded"}
             </p>
           </div>
           <div>
-            <p className="text-gray-400 text-sm mb-1">Attendance Rate</p>
-            <p className="text-white">{selectedMember.attendanceRate || "0%"}</p>
+            <p className="text-gray-400 text-sm mb-1">Total Visits</p>
+            <p className="text-white">{selectedMember.attendance ? selectedMember.attendance.length : 0}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm mb-1">This Month</p>
+            <p className="text-white">
+              {selectedMember.attendance ? 
+                selectedMember.attendance.filter(record => {
+                  const recordDate = new Date(record.timestamp);
+                  const now = new Date();
+                  return recordDate.getMonth() === now.getMonth() && recordDate.getFullYear() === now.getFullYear();
+                }).length : 0}
+            </p>
           </div>
         </div>
+        
+        {/* Recent Attendance */}
+        {selectedMember.attendance && selectedMember.attendance.length > 0 && (
+          <div className="mt-4">
+            <p className="text-gray-400 text-sm mb-2">Recent Check-ins</p>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {selectedMember.attendance
+                .slice(-5)
+                .reverse()
+                .map((record, index) => (
+                  <div key={index} className="flex justify-between items-center text-sm">
+                    <span className="text-gray-300">
+                      {new Date(record.timestamp).toLocaleDateString()}
+                    </span>
+                    <span className="text-gray-400">
+                      {new Date(record.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Notes */}
