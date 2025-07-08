@@ -141,7 +141,7 @@ const SystemSettings = () => {
     // Apply settings immediately for visual changes
     if (category === 'branding') {
       // Apply settings based on user role
-      applyAppSettings(updatedSettings, user?._id);
+      applySettings(updatedSettings);
       
       // Show toast message about settings scope
       if (!isSuperAdmin) {
@@ -150,14 +150,6 @@ const SystemSettings = () => {
           position: 'bottom-right'
         });
       }
-    }
-    
-    // If app name is changed, dispatch event to update header immediately
-    if (category === 'global' && key === 'appName') {
-      // Dispatch custom event to notify components about settings change
-      window.dispatchEvent(new CustomEvent('settingsUpdated', {
-        detail: { category, key, value, settings: updatedSettings }
-      }));
     }
   };
   
@@ -196,18 +188,13 @@ const SystemSettings = () => {
         // Apply settings immediately, but only to the current user's dashboard
         if (isSuperAdmin) {
           // Super admin can apply global settings
-          applyAppSettings(settings);
+          applySettings(settings);
           toast.info('Global settings applied to all users');
         } else {
           // Other users apply settings only to their dashboard
           applyAppSettings(settings, user._id);
           toast.info('Settings will be applied to your dashboard only');
         }
-        
-        // Dispatch event to notify all components about settings update
-        window.dispatchEvent(new CustomEvent('settingsUpdated', {
-          detail: { settings, userId: user._id }
-        }));
       } else {
         toast.error(response.message || t('error'));
       }

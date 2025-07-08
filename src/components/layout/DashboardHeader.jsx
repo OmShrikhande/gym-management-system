@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -18,7 +18,6 @@ import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
 import LanguageSwitcher from "@/components/ui/language-switcher";
 import { toast } from "sonner";
-import { getAppSettings } from "@/lib/settings";
 
 const DashboardHeader = () => {
   const { 
@@ -31,7 +30,6 @@ const DashboardHeader = () => {
     checkSubscriptionStatus
   } = useAuth();
   const { t } = useTranslation();
-  const [appName, setAppName] = useState("GymFlow");
   
   // Function to refresh the page
   const handleRefresh = () => {
@@ -39,49 +37,6 @@ const DashboardHeader = () => {
     window.location.reload();
   };
   
-  // Load app name from settings
-  useEffect(() => {
-    const loadAppName = () => {
-      try {
-        // Get user-specific settings first, then fall back to global settings
-        const settings = getAppSettings(user?._id) || getAppSettings();
-        const customAppName = settings?.global?.appName;
-        
-        if (customAppName && customAppName.trim() !== '') {
-          setAppName(customAppName);
-        } else {
-          setAppName("GymFlow"); // Default fallback
-        }
-      } catch (error) {
-        console.error('Error loading app name from settings:', error);
-        setAppName("GymFlow"); // Default fallback
-      }
-    };
-
-    loadAppName();
-
-    // Listen for settings changes
-    const handleStorageChange = (e) => {
-      if (e.key?.includes('gym_settings')) {
-        loadAppName();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Also listen for custom events when settings are updated
-    const handleSettingsUpdate = () => {
-      loadAppName();
-    };
-    
-    window.addEventListener('settingsUpdated', handleSettingsUpdate);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('settingsUpdated', handleSettingsUpdate);
-    };
-  }, [user?._id]);
-
   // Check subscription status only once when component mounts
   // This prevents repeated API calls on every render
   useEffect(() => {
@@ -108,7 +63,7 @@ const DashboardHeader = () => {
                 <Dumbbell className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">{appName}</h1>
+                <h1 className="text-xl font-bold text-white">GymFlow</h1>
                 <p className="text-xs text-gray-400 hidden sm:block">Gym Management Platform</p>
               </div>
             </div>
