@@ -124,45 +124,10 @@ const GymCustomization = () => {
   // Original state for reset functionality
   const [originalCustomization, setOriginalCustomization] = useState(null);
   
-  // Validate customization data before sending
-  const validateCustomizationData = (data) => {
-    const errors = [];
-    
-    if (!data || typeof data !== 'object') {
-      errors.push('Invalid customization data structure');
-      return errors;
-    }
-    
-    if (!data.branding || typeof data.branding !== 'object') {
-      errors.push('Missing or invalid branding data');
-      return errors;
-    }
-    
-    // Validate color fields
-    const colorRegex = /^#[0-9A-F]{6}$/i;
-    const colorFields = ['primaryColor', 'secondaryColor', 'backgroundColor', 'cardColor', 'sidebarColor', 'textColor', 'accentColor'];
-    
-    colorFields.forEach(field => {
-      if (data.branding[field] && !colorRegex.test(data.branding[field])) {
-        errors.push(`${field} must be a valid hex color`);
-      }
-    });
-    
-    return errors;
-  };
-
   // Debounced save function
   const debouncedSave = useRef(
     debounce(async (data) => {
       if (!user?.gymId && !isGymOwner) return;
-      
-      // Validate data before sending
-      const validationErrors = validateCustomizationData(data);
-      if (validationErrors.length > 0) {
-        console.error('Validation errors:', validationErrors);
-        toast.error(`Validation failed: ${validationErrors.join(', ')}`);
-        return;
-      }
       
       try {
         setIsSaving(true);
@@ -193,23 +158,12 @@ const GymCustomization = () => {
             });
           }
         } else {
-          console.error('Save failed with response:', response);
           throw new Error(response.message || 'Failed to save customization');
         }
       } catch (error) {
         console.error('Error saving customization:', error);
         setSaveStatus('error');
-        
-        // Show more specific error messages
-        if (error.message.includes('Authentication')) {
-          toast.error('Authentication error. Please login again.');
-        } else if (error.message.includes('Permission')) {
-          toast.error('You do not have permission to save customization.');
-        } else if (error.message.includes('Validation')) {
-          toast.error('Invalid customization data. Please check your inputs.');
-        } else {
-          toast.error(`Failed to save customization: ${error.message}`);
-        }
+        toast.error('Failed to save customization');
       } finally {
         setIsSaving(false);
       }
@@ -445,14 +399,6 @@ const GymCustomization = () => {
   
   // Save current customization
   const saveCustomization = useCallback(async () => {
-    // Validate data before sending
-    const validationErrors = validateCustomizationData(customization);
-    if (validationErrors.length > 0) {
-      console.error('Validation errors:', validationErrors);
-      toast.error(`Validation failed: ${validationErrors.join(', ')}`);
-      return;
-    }
-    
     try {
       setIsSaving(true);
       setSaveStatus(null);
@@ -483,23 +429,12 @@ const GymCustomization = () => {
           });
         }
       } else {
-        console.error('Save failed with response:', response);
         throw new Error(response.message || 'Failed to save customization');
       }
     } catch (error) {
       console.error('Error saving customization:', error);
       setSaveStatus('error');
-      
-      // Show more specific error messages
-      if (error.message.includes('Authentication')) {
-        toast.error('Authentication error. Please login again.');
-      } else if (error.message.includes('Permission')) {
-        toast.error('You do not have permission to save customization.');
-      } else if (error.message.includes('Validation')) {
-        toast.error('Invalid customization data. Please check your inputs.');
-      } else {
-        toast.error(`Failed to save customization: ${error.message}`);
-      }
+      toast.error('Failed to save customization');
     } finally {
       setIsSaving(false);
     }

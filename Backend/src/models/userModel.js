@@ -113,20 +113,6 @@ const userSchema = new mongoose.Schema({
     // Remove default value - let gym owners set the actual fee
   },
   
-  // Gym owner specific fields
-  gymName: {
-    type: String,
-    trim: true,
-    // Only required for gym owners
-    required: function() {
-      return this.role === 'gym-owner';
-    }
-  },
-  totalMembers: {
-    type: Number,
-    default: 0
-  },
-  
   // Attendance and Access Control fields
   attendance: [{
     gymOwnerId: {
