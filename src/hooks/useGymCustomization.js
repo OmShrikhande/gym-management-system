@@ -87,19 +87,20 @@ export const useGymCustomization = () => {
   }, []);
 
   // Update page title
-  const updatePageTitle = useCallback((gymName) => {
-    if (!gymName) return;
+  const updatePageTitle = useCallback((gymName, systemName) => {
+    const titleToUse = systemName || gymName;
+    if (!titleToUse) return;
 
-    // Update the page title to include gym name
+    // Update the page title to include gym/system name
     const currentTitle = document.title;
     const titleParts = currentTitle.split(' | ');
     
     if (titleParts.length > 1) {
-      // Replace existing gym name
-      document.title = `${titleParts[0]} | ${gymName}`;
+      // Replace existing name
+      document.title = `${titleParts[0]} | ${titleToUse}`;
     } else {
-      // Add gym name
-      document.title = `${currentTitle} | ${gymName}`;
+      // Add name
+      document.title = `${currentTitle} | ${titleToUse}`;
     }
   }, []);
 
@@ -138,8 +139,8 @@ export const useGymCustomization = () => {
         updateFavicon(customization.branding.favicon);
       }
       
-      if (customization.branding.gymName) {
-        updatePageTitle(customization.branding.gymName);
+      if (customization.branding.gymName || customization.branding.systemName) {
+        updatePageTitle(customization.branding.gymName, customization.branding.systemName);
       }
     }
   }, [customization, updateFavicon, updatePageTitle]);

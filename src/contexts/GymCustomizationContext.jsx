@@ -54,9 +54,9 @@ export const GymCustomizationProvider = ({ children }) => {
             updateFavicon(gymCustomization.branding.favicon);
           }
           
-          // Update page title if gym name is available
-          if (gymCustomization.branding?.gymName) {
-            updatePageTitle(gymCustomization.branding.gymName);
+          // Update page title if gym name or system name is available
+          if (gymCustomization.branding?.gymName || gymCustomization.branding?.systemName) {
+            updatePageTitle(gymCustomization.branding.gymName, gymCustomization.branding.systemName);
           }
           
           // Cache the settings for faster loading
@@ -86,8 +86,8 @@ export const GymCustomizationProvider = ({ children }) => {
       }
       
       // Update page title
-      if (settings.branding?.gymName) {
-        updatePageTitle(settings.branding.gymName);
+      if (settings.branding?.gymName || settings.branding?.systemName) {
+        updatePageTitle(settings.branding.gymName, settings.branding.systemName);
       }
       
       // Cache the settings
@@ -121,19 +121,20 @@ export const GymCustomizationProvider = ({ children }) => {
   };
 
   // Update page title
-  const updatePageTitle = (gymName) => {
-    if (!gymName) return;
+  const updatePageTitle = (gymName, systemName) => {
+    const titleToUse = systemName || gymName;
+    if (!titleToUse) return;
 
-    // Update the page title to include gym name
+    // Update the page title to include gym/system name
     const currentTitle = document.title;
     const titleParts = currentTitle.split(' | ');
     
     if (titleParts.length > 1) {
-      // Replace existing gym name
-      document.title = `${titleParts[0]} | ${gymName}`;
+      // Replace existing name
+      document.title = `${titleParts[0]} | ${titleToUse}`;
     } else {
-      // Add gym name
-      document.title = `${currentTitle} | ${gymName}`;
+      // Add name
+      document.title = `${currentTitle} | ${titleToUse}`;
     }
   };
 

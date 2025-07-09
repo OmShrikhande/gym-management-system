@@ -103,6 +103,8 @@ const GymCustomization = () => {
   const [customization, setCustomization] = useState({
     branding: {
       gymName: '',
+      systemName: 'GymFlow',
+      systemSubtitle: 'Gym Management Platform',
       primaryColor: '#3B82F6',
       secondaryColor: '#8B5CF6',
       backgroundColor: '#111827',
@@ -753,6 +755,58 @@ const GymCustomization = () => {
                   className="bg-gray-700 border-gray-600 text-white"
                   placeholder="Enter your gym name"
                 />
+              </div>
+
+              {/* System Name */}
+              <div className="space-y-2">
+                <Label className="text-white">System Name</Label>
+                <Input
+                  type="text"
+                  value={customization.branding.systemName || 'GymFlow'}
+                  onChange={(e) => {
+                    const newCustomization = {
+                      ...customization,
+                      branding: {
+                        ...customization.branding,
+                        systemName: e.target.value
+                      }
+                    };
+                    setCustomization(newCustomization);
+                    debouncedSave.current(newCustomization);
+                  }}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="Enter system name (e.g., GymFlow)"
+                  maxLength={50}
+                />
+                <p className="text-xs text-gray-400">
+                  This name will appear in the dashboard header for your gym members and trainers
+                </p>
+              </div>
+
+              {/* System Subtitle */}
+              <div className="space-y-2">
+                <Label className="text-white">System Subtitle</Label>
+                <Input
+                  type="text"
+                  value={customization.branding.systemSubtitle || 'Gym Management Platform'}
+                  onChange={(e) => {
+                    const newCustomization = {
+                      ...customization,
+                      branding: {
+                        ...customization.branding,
+                        systemSubtitle: e.target.value
+                      }
+                    };
+                    setCustomization(newCustomization);
+                    debouncedSave.current(newCustomization);
+                  }}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="Enter system subtitle (e.g., Gym Management Platform)"
+                  maxLength={100}
+                />
+                <p className="text-xs text-gray-400">
+                  This subtitle will appear below the system name in the dashboard header
+                </p>
               </div>
               
               {/* Logo Upload */}

@@ -14,6 +14,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Dumbbell, Settings, User, LogOut, CreditCard, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/contexts/TranslationContext";
+import { useGymCustomization } from "@/hooks/useGymCustomization";
 import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
 import LanguageSwitcher from "@/components/ui/language-switcher";
@@ -30,6 +31,7 @@ const DashboardHeader = () => {
     checkSubscriptionStatus
   } = useAuth();
   const { t } = useTranslation();
+  const { customization } = useGymCustomization();
   
   // Function to refresh the page
   const handleRefresh = () => {
@@ -63,8 +65,12 @@ const DashboardHeader = () => {
                 <Dumbbell className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">GymFlow</h1>
-                <p className="text-xs text-gray-400 hidden sm:block">Gym Management Platform</p>
+                <h1 className="text-xl font-bold text-white">
+                  {customization?.branding?.systemName || 'GymFlow'}
+                </h1>
+                <p className="text-xs text-gray-400 hidden sm:block">
+                  {customization?.branding?.systemSubtitle || 'Gym Management Platform'}
+                </p>
               </div>
             </div>
           </div>
