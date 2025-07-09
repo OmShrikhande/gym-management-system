@@ -383,6 +383,12 @@ export const AuthProvider = ({ children }) => {
         
         // Determine gymId - for gym owners it's their user ID, for others it's their gymId
         const gymId = user?.role === 'gym-owner' ? user._id : user?.gymId;
+        console.log('🔧 MEMBER CREATION - gymId calculation:', {
+          userRole: user?.role,
+          userId: user?._id,
+          userGymId: user?.gymId,
+          calculatedGymId: gymId
+        });
         
         if (!gymId) {
           setError('Unable to determine gym ID. Please ensure you are logged in properly.');
@@ -415,12 +421,24 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
-      // Call the backend API to create the user
+      // Call the backend API to create user
       console.log('Making API call to create user:', {
         endpoint,
         userType,
+        currentUser: user,
         requestBody: { ...requestBody, password: '[HIDDEN]' }
       });
+      
+      // Additional debugging for member creation
+      if (userType === 'member') {
+        console.log('🔍 Member creation debug:', {
+          userRole: user?.role,
+          userId: user?._id,
+          userGymId: user?.gymId,
+          calculatedGymId: user?.role === 'gym-owner' ? user._id : user?.gymId,
+          hasGymIdInRequest: !!requestBody.gymId
+        });
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
