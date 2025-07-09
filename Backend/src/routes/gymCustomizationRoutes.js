@@ -60,7 +60,9 @@ const upload = multer({
 // Simple validation function
 const validateCustomization = (req, res, next) => {
   try {
-    const { branding } = req.body;
+    console.log('Validating customization data:', JSON.stringify(req.body, null, 2));
+    
+    const { branding, settings } = req.body;
     const errors = [];
     
     if (branding) {
@@ -69,7 +71,7 @@ const validateCustomization = (req, res, next) => {
       
       colorFields.forEach(field => {
         if (branding[field] && !colorRegex.test(branding[field])) {
-          errors.push(`${field} must be a valid hex color`);
+          errors.push(`${field} must be a valid hex color (got: ${branding[field]})`);
         }
       });
       
@@ -86,6 +88,12 @@ const validateCustomization = (req, res, next) => {
       }
     }
     
+    if (settings) {
+      if (settings.customCss && settings.customCss.length > 10000) {
+        errors.push('Custom CSS must be less than 10,000 characters');
+      }
+    }
+    
     if (errors.length > 0) {
       console.log('Validation errors:', errors);
       return res.status(400).json({
@@ -95,12 +103,19 @@ const validateCustomization = (req, res, next) => {
       });
     }
     
+    console.log('Validation passed successfully');
     next();
   } catch (error) {
     console.error('Error in validation middleware:', error);
+    console.error('Validation error details:', {
+      message: error.message,
+      stack: error.stack,
+      body: req.body
+    });
     return res.status(500).json({
       success: false,
-      message: 'Validation error'
+      message: 'Validation error',
+      error: error.message
     });
   }
 };
@@ -111,7 +126,22 @@ const checkGymPermission = async (req, res, next) => {
     const { gymId } = req.params;
     const userId = req.user.id;
     
-    console.log('Checking gym permission:', { gymId, userId, userRole: req.user.role });
+    console.log('Checking gym permission:', { 
+      gymId, 
+      userId, 
+      userRole: req.user.role,
+      userIdType: typeof userId,
+      gymIdType: typeof gymId
+    });
+    
+    // Validate gymId format
+    if (!gymId || !gymId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('Invalid gymId format:', gymId);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gym ID format'
+      });
+    }
     
     // Check if user is gym owner
     if (req.user.role === 'gym-owner' && req.user.id === gymId) {
@@ -130,13 +160,24 @@ const checkGymPermission = async (req, res, next) => {
       });
     }
     
+    console.log('User found:', {
+      userId: user._id,
+      userGymId: user.gymId,
+      requestedGymId: gymId,
+      userRole: user.role
+    });
+    
     if (user.gymId && user.gymId.toString() === gymId) {
       req.isGymMember = true;
       console.log('User is gym member');
       return next();
     }
     
-    console.log('User does not have permission:', { userGymId: user.gymId, requestedGymId: gymId });
+    console.log('User does not have permission:', { 
+      userGymId: user.gymId?.toString(), 
+      requestedGymId: gymId,
+      match: user.gymId?.toString() === gymId
+    });
     return res.status(403).json({
       success: false,
       message: 'You do not have permission to access this gym\'s customization'
@@ -147,11 +188,13 @@ const checkGymPermission = async (req, res, next) => {
       message: error.message,
       stack: error.stack,
       gymId: req.params.gymId,
-      userId: req.user?.id
+      userId: req.user?.id,
+      name: error.name
     });
     return res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message
     });
   }
 };
@@ -221,7 +264,12 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     const { gymId } = req.params;
     const updateData = req.body;
     
-    console.log('PUT /customization called:', { gymId, userId: req.user.id, isGymOwner: req.isGymOwner });
+    console.log('PUT /customization called:', { 
+      gymId, 
+      userId: req.user.id, 
+      isGymOwner: req.isGymOwner,
+      userRole: req.user.role
+    });
     console.log('Update data:', JSON.stringify(updateData, null, 2));
     
     // Only gym owners can update customization
@@ -240,6 +288,14 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     const existingCustomization = await GymCustomization.findOne({ gymId });
     console.log('Existing customization found:', !!existingCustomization);
     
+    if (existingCustomization) {
+      console.log('Existing customization details:', {
+        id: existingCustomization._id,
+        gymId: existingCustomization.gymId,
+        version: existingCustomization.metadata?.version
+      });
+    }
+    
     let customization;
     if (existingCustomization) {
       console.log('Updating existing customization...');
@@ -249,6 +305,7 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
         {
           $set: {
             ...updateData,
+            gymId: gymId, // Ensure gymId is preserved
             'metadata.lastUpdatedBy': req.user.id,
             updatedAt: new Date()
           },
@@ -256,27 +313,38 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
             'metadata.version': 1
           }
         },
-        { new: true }
+        { new: true, runValidators: true }
       );
       console.log('Customization updated successfully');
     } else {
       console.log('Creating new customization...');
-      // Create new customization
-      customization = await GymCustomization.findOneAndUpdate(
-        { gymId },
-        {
-          $set: {
-            ...updateData,
-            'metadata.createdBy': req.user.id,
-            'metadata.lastUpdatedBy': req.user.id,
-            'metadata.version': 1,
-            updatedAt: new Date()
-          }
-        },
-        { new: true, upsert: true }
-      );
+      // Create new customization with proper structure
+      const newCustomizationData = {
+        gymId: gymId,
+        ...updateData,
+        metadata: {
+          createdBy: req.user.id,
+          lastUpdatedBy: req.user.id,
+          version: 1
+        }
+      };
+      
+      console.log('New customization data:', JSON.stringify(newCustomizationData, null, 2));
+      
+      customization = new GymCustomization(newCustomizationData);
+      await customization.save();
       console.log('Customization created successfully');
     }
+    
+    if (!customization) {
+      throw new Error('Failed to create or update customization');
+    }
+    
+    console.log('Final customization result:', {
+      id: customization._id,
+      gymId: customization.gymId,
+      version: customization.metadata?.version
+    });
     
     res.json({
       success: true,
@@ -290,12 +358,42 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
       stack: error.stack,
       gymId: req.params.gymId,
       userId: req.user?.id,
-      updateData: req.body
+      updateData: req.body,
+      name: error.name,
+      code: error.code
     });
+    
+    // Handle specific MongoDB errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid data format'
+      });
+    }
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate entry'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Server error',
-      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      ...(process.env.NODE_ENV === 'development' && { 
+        error: error.message,
+        stack: error.stack 
+      })
     });
   }
 });

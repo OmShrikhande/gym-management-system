@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,16 +19,15 @@ const Attendance = () => {
   const [stats, setStats] = useState({
     totalDays: 0,
     thisMonth: 0,
-    thisWeek: 0,
+    today: 0, // Changed from thisWeek to today
     averagePerWeek: 0,
     streak: 0
   });
 
   useEffect(() => {
     fetchAttendanceData();
-  }, [memberId, users]); // Also depend on users array to refresh when data changes
+  }, [memberId, users]);
 
-  // Add event listener for attendance marking
   useEffect(() => {
     const handleAttendanceMarked = (event) => {
       if (event.detail.memberId === memberId) {
@@ -48,7 +47,6 @@ const Attendance = () => {
     try {
       setIsLoading(true);
       
-      // Find member info from users array
       const member = users.find(user => user._id === memberId);
       if (!member) {
         navigate('/members');
@@ -57,10 +55,8 @@ const Attendance = () => {
       
       setMemberInfo(member);
       
-      // Get attendance data from member's attendance array
       const attendance = member.attendance || [];
       
-      // Sort by date (newest first)
       const sortedAttendance = attendance
         .map(record => ({
           ...record,
@@ -72,7 +68,6 @@ const Attendance = () => {
       
       setAttendanceData(sortedAttendance);
       
-      // Calculate stats
       calculateStats(sortedAttendance);
       
     } catch (error) {
@@ -86,7 +81,7 @@ const Attendance = () => {
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
-    const thisWeek = getWeekNumber(now);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Start of today
     
     // This month count
     const thisMonthCount = attendance.filter(record => {
@@ -94,9 +89,11 @@ const Attendance = () => {
       return recordDate.getMonth() === thisMonth && recordDate.getFullYear() === thisYear;
     }).length;
     
-    // This week count
-    const thisWeekCount = attendance.filter(record => {
-      return getWeekNumber(record.date) === thisWeek && record.date.getFullYear() === thisYear;
+    // Today's count
+    const todayCount = attendance.filter(record => {
+      const recordDate = new Date(record.date);
+      recordDate.setHours(0, 0, 0, 0);
+      return recordDate.getTime() === today.getTime();
     }).length;
     
     // Calculate average per week (last 4 weeks)
@@ -107,14 +104,14 @@ const Attendance = () => {
     // Calculate current streak
     let streak = 0;
     const sortedByDate = [...attendance].sort((a, b) => b.date - a.date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     
     for (let i = 0; i < sortedByDate.length; i++) {
       const recordDate = new Date(sortedByDate[i].date);
       recordDate.setHours(0, 0, 0, 0);
       
-      const daysDiff = Math.floor((today - recordDate) / (1000 * 60 * 60 * 24));
+      const daysDiff = Math.floor((todayStart - recordDate) / (1000 * 60 * 60 * 24));
       
       if (daysDiff === i) {
         streak++;
@@ -126,7 +123,7 @@ const Attendance = () => {
     setStats({
       totalDays: attendance.length,
       thisMonth: thisMonthCount,
-      thisWeek: thisWeekCount,
+      today: todayCount, // Changed from thisWeek to today
       averagePerWeek,
       streak
     });
@@ -168,7 +165,6 @@ const Attendance = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -187,7 +183,6 @@ const Attendance = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="bg-gray-800/50 border-gray-700">
             <CardContent className="p-4">
@@ -218,8 +213,8 @@ const Attendance = () => {
               <div className="flex items-center space-x-2">
                 <Clock className="h-5 w-5 text-yellow-500" />
                 <div>
-                  <p className="text-sm text-gray-400">This Week</p>
-                  <p className="text-2xl font-bold text-white">{stats.thisWeek}</p>
+                  <p className="text-sm text-gray-400">Today</p> {/* Changed from This Week to Today */}
+                  <p className="text-2xl font-bold text-white">{stats.today}</p> {/* Changed from stats.thisWeek to stats.today */}
                 </div>
               </div>
             </CardContent>
@@ -250,7 +245,6 @@ const Attendance = () => {
           </Card>
         </div>
 
-        {/* Attendance Table */}
         <Card className="bg-gray-800/50 border-gray-700">
           <CardHeader>
             <CardTitle className="text-white">Attendance Records</CardTitle>
