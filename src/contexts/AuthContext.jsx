@@ -327,7 +327,7 @@ export const AuthProvider = ({ children }) => {
           membershipDuration: membershipDuration,
           membershipType: userData.planType || 'Basic',
           role: 'member',
-          gymId: user.gymId,
+          gymId: user?.gymId || user?._id,
           paymentStatus: userData.paymentStatus,
           paymentId: userData.paymentId,
           paymentAmount: userData.paymentAmount,
@@ -350,8 +350,19 @@ export const AuthProvider = ({ children }) => {
       }
       
       if (userType === 'member') {
-        const requiredFields = ['name', 'email', 'password', 'planType', 'gymId'];
-        const missingFields = requiredFields.filter(field => !requestBody[field] || requestBody[field].trim() === '');
+        // Debug: Log user object and gymId
+        console.log('Current user object:', user);
+        console.log('User gymId:', user?.gymId);
+        console.log('User _id:', user?._id);
+        console.log('Final gymId being used:', requestBody.gymId);
+        
+        const requiredFields = ['name', 'email', 'password', 'planType'];
+        const missingFields = requiredFields.filter(field => !requestBody[field] || (typeof requestBody[field] === 'string' && requestBody[field].trim() === ''));
+        
+        // Check gymId separately since it might not be a string
+        if (!requestBody.gymId) {
+          missingFields.push('gymId');
+        }
         
         if (missingFields.length > 0) {
           const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
