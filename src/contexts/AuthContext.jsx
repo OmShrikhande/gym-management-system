@@ -298,6 +298,15 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setIsLoading(true);
     
+    // TEMPORARY DEBUG: Check current user state
+    console.log('🔍 CREATE USER DEBUG:', {
+      userType,
+      currentUser: user,
+      userRole: user?.role,
+      userId: user?._id,
+      userGymId: user?.gymId
+    });
+    
     // Validate required fields
     if (!userData.email || !userData.password || !userData.name) {
       setError('All fields are required');
@@ -421,6 +430,13 @@ export const AuthProvider = ({ children }) => {
         userType,
         requestBody: { ...requestBody, password: '[HIDDEN]' }
       });
+      
+      // TEMPORARY DEBUG: Log the actual request body for member creation
+      if (userType === 'member') {
+        console.log('🚨 MEMBER CREATION REQUEST BODY:', JSON.stringify(requestBody, null, 2));
+        console.log('🚨 GYMID IN REQUEST:', requestBody.gymId);
+        console.log('🚨 CURRENT USER:', user);
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
