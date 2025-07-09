@@ -59,41 +59,50 @@ const upload = multer({
 
 // Simple validation function
 const validateCustomization = (req, res, next) => {
-  const { branding } = req.body;
-  const errors = [];
-  
-  if (branding) {
-    const colorRegex = /^#[0-9A-F]{6}$/i;
-    const colorFields = ['primaryColor', 'secondaryColor', 'backgroundColor', 'cardColor', 'sidebarColor', 'textColor', 'accentColor'];
+  try {
+    const { branding } = req.body;
+    const errors = [];
     
-    colorFields.forEach(field => {
-      if (branding[field] && !colorRegex.test(branding[field])) {
-        errors.push(`${field} must be a valid hex color`);
+    if (branding) {
+      const colorRegex = /^#[0-9A-F]{6}$/i;
+      const colorFields = ['primaryColor', 'secondaryColor', 'backgroundColor', 'cardColor', 'sidebarColor', 'textColor', 'accentColor'];
+      
+      colorFields.forEach(field => {
+        if (branding[field] && !colorRegex.test(branding[field])) {
+          errors.push(`${field} must be a valid hex color`);
+        }
+      });
+      
+      if (branding.gymName && (branding.gymName.length > 100 || branding.gymName.length < 1)) {
+        errors.push('Gym name must be between 1 and 100 characters');
       }
-    });
-    
-    if (branding.gymName && (branding.gymName.length > 100 || branding.gymName.length < 1)) {
-      errors.push('Gym name must be between 1 and 100 characters');
+      
+      if (branding.logo && branding.logo.length > 0 && !branding.logo.match(/^https?:\/\/.+/)) {
+        errors.push('Logo must be a valid URL');
+      }
+      
+      if (branding.favicon && branding.favicon.length > 0 && !branding.favicon.match(/^https?:\/\/.+/)) {
+        errors.push('Favicon must be a valid URL');
+      }
     }
     
-    if (branding.logo && branding.logo.length > 0 && !branding.logo.match(/^https?:\/\/.+/)) {
-      errors.push('Logo must be a valid URL');
+    if (errors.length > 0) {
+      console.log('Validation errors:', errors);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors
+      });
     }
     
-    if (branding.favicon && branding.favicon.length > 0 && !branding.favicon.match(/^https?:\/\/.+/)) {
-      errors.push('Favicon must be a valid URL');
-    }
-  }
-  
-  if (errors.length > 0) {
-    return res.status(400).json({
+    next();
+  } catch (error) {
+    console.error('Error in validation middleware:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Validation failed',
-      errors: errors
+      message: 'Validation error'
     });
   }
-  
-  next();
 };
 
 // Check if user is gym owner or has permission to modify gym customization
@@ -102,15 +111,19 @@ const checkGymPermission = async (req, res, next) => {
     const { gymId } = req.params;
     const userId = req.user.id;
     
+    console.log('Checking gym permission:', { gymId, userId, userRole: req.user.role });
+    
     // Check if user is gym owner
     if (req.user.role === 'gym-owner' && req.user.id === gymId) {
       req.isGymOwner = true;
+      console.log('User is gym owner');
       return next();
     }
     
     // Check if user belongs to this gym
     const user = await User.findById(userId);
     if (!user) {
+      console.log('User not found:', userId);
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -119,15 +132,23 @@ const checkGymPermission = async (req, res, next) => {
     
     if (user.gymId && user.gymId.toString() === gymId) {
       req.isGymMember = true;
+      console.log('User is gym member');
       return next();
     }
     
+    console.log('User does not have permission:', { userGymId: user.gymId, requestedGymId: gymId });
     return res.status(403).json({
       success: false,
       message: 'You do not have permission to access this gym\'s customization'
     });
   } catch (error) {
     console.error('Error checking gym permission:', error);
+    console.error('Permission check error details:', {
+      message: error.message,
+      stack: error.stack,
+      gymId: req.params.gymId,
+      userId: req.user?.id
+    });
     return res.status(500).json({
       success: false,
       message: 'Server error'
@@ -200,8 +221,12 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     const { gymId } = req.params;
     const updateData = req.body;
     
+    console.log('PUT /customization called:', { gymId, userId: req.user.id, isGymOwner: req.isGymOwner });
+    console.log('Update data:', JSON.stringify(updateData, null, 2));
+    
     // Only gym owners can update customization
     if (!req.isGymOwner) {
+      console.log('Access denied: User is not gym owner');
       return res.status(403).json({
         success: false,
         message: 'Only gym owners can update customization'
@@ -210,23 +235,47 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     
     // Validation is handled by middleware
     
-    // Update or create customization
-    let customization = await GymCustomization.findOneAndUpdate(
-      { gymId },
-      {
-        $set: {
-          ...updateData,
-          'metadata.lastUpdatedBy': req.user.id,
-          updatedAt: new Date()
-        }
-      },
-      { new: true, upsert: true }
-    );
+    // Check if customization exists to determine if this is an update or create
+    console.log('Checking for existing customization...');
+    const existingCustomization = await GymCustomization.findOne({ gymId });
+    console.log('Existing customization found:', !!existingCustomization);
     
-    // If upsert created a new document, set the createdBy field
-    if (customization && !customization.metadata.createdBy) {
-      customization.metadata.createdBy = req.user.id;
-      await customization.save();
+    let customization;
+    if (existingCustomization) {
+      console.log('Updating existing customization...');
+      // Update existing customization
+      customization = await GymCustomization.findOneAndUpdate(
+        { gymId },
+        {
+          $set: {
+            ...updateData,
+            'metadata.lastUpdatedBy': req.user.id,
+            updatedAt: new Date()
+          },
+          $inc: {
+            'metadata.version': 1
+          }
+        },
+        { new: true }
+      );
+      console.log('Customization updated successfully');
+    } else {
+      console.log('Creating new customization...');
+      // Create new customization
+      customization = await GymCustomization.findOneAndUpdate(
+        { gymId },
+        {
+          $set: {
+            ...updateData,
+            'metadata.createdBy': req.user.id,
+            'metadata.lastUpdatedBy': req.user.id,
+            'metadata.version': 1,
+            updatedAt: new Date()
+          }
+        },
+        { new: true, upsert: true }
+      );
+      console.log('Customization created successfully');
     }
     
     res.json({
@@ -236,9 +285,17 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     });
   } catch (error) {
     console.error('Error updating gym customization:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      gymId: req.params.gymId,
+      userId: req.user?.id,
+      updateData: req.body
+    });
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
     });
   }
 });

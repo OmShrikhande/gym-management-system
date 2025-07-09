@@ -166,28 +166,8 @@ gymCustomizationSchema.pre('save', function(next) {
 });
 
 // Pre-update middleware to update version
-// Pre-update middleware to update version and handle metadata updates
 gymCustomizationSchema.pre('findOneAndUpdate', function(next) {
-  try {
-    const update = this.getUpdate();
-    if (update.$set) {
-      // Increment version safely
-      if (update.$set['metadata.version'] !== undefined) {
-        update.$set['metadata.version'] += 1;
-      } else {
-        update.$set['metadata.version'] = 1;
-      }
-
-      // Ensure lastUpdatedBy is set correctly
-      if (!update.$set['metadata.lastUpdatedBy']) {
-        update.$set['metadata.lastUpdatedBy'] = this.getQuery()._id; // or some default value
-      }
-    } else {
-      this.set({ 'metadata.version': 1 });
-    }
-  } catch (error) {
-    console.warn('Error in pre-update middleware:', error);
-  }
+  // Let the route handler manage version updates to avoid conflicts
   next();
 });
 
