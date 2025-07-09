@@ -2,14 +2,22 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { body, validationResult } from 'express-validator';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { authMiddleware } from '../middleware/authMiddleware.js';
+import { protect } from '../middleware/authMiddleware.js';
 import GymCustomization from '../models/gymCustomizationModel.js';
 import User from '../models/userModel.js';
 
 const router = express.Router();
+
+// Test route to verify the module is working
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Gym customization routes are working',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -18,7 +26,7 @@ const __dirname = dirname(__filename);
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/gym-assets');
+    const uploadDir = './uploads/gym-assets';
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -27,7 +35,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const fileExtension = path.extname(file.originalname);
-    const filename = `${req.params.gymId}-${file.fieldname}-${uniqueSuffix}${fileExtension}`;
+    const filename = `${req.params.gymId || 'default'}-${file.fieldname}-${uniqueSuffix}${fileExtension}`;
     cb(null, filename);
   }
 });
@@ -49,19 +57,44 @@ const upload = multer({
   }
 });
 
-// Validation middleware
-const validateCustomization = [
-  body('branding.primaryColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Primary color must be a valid hex color'),
-  body('branding.secondaryColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Secondary color must be a valid hex color'),
-  body('branding.backgroundColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Background color must be a valid hex color'),
-  body('branding.cardColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Card color must be a valid hex color'),
-  body('branding.sidebarColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Sidebar color must be a valid hex color'),
-  body('branding.textColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Text color must be a valid hex color'),
-  body('branding.accentColor').optional().matches(/^#[0-9A-F]{6}$/i).withMessage('Accent color must be a valid hex color'),
-  body('branding.gymName').optional().isLength({ min: 1, max: 100 }).withMessage('Gym name must be between 1 and 100 characters'),
-  body('branding.logo').optional().isURL().withMessage('Logo must be a valid URL'),
-  body('branding.favicon').optional().isURL().withMessage('Favicon must be a valid URL'),
-];
+// Simple validation function
+const validateCustomization = (req, res, next) => {
+  const { branding } = req.body;
+  const errors = [];
+  
+  if (branding) {
+    const colorRegex = /^#[0-9A-F]{6}$/i;
+    const colorFields = ['primaryColor', 'secondaryColor', 'backgroundColor', 'cardColor', 'sidebarColor', 'textColor', 'accentColor'];
+    
+    colorFields.forEach(field => {
+      if (branding[field] && !colorRegex.test(branding[field])) {
+        errors.push(`${field} must be a valid hex color`);
+      }
+    });
+    
+    if (branding.gymName && (branding.gymName.length > 100 || branding.gymName.length < 1)) {
+      errors.push('Gym name must be between 1 and 100 characters');
+    }
+    
+    if (branding.logo && branding.logo.length > 0 && !branding.logo.match(/^https?:\/\/.+/)) {
+      errors.push('Logo must be a valid URL');
+    }
+    
+    if (branding.favicon && branding.favicon.length > 0 && !branding.favicon.match(/^https?:\/\/.+/)) {
+      errors.push('Favicon must be a valid URL');
+    }
+  }
+  
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: errors
+    });
+  }
+  
+  next();
+};
 
 // Check if user is gym owner or has permission to modify gym customization
 const checkGymPermission = async (req, res, next) => {
@@ -103,7 +136,7 @@ const checkGymPermission = async (req, res, next) => {
 };
 
 // Get gym customization
-router.get('/:gymId/customization', authMiddleware, checkGymPermission, async (req, res) => {
+router.get('/:gymId/customization', protect, checkGymPermission, async (req, res) => {
   try {
     const { gymId } = req.params;
     
@@ -162,7 +195,7 @@ router.get('/:gymId/customization', authMiddleware, checkGymPermission, async (r
 });
 
 // Update gym customization (only gym owners)
-router.put('/:gymId/customization', authMiddleware, checkGymPermission, validateCustomization, async (req, res) => {
+router.put('/:gymId/customization', protect, checkGymPermission, validateCustomization, async (req, res) => {
   try {
     const { gymId } = req.params;
     const updateData = req.body;
@@ -175,15 +208,7 @@ router.put('/:gymId/customization', authMiddleware, checkGymPermission, validate
       });
     }
     
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
+    // Validation is handled by middleware
     
     // Update or create customization
     let customization = await GymCustomization.findOneAndUpdate(
@@ -219,7 +244,7 @@ router.put('/:gymId/customization', authMiddleware, checkGymPermission, validate
 });
 
 // Upload gym assets (logo, favicon)
-router.post('/:gymId/upload-asset', authMiddleware, checkGymPermission, upload.single('file'), async (req, res) => {
+router.post('/:gymId/upload-asset', protect, checkGymPermission, upload.single('file'), async (req, res) => {
   try {
     const { gymId } = req.params;
     const { type } = req.body;
@@ -281,7 +306,7 @@ router.post('/:gymId/upload-asset', authMiddleware, checkGymPermission, upload.s
 });
 
 // Delete gym asset
-router.delete('/:gymId/asset/:type', authMiddleware, checkGymPermission, async (req, res) => {
+router.delete('/:gymId/asset/:type', protect, checkGymPermission, async (req, res) => {
   try {
     const { gymId, type } = req.params;
     
@@ -306,11 +331,15 @@ router.delete('/:gymId/asset/:type', authMiddleware, checkGymPermission, async (
     if (customization && customization.branding[type]) {
       const assetUrl = customization.branding[type];
       const filename = path.basename(assetUrl);
-      const filePath = path.join(__dirname, '../../uploads/gym-assets', filename);
+      const filePath = path.join('./uploads/gym-assets', filename);
       
       // Delete file if it exists
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (error) {
+        console.warn('Error deleting file:', error);
       }
     }
     
@@ -340,7 +369,7 @@ router.delete('/:gymId/asset/:type', authMiddleware, checkGymPermission, async (
 });
 
 // Reset gym customization to default
-router.post('/:gymId/reset-customization', authMiddleware, checkGymPermission, async (req, res) => {
+router.post('/:gymId/reset-customization', protect, checkGymPermission, async (req, res) => {
   try {
     const { gymId } = req.params;
     

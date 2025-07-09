@@ -168,11 +168,15 @@ gymCustomizationSchema.pre('save', function(next) {
 
 // Pre-update middleware to update version
 gymCustomizationSchema.pre('findOneAndUpdate', function(next) {
-  const update = this.getUpdate();
-  if (update.$set && update.$set['metadata.version']) {
-    update.$set['metadata.version'] = (update.$set['metadata.version'] || 0) + 1;
-  } else {
-    this.set({ 'metadata.version': 1 });
+  try {
+    const update = this.getUpdate();
+    if (update.$set) {
+      update.$set['metadata.version'] = (update.$set['metadata.version'] || 0) + 1;
+    } else {
+      this.set({ 'metadata.version': 1 });
+    }
+  } catch (error) {
+    console.warn('Error in pre-update middleware:', error);
   }
   next();
 });

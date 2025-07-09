@@ -49,6 +49,14 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User'
   },
+  // Gym relationship for trainers and members
+  gymId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User', // References the gym owner
+    required: function() {
+      return this.role === 'trainer' || this.role === 'member';
+    }
+  },
   // Member specific fields
   phone: String,
   gender: {
