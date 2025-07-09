@@ -79,6 +79,14 @@ const validateCustomization = (req, res, next) => {
         errors.push('Gym name must be between 1 and 100 characters');
       }
       
+      if (branding.systemName && (branding.systemName.length > 50 || branding.systemName.length < 1)) {
+        errors.push('System name must be between 1 and 50 characters');
+      }
+      
+      if (branding.systemSubtitle && (branding.systemSubtitle.length > 100 || branding.systemSubtitle.length < 1)) {
+        errors.push('System subtitle must be between 1 and 100 characters');
+      }
+      
       if (branding.logo && branding.logo.length > 0 && !branding.logo.match(/^https?:\/\/.+/)) {
         errors.push('Logo must be a valid URL');
       }
@@ -220,6 +228,8 @@ router.get('/:gymId/customization', protect, checkGymPermission, async (req, res
         gymId,
         branding: {
           gymName: '',
+          systemName: 'GymFlow',
+          systemSubtitle: 'Gym Management Platform',
           primaryColor: '#3B82F6',
           secondaryColor: '#8B5CF6',
           backgroundColor: '#111827',
@@ -540,6 +550,8 @@ router.post('/:gymId/reset-customization', protect, checkGymPermission, async (r
     const defaultCustomization = {
       branding: {
         gymName: '',
+        systemName: 'GymFlow',
+        systemSubtitle: 'Gym Management Platform',
         primaryColor: '#3B82F6',
         secondaryColor: '#8B5CF6',
         backgroundColor: '#111827',
