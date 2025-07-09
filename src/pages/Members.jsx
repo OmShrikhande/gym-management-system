@@ -75,6 +75,9 @@ const Members = () => {
   // State for gym owner plans
   const [gymOwnerPlans, setGymOwnerPlans] = useState([]);
   
+  // State for form submission
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  
   // Fetch gym owner plans
   const fetchGymOwnerPlans = useCallback(async () => {
     if (!user || !isGymOwner) return;
@@ -694,12 +697,17 @@ const Members = () => {
     }
   };
   
-  // State for form submission
-  const [formSubmitting, setFormSubmitting] = useState(false);
-  
   // Handle payment completion
   const handlePaymentComplete = async (paymentData) => {
-    if (!pendingMemberData) return;
+    console.log('=== PAYMENT COMPLETION STARTED ===');
+    console.log('Payment data received:', paymentData);
+    console.log('Pending member data:', pendingMemberData);
+    
+    if (!pendingMemberData) {
+      console.error('No pending member data found');
+      toast.error('No member data found. Please try again.');
+      return;
+    }
     
     setFormSubmitting(true);
     setMessage({ type: 'info', text: 'Creating member...' });
@@ -726,10 +734,26 @@ const Members = () => {
       
       // Create the member
       console.log('Creating member with data:', memberDataWithPayment);
+      console.log('Payment data received:', paymentData);
+      
       const result = await createMember(memberDataWithPayment);
       console.log('Member creation result:', result);
       
+      // Additional debugging
+      if (!result) {
+        console.error('createMember returned null/undefined');
+        throw new Error('Member creation returned no result');
+      }
+      
+      if (typeof result !== 'object') {
+        console.error('createMember returned unexpected type:', typeof result, result);
+        throw new Error('Member creation returned unexpected result type');
+      }
+      
       if (result.success) {
+        console.log('✅ Member creation successful!');
+        console.log('Created member:', result.user);
+        
         setMessage({ type: 'success', text: result.message });
         resetForm();
         setShowAddForm(false);
@@ -738,7 +762,9 @@ const Members = () => {
         setFormStep(1); // Reset to first step
         
         // Refresh members list
+        console.log('Refreshing users list...');
         await fetchUsers();
+        console.log('Users list refreshed');
         
         // If the new member has been assigned to a trainer, trigger an event to refresh the trainer stats
         if (memberDataWithPayment.requiresTrainer && memberDataWithPayment.assignedTrainer) {
@@ -755,16 +781,26 @@ const Members = () => {
         
         // Show success toast
         toast.success("Member created successfully with payment verification");
+        console.log('=== MEMBER CREATION COMPLETED SUCCESSFULLY ===');
       } else {
-        setMessage({ type: 'error', text: result.message });
+        console.error('❌ Member creation failed:', result);
+        setMessage({ type: 'error', text: result.message || 'Failed to create member' });
         setShowPaymentModal(false);
+        toast.error(result.message || 'Failed to create member');
       }
     } catch (error) {
-      console.error('Error creating member:', error);
-      setMessage({ type: 'error', text: 'An error occurred while creating the member' });
+      console.error('❌ ERROR CREATING MEMBER:', error);
+      console.error('Error stack:', error.stack);
+      
+      const errorMessage = error.message || 'An error occurred while creating the member';
+      setMessage({ type: 'error', text: errorMessage });
       setShowPaymentModal(false);
+      toast.error(errorMessage);
+      
+      console.log('=== MEMBER CREATION FAILED ===');
     } finally {
       setFormSubmitting(false);
+      console.log('Form submitting set to false');
     }
   };
   
@@ -950,6 +986,47 @@ const Members = () => {
     setShowPaymentModal(true);
     setMessage({ type: 'info', text: 'Please complete the payment to create the member' });
 }, [formData, subscriptionInfo, gymOwnerPlans, availableTrainers, setMessage, setPendingMemberData, setShowPaymentModal]);
+
+  // Debug function - expose to window for testing
+  useEffect(() => {
+    window.debugMemberCreation = {
+      testCreateMember: async () => {
+        const testMemberData = {
+          name: "Test Member",
+          email: "test@example.com",
+          password: "password123",
+          phone: "1234567890",
+          gender: "Male",
+          goal: "weight-loss",
+          planType: gymOwnerPlans[0]?.name || "Basic",
+          membershipDuration: "1",
+          paymentStatus: "Paid",
+          paymentId: "TEST-DEBUG",
+          paymentAmount: 1000,
+          paymentDate: new Date().toISOString()
+        };
+        
+        console.log('=== DEBUG: Testing member creation ===');
+        console.log('Test data:', testMemberData);
+        
+        try {
+          const result = await createMember(testMemberData);
+          console.log('Debug result:', result);
+          return result;
+        } catch (error) {
+          console.error('Debug error:', error);
+          return { success: false, error: error.message };
+        }
+      },
+      currentFormData: formData,
+      pendingMemberData: pendingMemberData,
+      gymOwnerPlans: gymOwnerPlans
+    };
+    
+    return () => {
+      delete window.debugMemberCreation;
+    };
+  }, [createMember, formData, pendingMemberData, gymOwnerPlans]);
 
   return (
     <DashboardLayout>

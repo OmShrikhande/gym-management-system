@@ -70,12 +70,22 @@ const QRPaymentModal = ({
       
       // Call the onPaymentComplete callback after a short delay
       setTimeout(() => {
-        onPaymentComplete({
+        const paymentData = {
           paymentId,
           amount: paymentAmount,
           status: "completed",
           timestamp: new Date().toISOString()
-        });
+        };
+        
+        console.log('=== PAYMENT MODAL: Regular payment completion ===');
+        console.log('Payment data:', paymentData);
+        
+        if (typeof onPaymentComplete === 'function') {
+          onPaymentComplete(paymentData);
+        } else {
+          console.error('onPaymentComplete is not a function:', onPaymentComplete);
+          toast.error('Payment completion handler not found');
+        }
       }, 1000);
     } catch (error) {
       console.error("Payment verification error:", error);
@@ -245,12 +255,24 @@ const QRPaymentModal = ({
                 const testPaymentId = "TEST-" + Math.floor(100000 + Math.random() * 900000);
                 
                 // Call the onPaymentComplete callback with test data
-                onPaymentComplete({
+                const paymentData = {
                   paymentId: testPaymentId,
                   amount: paymentAmount,
                   status: "completed",
                   timestamp: new Date().toISOString()
-                });
+                };
+                
+                console.log('=== PAYMENT MODAL: Calling onPaymentComplete ===');
+                console.log('Payment data:', paymentData);
+                console.log('onPaymentComplete function:', typeof onPaymentComplete);
+                
+                if (typeof onPaymentComplete === 'function') {
+                  onPaymentComplete(paymentData);
+                } else {
+                  console.error('onPaymentComplete is not a function:', onPaymentComplete);
+                  toast.error('Payment completion handler not found');
+                  return;
+                }
                 
                 toast.success("Test payment processed");
               }}

@@ -396,6 +396,12 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Call the backend API to create the user
+      console.log('Making API call to create user:', {
+        endpoint,
+        userType,
+        requestBody: { ...requestBody, password: '[HIDDEN]' }
+      });
+      
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -405,9 +411,18 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify(requestBody),
       });
       
+      console.log('API Response status:', response.status);
+      console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
+      
       const data = await response.json();
+      console.log('API Response data:', data);
       
       if (!response.ok) {
+        console.error('User creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          data
+        });
         setError(data.message || 'User creation failed');
         return { success: false, message: data.message || 'User creation failed' };
       }
