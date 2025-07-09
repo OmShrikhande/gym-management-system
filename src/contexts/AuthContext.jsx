@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }) => {
 
   // Verify token and load user data on initial render
   useEffect(() => {
-    let isMounted = true; // Flag to prevent state updates if component is unmounted
+    let isMounted = true;
     
     const initializeAuth = async () => {
       try {
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
           setToken(storedToken);
         }
         
-        // Verify token with backend (optional but recommended)
+        // Verify token with backend
         try {
           const response = await fetch(`${API_URL}/auth/verify-token`, {
             headers: {
@@ -62,29 +62,36 @@ export const AuthProvider = ({ children }) => {
           });
           
           if (response.ok && isMounted) {
-            // Token is valid, load user data
-            const storedUser = getStorageItem(USER_STORAGE_KEY, null);
-            if (storedUser) {
-              setUser(storedUser);
+            // Fetch complete user profile
+            const profileResponse = await fetch(`${API_URL}/users/me`, {
+              headers: { 'Authorization': `Bearer ${storedToken}` }
+            });
+            if (profileResponse.ok) {
+              const profileData = await profileResponse.json();
+              let userData = profileData.data.user;
+              if (userData.role === 'gym-owner' && !userData.gymId) {
+                userData.gymId = userData._id; // Fallback if backend doesn't provide gymId
+              }
+              setUser(userData);
+              setStorageItem(USER_STORAGE_KEY, userData);
               
-              // If user is a gym owner, check subscription status
-              if (storedUser.role === 'gym-owner') {
+              if (userData.role === 'gym-owner') {
                 try {
-                  await checkSubscriptionStatus(storedUser._id, storedToken);
+                  await checkSubscriptionStatus(userData._id, storedToken);
                 } catch (subscriptionError) {
-                  console.error('Subscription check failed during initialization:', subscriptionError);
+                  console.error('Subscription check failed:', subscriptionError);
                 }
               }
-              
-              // PERFORMANCE OPTIMIZATION: Skip loading notifications to reduce API calls
-              // await fetchNotifications(storedUser._id, storedToken);
+            } else {
+              const storedUser = getStorageItem(USER_STORAGE_KEY, null);
+              if (storedUser) {
+                setUser(storedUser);
+              }
             }
           } else if (isMounted) {
-            // Token is invalid or expired, clear auth data
             clearAuthData();
           }
         } catch (err) {
-          // If verification endpoint doesn't exist, fallback to stored user
           console.error('Token verification failed:', err);
           if (isMounted) {
             const storedUser = getStorageItem(USER_STORAGE_KEY, null);
@@ -107,7 +114,6 @@ export const AuthProvider = ({ children }) => {
     
     initializeAuth();
     
-    // Cleanup function to prevent memory leaks
     return () => {
       isMounted = false;
     };
@@ -115,9 +121,7 @@ export const AuthProvider = ({ children }) => {
   
   // Check subscription status with caching
   const checkSubscriptionStatus = useCallback(async (userId, authToken, forceRefresh = false) => {
-    // If we have subscription data and it's not a forced refresh, use the cached data
-    // Only refresh subscription data every 30 minutes unless forced
-    const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+    const CACHE_DURATION = 30 * 60 * 1000;
     const lastCheckTime = window.lastSubscriptionCheckTime || 0;
     const shouldUseCache = !forceRefresh && 
                           subscription && 
@@ -128,9 +132,8 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      // Create an AbortController for timeout handling
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${API_URL}/subscriptions/status/${userId}`, {
         headers: {
@@ -145,20 +148,13 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const data = await response.json();
         setSubscription(data.data);
-        
-        // Store last check timestamp
         window.lastSubscriptionCheckTime = Date.now();
         
-        // If subscription has expired, log out the user
         if (data.data.requiresSubscription && !data.data.hasActiveSubscription) {
-          // Don't log out immediately, but set subscription status
-          // This will be used to show a payment required screen
           return false;
         }
-        
         return true;
       }
-      
       return false;
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -170,77 +166,12 @@ export const AuthProvider = ({ children }) => {
     }
   }, [subscription, token]);
   
-  // We'll define checkMembershipExpiration after updateCurrentUser is defined
-  
-  // Fetch notifications with caching - OPTIMIZED VERSION
+  // Fetch notifications with caching
   const fetchNotifications = useCallback(async (userId, authToken, unreadOnly = false, forceRefresh = false) => {
-    // PERFORMANCE OPTIMIZATION: Return cached data immediately
-    // This function is temporarily modified to reduce API calls and system load
     return { 
       notifications: notifications || [], 
       unreadCount: unreadNotificationCount || 0 
     };
-    
-    // The original implementation is commented out to prevent excessive API calls
-    /*
-    // Cache notifications for 5 minutes unless forced refresh
-    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
-    const lastFetchTime = window.lastNotificationsFetchTime || 0;
-    const shouldUseCache = !forceRefresh && 
-                          notifications.length > 0 && 
-                          (Date.now() - lastFetchTime < CACHE_DURATION);
-    
-    if (shouldUseCache) {
-      return { notifications, unreadCount: unreadNotificationCount };
-    }
-    
-    try {
-      // Fetch notifications
-      const response = await fetch(
-        `${API_URL}/notifications/user/${userId}?unreadOnly=${unreadOnly}`, 
-        {
-          headers: {
-            'Authorization': `Bearer ${authToken || token}`
-          },
-          cache: 'default'
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.data.notifications);
-        
-        // Store last fetch timestamp
-        window.lastNotificationsFetchTime = Date.now();
-      }
-      
-      // Fetch unread count - only if we're not already getting unread only
-      if (!unreadOnly) {
-        const countResponse = await fetch(
-          `${API_URL}/notifications/user/${userId}/unread-count`, 
-          {
-            headers: {
-              'Authorization': `Bearer ${authToken || token}`
-            },
-            cache: 'default'
-          }
-        );
-        
-        if (countResponse.ok) {
-          const countData = await countResponse.json();
-          setUnreadNotificationCount(countData.data.unreadCount);
-        }
-      }
-      
-      return { 
-        notifications: notifications, 
-        unreadCount: unreadNotificationCount 
-      };
-    } catch (err) {
-      // Silently fail without logging
-      return { notifications, unreadCount: unreadNotificationCount };
-    }
-    */
   }, [notifications, unreadNotificationCount]);
   
   // Mark notification as read
@@ -254,7 +185,6 @@ export const AuthProvider = ({ children }) => {
       });
       
       if (response.ok) {
-        // Update local state
         setNotifications(prev => 
           prev.map(notification => 
             notification._id === notificationId 
@@ -262,8 +192,6 @@ export const AuthProvider = ({ children }) => {
               : notification
           )
         );
-        
-        // Update unread count
         setUnreadNotificationCount(prev => Math.max(0, prev - 1));
       }
     } catch (err) {
@@ -284,7 +212,6 @@ export const AuthProvider = ({ children }) => {
       });
       
       if (response.ok) {
-        // Update local state
         setNotifications(prev => prev.map(notification => ({ ...notification, read: true })));
         setUnreadNotificationCount(0);
       }
@@ -298,14 +225,12 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setIsLoading(true);
     
-    // Validate required fields
     if (!userData.email || !userData.password || !userData.name) {
       setError('All fields are required');
       setIsLoading(false);
       return { success: false, message: 'All fields are required' };
     }
     
-    // Validate password length
     if (userData.password.length < 8) {
       setError('Password must be at least 8 characters');
       setIsLoading(false);
@@ -313,7 +238,6 @@ export const AuthProvider = ({ children }) => {
     }
     
     try {
-      // Determine which endpoint to use based on user type
       let endpoint;
       switch(userType) {
         case 'gym-owner':
@@ -329,14 +253,12 @@ export const AuthProvider = ({ children }) => {
           throw new Error('Invalid user type');
       }
       
-      // Prepare request body based on user type
       let requestBody = {
         name: userData.name,
         email: userData.email,
         password: userData.password
       };
       
-      // Add additional fields for gym owner
       if (userType === 'gym-owner') {
         requestBody = {
           ...requestBody,
@@ -344,34 +266,44 @@ export const AuthProvider = ({ children }) => {
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
           totalMembers: userData.totalMembers || 0,
-          gymName: userData.gymName || userData.name + "'s Gym", // Default gym name if not provided
-          // Store subscription plan info for reference
+          gymName: userData.gymName || userData.name + "'s Gym",
           subscriptionPlan: userData.subscriptionPlan || '',
           paymentMethod: userData.paymentMethod || 'credit_card'
         };
       }
       
-      // Add additional fields for trainer
       if (userType === 'trainer') {
         requestBody = {
           ...requestBody,
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
-          // Map salary field to trainerFee for backend compatibility
-          trainerFee: parseInt(userData.salary || userData.trainerFee) || null // Don't set default, let backend handle it
+          trainerFee: parseInt(userData.salary || userData.trainerFee) || null
         };
       }
       
-      // Add additional fields for member
       if (userType === 'member') {
-        // Calculate membership end date based on duration (in months)
+        if (!user || user.role !== 'gym-owner') {
+          const errorMessage = 'Only gym owners can create members';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, message: errorMessage };
+        }
+        
+        if (!user.gymId) {
+          const errorMessage = 'Gym ID is missing for the logged-in gym owner';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, message: errorMessage };
+        }
+        
         const membershipDuration = parseInt(userData.membershipDuration || '1');
         const startDate = new Date();
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + membershipDuration);
         
-        // Helper function to clean empty strings
         const cleanValue = (value) => value && value.trim() !== '' ? value.trim() : undefined;
         
         requestBody = {
@@ -389,24 +321,19 @@ export const AuthProvider = ({ children }) => {
           medicalConditions: cleanValue(userData.medicalConditions),
           assignedTrainer: userData.assignedTrainer || undefined,
           notes: cleanValue(userData.fitnessGoalDescription),
-          // Membership details - use simpler date format
           membershipStatus: 'Active',
-          membershipStartDate: startDate.toISOString().split('T')[0], // YYYY-MM-DD format
-          membershipEndDate: endDate.toISOString().split('T')[0], // YYYY-MM-DD format
+          membershipStartDate: startDate.toISOString().split('T')[0],
+          membershipEndDate: endDate.toISOString().split('T')[0],
           membershipDuration: membershipDuration,
           membershipType: userData.planType || 'Basic',
-          // Add role explicitly for member creation
           role: 'member',
-          // Add gymId - this is required by the backend
-          gymId: user?.gymId || user?._id, // Use gymId if available, otherwise use user's _id (for gym owners)
-          // Add payment related fields if they exist
+          gymId: user.gymId,
           paymentStatus: userData.paymentStatus,
           paymentId: userData.paymentId,
           paymentAmount: userData.paymentAmount,
           paymentDate: userData.paymentDate
         };
         
-        // Remove undefined values to avoid sending them to the backend
         Object.keys(requestBody).forEach(key => {
           if (requestBody[key] === undefined) {
             delete requestBody[key];
@@ -414,49 +341,30 @@ export const AuthProvider = ({ children }) => {
         });
       }
       
-      // Check if user is authenticated
       if (!token) {
         const errorMessage = 'Authentication required. Please log in again.';
         console.error('Auth error:', errorMessage);
         setError(errorMessage);
+        setIsLoading(false);
         return { success: false, message: errorMessage };
       }
       
-      // Additional validation for member creation
       if (userType === 'member') {
-        // Check for required fields that might cause 400 error
-        const requiredFields = ['name', 'email', 'password'];
+        const requiredFields = ['name', 'email', 'password', 'planType', 'gymId'];
         const missingFields = requiredFields.filter(field => !requestBody[field] || requestBody[field].trim() === '');
         
         if (missingFields.length > 0) {
           const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
           console.error('Validation error:', errorMessage);
           setError(errorMessage);
-          return { success: false, message: errorMessage };
-        }
-        
-        // Ensure planType is not empty for members
-        if (!requestBody.planType || requestBody.planType.trim() === '') {
-          const errorMessage = 'Plan Type is required for member creation';
-          console.error('Validation error:', errorMessage);
-          setError(errorMessage);
-          return { success: false, message: errorMessage };
-        }
-        
-        // Ensure gymId is available for member creation
-        if (!requestBody.gymId) {
-          const errorMessage = 'Gym ID is required for member creation. Please ensure you are logged in as a gym owner.';
-          console.error('Validation error:', errorMessage);
-          setError(errorMessage);
+          setIsLoading(false);
           return { success: false, message: errorMessage };
         }
       }
       
-      // Log the request data for debugging
       console.log('Creating user with endpoint:', endpoint);
       console.log('Request body:', JSON.stringify(requestBody, null, 2));
       
-      // Call the backend API to create the user
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -482,12 +390,9 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: errorMessage, details: data };
       }
       
-      // Refresh the users list
       await fetchUsers();
       
-      // If this is a premium member, update the premium count in stats
       if (userType === 'member' && userData.planType === 'Premium Member') {
-        // The stats will be automatically updated when fetchUsers is called
         console.log('Premium member added successfully');
       }
       
@@ -505,22 +410,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
-  // Create a gym owner (Super Admin only)
   const createGymOwner = async (userData) => {
     return createUser(userData, 'gym-owner');
   };
   
-  // Create a trainer (Gym Owner or Super Admin)
   const createTrainer = async (userData) => {
     return createUser(userData, 'trainer');
   };
   
-  // Create a member (Gym Owner or Super Admin)
   const createMember = async (userData) => {
     return createUser(userData, 'member');
   };
   
-  // Update a member
   const updateMember = async (memberData) => {
     setError(null);
     setIsLoading(true);
@@ -531,7 +432,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: 'Member ID is required' };
       }
       
-      // Call the backend API to update the member
       const response = await fetch(`${API_URL}/auth/users/${memberData.id}`, {
         method: 'PUT',
         headers: {
@@ -548,7 +448,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message || 'Member update failed' };
       }
       
-      // Refresh the users list
       await fetchUsers();
       
       return { 
@@ -565,7 +464,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
-  // Delete a member
   const deleteMember = async (memberId) => {
     setError(null);
     setIsLoading(true);
@@ -576,7 +474,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: 'Member ID is required' };
       }
       
-      // First try the auth endpoint
       let response = await fetch(`${API_URL}/auth/users/${memberId}`, {
         method: 'DELETE',
         headers: {
@@ -584,7 +481,6 @@ export const AuthProvider = ({ children }) => {
         }
       });
       
-      // If the first endpoint fails, try the users endpoint
       if (!response.ok) {
         console.log('First delete endpoint failed, trying users endpoint...');
         response = await fetch(`${API_URL}/users/${memberId}`, {
@@ -595,18 +491,15 @@ export const AuthProvider = ({ children }) => {
         });
       }
       
-      // For 204 No Content responses, there's no JSON to parse
       let data = {};
       if (response.status !== 204) {
         try {
           data = await response.json();
         } catch (err) {
           console.error('Error parsing response:', err);
-          // If we can't parse the response, create a default response
           data = { success: response.ok, message: response.ok ? 'Operation successful' : 'Operation failed' };
         }
       } else {
-        // For 204 responses, create a success response
         data = { success: true, message: 'Member deleted successfully' };
       }
       
@@ -615,7 +508,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message || 'Member deletion failed' };
       }
       
-      // Refresh the users list
       await fetchUsers();
       
       return { 
@@ -631,13 +523,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Login user using the backend API
   const login = async (credentials) => {
     setError(null);
     setIsLoading(true);
     
     try {
-      // Call the backend API to login the user
       const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: {
@@ -649,14 +539,12 @@ export const AuthProvider = ({ children }) => {
         }),
       });
       
-      // Check if response is ok before trying to parse JSON
       if (!response.ok) {
         let errorMessage = 'Invalid email or password';
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorMessage;
         } catch (parseError) {
-          // If JSON parsing fails, use default error message
           console.error('Error parsing response:', parseError);
         }
         setError(errorMessage);
@@ -665,26 +553,21 @@ export const AuthProvider = ({ children }) => {
       
       const data = await response.json();
       
-      // Validate that we have the expected data structure
       if (!data || !data.data || !data.data.user) {
         const errorMessage = 'Invalid response from server';
         setError(errorMessage);
         return { success: false, message: errorMessage };
       }
       
-      // Process user data before setting it
-      const userData = data.data.user;
+      let userData = data.data.user;
       
-      // If user is a member, initialize membership data if not present
       if (userData.role === 'member') {
-        // Calculate days remaining if membership end date exists
         if (userData.membershipEndDate) {
           const endDate = new Date(userData.membershipEndDate);
           const today = new Date();
           const diffTime = endDate - today;
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
-          // Set membership days remaining and status
           userData.membershipDaysRemaining = diffDays > 0 ? diffDays : 0;
           userData.membershipStatus = diffDays > 0 ? 'Active' : 'Expired';
           
@@ -694,26 +577,25 @@ export const AuthProvider = ({ children }) => {
             membershipStatus: userData.membershipStatus
           });
         } else {
-          // Default values if no end date
           userData.membershipDaysRemaining = 0;
           userData.membershipStatus = 'Unknown';
         }
       }
       
-      // Set the user and token in state
+      if (userData.role === 'gym-owner' && !userData.gymId) {
+        console.warn('Gym ID missing for gym owner, using _id as fallback');
+        userData.gymId = userData._id;
+      }
+      
       setUser(userData);
       setToken(data.token);
       
-      // Save user and token to localStorage
       setStorageItem(USER_STORAGE_KEY, userData);
       setStorageItem(TOKEN_STORAGE_KEY, data.token);
       
-      // If user is a gym owner, check subscription status
-      if (data.data.user.role === 'gym-owner') {
+      if (userData.role === 'gym-owner') {
         try {
-          const subscriptionActive = await checkSubscriptionStatus(data.data.user._id, data.token);
-          
-          // If subscription has expired, return a special status
+          const subscriptionActive = await checkSubscriptionStatus(userData._id, data.token);
           if (!subscriptionActive) {
             return { 
               success: true, 
@@ -723,13 +605,9 @@ export const AuthProvider = ({ children }) => {
             };
           }
         } catch (subscriptionError) {
-          // Don't fail login if subscription check fails
           console.error('Subscription check failed:', subscriptionError);
         }
       }
-      
-      // PERFORMANCE OPTIMIZATION: Skip loading notifications to reduce API calls
-      // await fetchNotifications(data.data.user._id, data.token);
       
       return { success: true, message: 'Login successful' };
     } catch (err) {
@@ -742,21 +620,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout user
   const logout = () => {
     clearAuthData();
   };
 
   const userRole = user?.role || "";
 
-  // Fetch users from backend (for admin purposes) with caching
   const fetchUsers = useCallback(async (forceRefresh = false) => {
     if (!token) return [];
     
     console.log('Fetching users, force refresh:', forceRefresh);
     
-    // Use cached users if available and not forcing refresh
-    // Only use cache if it's less than 30 seconds old
     const cacheAge = Date.now() - (window.lastUsersFetchTime || 0);
     if (!forceRefresh && users.length > 0 && cacheAge < 30000) {
       console.log('Using cached users, cache age:', cacheAge, 'ms');
@@ -768,23 +642,17 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Authorization': `Bearer ${token}`
         },
-        // Add cache control headers to leverage browser caching
         cache: 'default'
       });
       
       if (response.ok) {
         const data = await response.json();
         setUsers(data.data.users);
-        
-        // Store last fetch timestamp
         window.lastUsersFetchTime = Date.now();
-        
         return data.data.users;
       } else if (response.status === 401) {
-        // Token expired or invalid
         clearAuthData();
       } else if (response.status === 403) {
-        // User doesn't have permission
         console.log('User does not have permission to view users');
         return [];
       }
@@ -795,68 +663,54 @@ export const AuthProvider = ({ children }) => {
     return [];
   }, [token, users, clearAuthData]);
 
-  // Update current user data
   const updateCurrentUser = (updatedUser) => {
     if (!updatedUser) return;
     
-    // Update user in state
     setUser(updatedUser);
-    
-    // Update user in local storage
     setStorageItem(USER_STORAGE_KEY, updatedUser);
   };
   
-  // Check if member's membership has expired - IMPROVED LOGIC
   const checkMembershipExpiration = useCallback((user) => {
     if (!user || user.role !== 'member') return false;
     
-    // If no membership end date, assume membership is active and set days to a high number
     if (!user.membershipEndDate) {
       updateCurrentUser({
         ...user,
         membershipStatus: 'Active',
-        membershipDaysRemaining: 365 // Default to a year if no end date
+        membershipDaysRemaining: 365
       });
       return false;
     }
     
-    // Compare end date with current date
     const endDate = new Date(user.membershipEndDate);
     const today = new Date();
-    
-    // Calculate days remaining
     const diffTime = endDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    // Update user with days remaining
     if (diffDays >= 0) {
-      // Not expired - update days remaining and ensure status is Active
       updateCurrentUser({
         ...user,
         membershipStatus: 'Active',
         membershipDaysRemaining: diffDays
       });
       console.log(`Member has ${diffDays} days remaining. Setting status to Active.`);
-      return false; // Not expired
+      return false;
     } else {
-      // Expired - set days to 0 and status to Expired
       updateCurrentUser({
         ...user,
         membershipStatus: 'Expired',
         membershipDaysRemaining: 0
       });
       console.log('Member membership has expired. Setting status to Expired.');
-      return true; // Expired
+      return true;
     }
   }, []);
 
-  // Create a reusable authenticated fetch function
   const authFetch = async (url, options = {}) => {
     if (!token) {
       throw new Error('Authentication required');
     }
     
-    // Add content-type header if not provided and method is POST, PUT or PATCH
     const headers = {
       ...options.headers,
       'Authorization': `Bearer ${token}`
@@ -866,9 +720,8 @@ export const AuthProvider = ({ children }) => {
       headers['Content-Type'] = 'application/json';
     }
     
-    // Create an AbortController for timeout handling
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000); // 15 second default timeout
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
     
     const authOptions = {
       ...options,
@@ -876,7 +729,6 @@ export const AuthProvider = ({ children }) => {
       signal: controller.signal
     };
     
-    // Ensure the URL has the API_URL prefix if it doesn't start with http
     const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
     
     try {
@@ -887,13 +739,11 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timeoutId);
       
       if (response.status === 401) {
-        // Token expired or invalid
         clearAuthData();
         throw new Error('Authentication expired. Please login again.');
       }
       
       if (response.status === 403) {
-        // Permission denied - return a structured error response
         console.error('Permission denied for request:', fullUrl);
         return {
           success: false,
@@ -915,7 +765,6 @@ export const AuthProvider = ({ children }) => {
       
       if (response.status === 500) {
         console.error('Server error (500):', fullUrl);
-        // Try to get the error message from the response
         try {
           const errorData = await response.json();
           console.error('Server error details:', errorData);
@@ -936,14 +785,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
       
-      // Check if the response is JSON
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
-        // Parse JSON response
         const data = await response.json();
         return data;
       } else {
-        // Handle non-JSON responses
         const text = await response.text();
         console.error('Non-JSON response received:', text.substring(0, 100) + '...');
         return {
@@ -976,11 +822,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Add event listener for attendance marking
   useEffect(() => {
     const handleAttendanceMarked = (event) => {
       console.log('Attendance marked, refreshing user data');
-      // Refresh users data when attendance is marked
       fetchUsers(true);
     };
 
@@ -1017,12 +861,10 @@ export const AuthProvider = ({ children }) => {
       markNotificationAsRead,
       markAllNotificationsAsRead,
       isAuthenticated: !!user,
-      // Helper methods to check user roles
       isSuperAdmin: userRole === 'super-admin',
       isGymOwner: userRole === 'gym-owner',
       isTrainer: userRole === 'trainer',
       isMember: userRole === 'member',
-      // Subscription status helpers
       hasActiveSubscription: subscription?.hasActiveSubscription || !subscription?.requiresSubscription,
       subscriptionDaysRemaining: subscription?.daysRemaining || 0,
       requiresSubscription: subscription?.requiresSubscription || false
