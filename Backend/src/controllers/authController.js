@@ -36,13 +36,11 @@ const createUserWithRole = async (req, res, role) => {
       createdBy: req.user._id // Track who created this user
     };
     
-    // For trainers and members, set the gymId to the gym owner's ID
-    if ((role === 'trainer' || role === 'member') && req.user.role === 'gym-owner') {
-      userData.gymId = req.user._id;
-      console.log(`Creating ${role} with gym owner ID: ${req.user._id}`);
+    // For trainers, explicitly set the gym field to the gym owner's ID
+    if (role === 'trainer' && req.user.role === 'gym-owner') {
+      userData.gym = req.user._id;
+      console.log(`Creating trainer with gym owner ID: ${req.user._id}`);
     }
-    
-    console.log('Final userData before creation:', JSON.stringify(userData, null, 2));
     
     // Add additional fields for member
     if (role === 'member') {
