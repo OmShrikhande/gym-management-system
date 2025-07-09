@@ -63,7 +63,7 @@ export function AppSidebar() {
           { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },
           { label: t('messages'), icon: MessageSquare, href: "/messages" },
           { label: t('reports'), icon: BarChart3, href: "/reports" },
-          { label: t('gymCustomization'), icon: Palette, href: "/gym-customization" },
+          // { label: t('gymCustomization'), icon: Palette, href: "/gym-customization" },
           { label: t('settings'), icon: Settings, href: "/settings" }
         ];
       case 'trainer':
