@@ -15,7 +15,7 @@ import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
 import gymOwnerPlanRoutes from './routes/gymOwnerPlanRoutes.js';
-import gymCustomizationRoutes from './routes/gymCustomizationRoutes.js';
+
 
 import attendanceRoutes from './routes/attendanceRoutes.js';
 
