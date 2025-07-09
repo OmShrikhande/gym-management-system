@@ -66,10 +66,10 @@ const DashboardHeader = () => {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white">
-                  {customization?.branding?.systemName || 'GymFlow'}
+                  {/* {customization?.branding?.systemName || 'GymFlow'} */}
                 </h1>
                 <p className="text-xs text-gray-400 hidden sm:block">
-                  {customization?.branding?.systemSubtitle || 'Gym Management Platform'}
+                  {/* {customization?.branding?.systemSubtitle || 'Gym Management Platform'} */}
                 </p>
               </div>
             </div>

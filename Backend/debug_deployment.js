@@ -52,7 +52,7 @@ async function runDiagnostics() {
   await testEndpoint('/debug-gym/686ba1ee3194c16d80074232');
   
   // Test 5: Try to access the failing endpoint without auth (should fail with 401)
-  await testEndpoint('/api/gym/686ba1ee3194c16d80074232/customization');
+  // await testEndpoint('/api/gym/686ba1ee3194c16d80074232/customization');
   
   console.log('\n✅ Diagnostics complete!');
   console.log('\n📝 Next steps:');
