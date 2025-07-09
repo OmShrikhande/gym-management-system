@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan } from "lucide-react";
+import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan, RefreshCw } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import QRCodeGenerator from "@/components/qr/QRCodeGenerator";
@@ -729,14 +729,23 @@ const Index = () => {
       setIsAttendanceLoading(true);
       const response = await authFetch('/attendance/gym/stats');
       
+      console.log('Attendance stats response:', response);
+      
       if (response.success || response.status === 'success') {
         const stats = response.data?.summary || {};
-        setAttendanceStats({
+        console.log('Attendance stats data:', stats);
+        
+        const newAttendanceStats = {
           todayAttendance: stats.totalAttendanceToday || 0,
           weekAttendance: stats.totalAttendanceThisWeek || 0,
           monthAttendance: stats.totalAttendanceThisMonth || 0,
           totalAttendance: stats.totalAttendanceAllTime || 0
-        });
+        };
+        
+        console.log('Setting attendance stats:', newAttendanceStats);
+        setAttendanceStats(newAttendanceStats);
+      } else {
+        console.error('Failed to fetch attendance stats:', response);
       }
     } catch (error) {
       console.error('Error fetching attendance stats:', error);
@@ -768,6 +777,34 @@ const Index = () => {
       // Clean up the event listener when the component unmounts
       return () => {
         window.removeEventListener('memberAssignmentChanged', handleMemberAssigned);
+      };
+    }
+  }, [user, userRole]);
+  
+  // Add an event listener to refresh attendance stats when attendance is marked
+  useEffect(() => {
+    // Only add the event listener if the user is a gym owner
+    if (user && userRole === 'gym-owner') {
+      // Function to handle the attendance marked event
+      const handleAttendanceMarked = async () => {
+        console.log('Attendance marked, refreshing gym owner data');
+        // Refresh both users data and attendance stats
+        await fetchUsers();
+        await fetchAttendanceStats();
+      };
+      
+      // Add event listener for attendance marking
+      window.addEventListener('attendanceMarked', handleAttendanceMarked);
+      
+      // Set up periodic refresh for attendance stats (every 30 seconds)
+      const attendanceRefreshInterval = setInterval(() => {
+        fetchAttendanceStats();
+      }, 30000);
+      
+      // Clean up the event listener and interval when the component unmounts
+      return () => {
+        window.removeEventListener('attendanceMarked', handleAttendanceMarked);
+        clearInterval(attendanceRefreshInterval);
       };
     }
   }, [user, userRole]);
@@ -929,7 +966,10 @@ const Index = () => {
               label: "Today's Attendance", 
               value: isAttendanceLoading ? <LoadingIndicator /> : (
                 <div className="flex flex-col">
-                  <span>{attendanceStats.todayAttendance.toString()}</span>
+                  <div className="flex items-center space-x-1">
+                    <span>{attendanceStats.todayAttendance.toString()}</span>
+                    <RefreshCw className="h-3 w-3 text-gray-500 opacity-50" />
+                  </div>
                   <span className="text-xs text-gray-400">
                     {attendanceStats.weekAttendance} this week
                   </span>
@@ -937,7 +977,11 @@ const Index = () => {
               ), 
               icon: Calendar, 
               color: "bg-orange-500",
-              onClick: () => navigate("/members")
+              onClick: async () => {
+                // Refresh attendance data when clicked
+                await fetchAttendanceStats();
+                navigate("/members");
+              }
             },
             { 
               label: "Subscription Status", 
