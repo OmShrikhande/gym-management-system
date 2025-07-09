@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { applySettings } from "@/lib/settings";
 import { debounce } from "lodash";
+import { Textarea } from "@/components/ui/textarea";
 
 // Predefined color schemes
 const PRESET_THEMES = {
