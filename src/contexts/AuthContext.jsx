@@ -298,15 +298,6 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setIsLoading(true);
     
-    // TEMPORARY DEBUG: Check current user state
-    console.log('🔍 CREATE USER DEBUG:', {
-      userType,
-      currentUser: user,
-      userRole: user?.role,
-      userId: user?._id,
-      userGymId: user?.gymId
-    });
-    
     // Validate required fields
     if (!userData.email || !userData.password || !userData.name) {
       setError('All fields are required');
@@ -362,18 +353,8 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for trainer
       if (userType === 'trainer') {
-        // Determine gymId - for gym owners it's their user ID, for others it's their gymId
-        const gymId = user?.role === 'gym-owner' ? user._id : user?.gymId;
-        
-        if (!gymId) {
-          setError('Unable to determine gym ID. Please ensure you are logged in properly.');
-          setIsLoading(false);
-          return { success: false, message: 'Unable to determine gym ID. Please ensure you are logged in properly.' };
-        }
-        
         requestBody = {
           ...requestBody,
-          gymId: gymId, // Add the gymId field for trainer association
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
@@ -390,18 +371,8 @@ export const AuthProvider = ({ children }) => {
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + membershipDuration);
         
-        // Determine gymId - for gym owners it's their user ID, for others it's their gymId
-        const gymId = user?.role === 'gym-owner' ? user._id : user?.gymId;
-        
-        if (!gymId) {
-          setError('Unable to determine gym ID. Please ensure you are logged in properly.');
-          setIsLoading(false);
-          return { success: false, message: 'Unable to determine gym ID. Please ensure you are logged in properly.' };
-        }
-        
         requestBody = {
           ...requestBody,
-          gymId: gymId, // Add the required gymId field
           phone: userData.phone || '',
           gender: userData.gender || 'Male',
           dob: userData.dob || '',
@@ -424,20 +395,7 @@ export const AuthProvider = ({ children }) => {
         };
       }
       
-      // Call the backend API to create user
-      console.log('Making API call to create user:', {
-        endpoint,
-        userType,
-        requestBody: { ...requestBody, password: '[HIDDEN]' }
-      });
-      
-      // TEMPORARY DEBUG: Log the actual request body for member creation
-      if (userType === 'member') {
-        console.log('🚨 MEMBER CREATION REQUEST BODY:', JSON.stringify(requestBody, null, 2));
-        console.log('🚨 GYMID IN REQUEST:', requestBody.gymId);
-        console.log('🚨 CURRENT USER:', user);
-      }
-      
+      // Call the backend API to create the user
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -447,18 +405,9 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify(requestBody),
       });
       
-      console.log('API Response status:', response.status);
-      console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
-      
       const data = await response.json();
-      console.log('API Response data:', data);
       
       if (!response.ok) {
-        console.error('User creation failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          data
-        });
         setError(data.message || 'User creation failed');
         return { success: false, message: data.message || 'User creation failed' };
       }

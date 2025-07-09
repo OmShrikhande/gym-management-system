@@ -518,16 +518,8 @@ export const markAttendance = catchAsync(async (req, res, next) => {
 
   // Record attendance
   member.attendance = member.attendance || [];
-  const attendanceRecord = { gymOwnerId, timestamp: new Date(timestamp) };
-  member.attendance.push(attendanceRecord);
-  
-  console.log(`Marking attendance for member ${member.name} (${memberId}) at gym ${gymOwnerId}`);
-  console.log('Attendance record:', attendanceRecord);
-  console.log('Total attendance records after adding:', member.attendance.length);
-  
+  member.attendance.push({ gymOwnerId, timestamp: new Date(timestamp) });
   await member.save({ validateBeforeSave: false });
-  
-  console.log('Attendance successfully saved to database');
 
   res.status(200).json({
     status: 'success',
@@ -598,19 +590,11 @@ export const getGymAttendanceStats = catchAsync(async (req, res, next) => {
     role: 'member' 
   }).select('name email attendance membershipStatus');
 
-  // Calculate statistics with proper date handling
+  // Calculate statistics
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + (24 * 60 * 60 * 1000));
   const thisWeekStart = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  console.log('Date ranges for attendance calculation:', {
-    today: today.toISOString(),
-    tomorrow: tomorrow.toISOString(),
-    thisWeekStart: thisWeekStart.toISOString(),
-    thisMonthStart: thisMonthStart.toISOString()
-  });
 
   let totalAttendanceToday = 0;
   let totalAttendanceThisWeek = 0;
@@ -620,37 +604,20 @@ export const getGymAttendanceStats = catchAsync(async (req, res, next) => {
   const memberStats = members.map(member => {
     const attendance = member.attendance || [];
     
-    // Today's attendance: between today 00:00:00 and tomorrow 00:00:00
     const todayAttendance = attendance.filter(record => {
       const recordDate = new Date(record.timestamp);
-      return recordDate >= today && recordDate < tomorrow;
+      return recordDate >= today;
     }).length;
 
-    // This week's attendance
     const weekAttendance = attendance.filter(record => {
       const recordDate = new Date(record.timestamp);
-      return recordDate >= thisWeekStart && recordDate < tomorrow;
+      return recordDate >= thisWeekStart;
     }).length;
 
-    // This month's attendance
     const monthAttendance = attendance.filter(record => {
       const recordDate = new Date(record.timestamp);
-      return recordDate >= thisMonthStart && recordDate < tomorrow;
+      return recordDate >= thisMonthStart;
     }).length;
-
-    // Log attendance data for debugging
-    if (attendance.length > 0) {
-      console.log(`Member ${member.name} attendance:`, {
-        totalRecords: attendance.length,
-        todayCount: todayAttendance,
-        weekCount: weekAttendance,
-        monthCount: monthAttendance,
-        recentRecords: attendance.slice(-3).map(r => ({
-          timestamp: r.timestamp,
-          date: new Date(r.timestamp).toISOString()
-        }))
-      });
-    }
 
     totalAttendanceToday += todayAttendance;
     totalAttendanceThisWeek += weekAttendance;
