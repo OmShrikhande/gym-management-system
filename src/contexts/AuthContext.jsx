@@ -371,29 +371,80 @@ export const AuthProvider = ({ children }) => {
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + membershipDuration);
         
+        // Helper function to clean empty strings
+        const cleanValue = (value) => value && value.trim() !== '' ? value.trim() : undefined;
+        
         requestBody = {
           ...requestBody,
-          phone: userData.phone || '',
+          phone: cleanValue(userData.phone),
           gender: userData.gender || 'Male',
-          dob: userData.dob || '',
+          dob: cleanValue(userData.dob),
           goal: userData.goal || 'weight-loss',
           planType: userData.planType || 'Basic',
-          address: userData.address || '',
-          whatsapp: userData.whatsapp || '',
-          height: userData.height || '',
-          weight: userData.weight || '',
-          emergencyContact: userData.emergencyContact || '',
-          medicalConditions: userData.medicalConditions || '',
-          assignedTrainer: userData.assignedTrainer || null,
-          notes: userData.fitnessGoalDescription || '',
-          // Membership details
+          address: cleanValue(userData.address),
+          whatsapp: cleanValue(userData.whatsapp),
+          height: cleanValue(userData.height),
+          weight: cleanValue(userData.weight),
+          emergencyContact: cleanValue(userData.emergencyContact),
+          medicalConditions: cleanValue(userData.medicalConditions),
+          assignedTrainer: userData.assignedTrainer || undefined,
+          notes: cleanValue(userData.fitnessGoalDescription),
+          // Membership details - use simpler date format
           membershipStatus: 'Active',
-          membershipStartDate: startDate.toISOString(),
-          membershipEndDate: endDate.toISOString(),
-          membershipDuration: membershipDuration.toString(),
-          membershipType: userData.planType || 'Basic'
+          membershipStartDate: startDate.toISOString().split('T')[0], // YYYY-MM-DD format
+          membershipEndDate: endDate.toISOString().split('T')[0], // YYYY-MM-DD format
+          membershipDuration: membershipDuration,
+          membershipType: userData.planType || 'Basic',
+          // Add role explicitly for member creation
+          role: 'member',
+          // Add payment related fields if they exist
+          paymentStatus: userData.paymentStatus,
+          paymentId: userData.paymentId,
+          paymentAmount: userData.paymentAmount,
+          paymentDate: userData.paymentDate
         };
+        
+        // Remove undefined values to avoid sending them to the backend
+        Object.keys(requestBody).forEach(key => {
+          if (requestBody[key] === undefined) {
+            delete requestBody[key];
+          }
+        });
       }
+      
+      // Check if user is authenticated
+      if (!token) {
+        const errorMessage = 'Authentication required. Please log in again.';
+        console.error('Auth error:', errorMessage);
+        setError(errorMessage);
+        return { success: false, message: errorMessage };
+      }
+      
+      // Additional validation for member creation
+      if (userType === 'member') {
+        // Check for required fields that might cause 400 error
+        const requiredFields = ['name', 'email', 'password'];
+        const missingFields = requiredFields.filter(field => !requestBody[field] || requestBody[field].trim() === '');
+        
+        if (missingFields.length > 0) {
+          const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          return { success: false, message: errorMessage };
+        }
+        
+        // Ensure planType is not empty for members
+        if (!requestBody.planType || requestBody.planType.trim() === '') {
+          const errorMessage = 'Plan Type is required for member creation';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          return { success: false, message: errorMessage };
+        }
+      }
+      
+      // Log the request data for debugging
+      console.log('Creating user with endpoint:', endpoint);
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
       
       // Call the backend API to create the user
       const response = await fetch(endpoint, {
@@ -406,10 +457,19 @@ export const AuthProvider = ({ children }) => {
       });
       
       const data = await response.json();
+      console.log('Response status:', response.status);
+      console.log('Response data:', data);
       
       if (!response.ok) {
-        setError(data.message || 'User creation failed');
-        return { success: false, message: data.message || 'User creation failed' };
+        const errorMessage = data.message || data.error || `HTTP ${response.status}: User creation failed`;
+        console.error('User creation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data,
+          requestBody: requestBody
+        });
+        setError(errorMessage);
+        return { success: false, message: errorMessage, details: data };
       }
       
       // Refresh the users list
