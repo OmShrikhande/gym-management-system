@@ -397,6 +397,8 @@ export const AuthProvider = ({ children }) => {
           membershipType: userData.planType || 'Basic',
           // Add role explicitly for member creation
           role: 'member',
+          // Add gymId - this is required by the backend
+          gymId: user?.gymId || user?._id, // Use gymId if available, otherwise use user's _id (for gym owners)
           // Add payment related fields if they exist
           paymentStatus: userData.paymentStatus,
           paymentId: userData.paymentId,
@@ -436,6 +438,14 @@ export const AuthProvider = ({ children }) => {
         // Ensure planType is not empty for members
         if (!requestBody.planType || requestBody.planType.trim() === '') {
           const errorMessage = 'Plan Type is required for member creation';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          return { success: false, message: errorMessage };
+        }
+        
+        // Ensure gymId is available for member creation
+        if (!requestBody.gymId) {
+          const errorMessage = 'Gym ID is required for member creation. Please ensure you are logged in as a gym owner.';
           console.error('Validation error:', errorMessage);
           setError(errorMessage);
           return { success: false, message: errorMessage };
