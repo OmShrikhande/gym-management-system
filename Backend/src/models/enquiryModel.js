@@ -81,8 +81,7 @@ enquirySchema.pre('save', function(next) {
   next();
 });
 
-// Index for automatic deletion after 7 days
-enquirySchema.index({ createdAt: 1 }, { expireAfterSeconds: 604800 });
+// TTL index is already created by the expires property in createdAt field definition above
 
 const Enquiry = mongoose.model('Enquiry', enquirySchema);
 

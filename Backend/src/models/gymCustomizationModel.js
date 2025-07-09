@@ -5,8 +5,7 @@ const gymCustomizationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   branding: {
     gymName: {
@@ -146,7 +145,7 @@ const gymCustomizationSchema = new mongoose.Schema({
 });
 
 // Indexes for efficient queries
-gymCustomizationSchema.index({ gymId: 1 });
+// Note: gymId already has unique index from field definition
 gymCustomizationSchema.index({ 'metadata.createdBy': 1 });
 gymCustomizationSchema.index({ updatedAt: -1 });
 
@@ -167,11 +166,22 @@ gymCustomizationSchema.pre('save', function(next) {
 });
 
 // Pre-update middleware to update version
+// Pre-update middleware to update version and handle metadata updates
 gymCustomizationSchema.pre('findOneAndUpdate', function(next) {
   try {
     const update = this.getUpdate();
     if (update.$set) {
-      update.$set['metadata.version'] = (update.$set['metadata.version'] || 0) + 1;
+      // Increment version safely
+      if (update.$set['metadata.version'] !== undefined) {
+        update.$set['metadata.version'] += 1;
+      } else {
+        update.$set['metadata.version'] = 1;
+      }
+
+      // Ensure lastUpdatedBy is set correctly
+      if (!update.$set['metadata.lastUpdatedBy']) {
+        update.$set['metadata.lastUpdatedBy'] = this.getQuery()._id; // or some default value
+      }
     } else {
       this.set({ 'metadata.version': 1 });
     }
@@ -180,6 +190,7 @@ gymCustomizationSchema.pre('findOneAndUpdate', function(next) {
   }
   next();
 });
+
 
 // Static method to get customization by gym ID
 gymCustomizationSchema.statics.getByGymId = function(gymId) {
