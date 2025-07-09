@@ -14,7 +14,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Dumbbell, Settings, User, LogOut, CreditCard, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/contexts/TranslationContext";
-import { useGymCustomization } from "@/hooks/useGymCustomization";
+
 import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
 import LanguageSwitcher from "@/components/ui/language-switcher";
@@ -31,7 +31,7 @@ const DashboardHeader = () => {
     checkSubscriptionStatus
   } = useAuth();
   const { t } = useTranslation();
-  const { customization } = useGymCustomization();
+
   
   // Function to refresh the page
   const handleRefresh = () => {

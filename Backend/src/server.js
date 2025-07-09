@@ -120,7 +120,7 @@ app.use('/api/gym', (req, res, next) => {
   console.log(`[GYM DEBUG] Params:`, req.params);
   next();
 });
-app.use('/api/gym', gymCustomizationRoutes);
+
 
 app.use('/api/attendance', attendanceRoutes);
 
@@ -265,53 +265,7 @@ app.get('/test-subscription-cleanup', async (req, res) => {
   }
 });
 
-// Debug endpoint for gym customization
-app.get('/debug-gym/:gymId', async (req, res) => {
-  try {
-    const { gymId } = req.params;
-    const mongoose = await import('mongoose');
-    const User = await import('./models/userModel.js');
-    const GymCustomization = await import('./models/gymCustomizationModel.js');
-    
-    // Check if gymId is valid
-    const isValidObjectId = mongoose.default.Types.ObjectId.isValid(gymId);
-    
-    // Check if gym exists
-    const gym = await User.default.findById(gymId);
-    
-    // Check if customization exists
-    const customization = await GymCustomization.default.findOne({ gymId });
-    
-    res.json({
-      status: 'success',
-      data: {
-        gymId,
-        isValidObjectId,
-        gymExists: !!gym,
-        gymData: gym ? {
-          _id: gym._id,
-          name: gym.name,
-          email: gym.email,
-          role: gym.role
-        } : null,
-        customizationExists: !!customization,
-        customizationData: customization ? {
-          _id: customization._id,
-          gymId: customization.gymId,
-          metadata: customization.metadata
-        } : null,
-        timestamp: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message,
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
+
 
 // 404 handler
 app.use('*', (req, res) => {

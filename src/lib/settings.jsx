@@ -247,24 +247,10 @@ export const applySettings = (settings, userId = null) => {
 };
 
 // Initialize settings from localStorage
-export const initializeSettings = (userId = null, userRole = null, gymId = null) => {
-  // Don't apply gym customization for super admin
-  if (userRole === 'super-admin') {
-    const globalSettings = getAppSettings();
-    if (globalSettings) {
-      applySettings(globalSettings);
-    }
-    return;
-  }
-  
-  // Try to get gym-specific settings first if gymId is provided
+export const initializeSettings = (userId = null, userRole = null) => {
+  // Try to get user-specific settings first
   let settings = null;
-  if (gymId) {
-    settings = getAppSettings(`gym_${gymId}`);
-  }
-  
-  // If no gym settings, try user-specific settings
-  if (!settings && userId) {
+  if (userId) {
     settings = getAppSettings(userId);
   }
   
