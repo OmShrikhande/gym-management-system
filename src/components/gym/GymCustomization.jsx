@@ -195,19 +195,22 @@ const GymCustomization = () => {
   
   // Load gym customization
   const loadCustomization = useCallback(async () => {
-    if (!user?.gymId && !isGymOwner) return;
-    
+    // Fetch customization for ALL users (owner, trainer, member)
+    if (!user?.gymId && !user?._id) return;
+
     try {
       setIsLoading(true);
-      
-      const response = await authFetch(`/gym/${user.gymId || user._id}/customization`);
-      
+
+      // Always fetch by gymId (for trainers/members, user.gymId; for owner, user._id)
+      const gymId = user.gymId || user._id;
+      const response = await authFetch(`/gym/${gymId}/customization`);
+
       if (response.success && response.data) {
         const loadedCustomization = response.data;
         setCustomization(loadedCustomization);
         setOriginalCustomization(loadedCustomization);
-        
-        // Apply settings
+
+        // Always apply settings for all users
         applySettings(loadedCustomization, user._id);
       } else {
         // Set default values if no customization exists
@@ -219,12 +222,29 @@ const GymCustomization = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user, isGymOwner, authFetch]);
+  }, [user, authFetch]);
   
-  // Load customization on component mount
+  // Load customization on component mount or when user changes
   useEffect(() => {
     loadCustomization();
-  }, [loadCustomization]);
+    // Listen for broadcasted customization updates (for all users)
+    let channel;
+    if (window.BroadcastChannel) {
+      channel = new BroadcastChannel('gym-customization');
+      channel.onmessage = (event) => {
+        if (
+          event.data?.type === 'customization-updated' &&
+          (event.data.gymId === user.gymId || event.data.gymId === user._id)
+        ) {
+          setCustomization(event.data.customization);
+          applySettings(event.data.customization, user._id);
+        }
+      };
+    }
+    return () => {
+      if (channel) channel.close();
+    };
+  }, [loadCustomization, user]);
   
   // Handle color changes
   const handleColorChange = useCallback((colorType, value) => {
@@ -305,12 +325,12 @@ const GymCustomization = () => {
           ...customization,
           branding: {
             ...customization.branding,
-            [type]: response.data.url
+            [type]: response.data.url // <-- URL stored in MongoDB
           }
         };
         
         setCustomization(newCustomization);
-        debouncedSave.current(newCustomization);
+        debouncedSave.current(newCustomization); // Saves URL to MongoDB
         
         toast.success(`${type === 'favicon' ? 'Favicon' : 'Logo'} uploaded successfully!`);
       } else {
@@ -442,13 +462,26 @@ const GymCustomization = () => {
     }
   }, [customization, user, authFetch]);
   
+  // Only restrict editing UI to gym owner
   if (!isGymOwner) {
+    // Trainers/members see the theme but cannot edit
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-white mb-2">Access Denied</h3>
-          <p className="text-gray-400">Only gym owners can customize their gym's appearance.</p>
+          <Eye className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">
+            {customization.branding.systemName || "Gym Dashboard"}
+          </h3>
+          <p className="text-gray-400">
+            Your gym's appearance is set by the owner.
+          </p>
+          {customization.branding.logo && (
+            <img
+              src={customization.branding.logo}
+              alt="Gym Logo"
+              className="mx-auto mt-4 w-16 h-16 object-contain rounded"
+            />
+          )}
         </div>
       </div>
     );
@@ -838,19 +871,19 @@ const GymCustomization = () => {
                         id="logo-upload"
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleFileUpload(e.target.files[0], 'logo')}
                         className="hidden"
+                        onChange={(e) => handleFileUpload(e.target.files[0], 'logo')}
                       />
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <Link2 className="h-4 w-4 text-gray-400" />
+                      <Label className="text-white">Or enter URL</Label>
                       <Input
-                        type="url"
+                        type="text"
                         value={customization.branding.logo}
                         onChange={(e) => handleUrlChange('logo', e.target.value)}
                         className="bg-gray-700 border-gray-600 text-white"
-                        placeholder="Or enter logo URL"
+                        placeholder="https://example.com/logo.png"
                       />
                     </div>
                   </div>
@@ -863,11 +896,11 @@ const GymCustomization = () => {
                 
                 <div className="flex items-center gap-4">
                   {customization.branding.favicon && (
-                    <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center border border-gray-600">
+                    <div className="w-16 h-16 bg-gray-700 rounded-lg flex items-center justify-center border border-gray-600">
                       <img 
                         src={customization.branding.favicon} 
                         alt="Favicon"
-                        className="w-full h-full object-contain rounded"
+                        className="w-full h-full object-contain rounded-lg"
                       />
                     </div>
                   )}
@@ -885,20 +918,20 @@ const GymCustomization = () => {
                       <input
                         id="favicon-upload"
                         type="file"
-                        accept="image/x-icon,image/png,image/jpeg"
-                        onChange={(e) => handleFileUpload(e.target.files[0], 'favicon')}
+                        accept="image/*"
                         className="hidden"
+                        onChange={(e) => handleFileUpload(e.target.files[0], 'favicon')}
                       />
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <Link2 className="h-4 w-4 text-gray-400" />
+                      <Label className="text-white">Or enter URL</Label>
                       <Input
-                        type="url"
+                        type="text"
                         value={customization.branding.favicon}
                         onChange={(e) => handleUrlChange('favicon', e.target.value)}
                         className="bg-gray-700 border-gray-600 text-white"
-                        placeholder="Or enter favicon URL"
+                        placeholder="https://example.com/favicon.ico"
                       />
                     </div>
                   </div>
@@ -914,56 +947,75 @@ const GymCustomization = () => {
             <CardHeader>
               <CardTitle className="text-white">Customization Settings</CardTitle>
               <CardDescription className="text-gray-400">
-                Control who can see and modify the gym's appearance
+                Control panel for gym customization options
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Allow Member Customization */}
+                <div className="flex items-center justify-between">
                   <Label className="text-white">Allow Member Customization</Label>
-                  <p className="text-gray-400 text-sm mt-1">
-                    Allow members to customize their personal dashboard colors
-                  </p>
+                  <Switch
+                    checked={customization.settings.allowMemberCustomization}
+                    onCheckedChange={(checked) => {
+                      const newCustomization = {
+                        ...customization,
+                        settings: {
+                          ...customization.settings,
+                          allowMemberCustomization: checked
+                        }
+                      };
+                      setCustomization(newCustomization);
+                      debouncedSave.current(newCustomization);
+                    }}
+                    className="bg-gray-700 border-gray-600"
+                  />
                 </div>
-                <Switch
-                  checked={customization.settings.allowMemberCustomization}
-                  onCheckedChange={(checked) => {
-                    const newCustomization = {
-                      ...customization,
-                      settings: {
-                        ...customization.settings,
-                        allowMemberCustomization: checked
-                      }
-                    };
-                    setCustomization(newCustomization);
-                    debouncedSave.current(newCustomization);
-                  }}
-                />
-              </div>
-              
-              <Separator className="bg-gray-700" />
-              
-              <div className="flex items-center justify-between">
-                <div>
+                
+                {/* Allow Trainer Customization */}
+                <div className="flex items-center justify-between">
                   <Label className="text-white">Allow Trainer Customization</Label>
-                  <p className="text-gray-400 text-sm mt-1">
-                    Allow trainers to customize their personal dashboard colors
+                  <Switch
+                    checked={customization.settings.allowTrainerCustomization}
+                    onCheckedChange={(checked) => {
+                      const newCustomization = {
+                        ...customization,
+                        settings: {
+                          ...customization.settings,
+                          allowTrainerCustomization: checked
+                        }
+                      };
+                      setCustomization(newCustomization);
+                      debouncedSave.current(newCustomization);
+                    }}
+                    className="bg-gray-700 border-gray-600"
+                  />
+                </div>
+                
+                {/* Custom CSS */}
+                <div>
+                  <Label className="text-white">Custom CSS</Label>
+                  <Textarea
+                    value={customization.settings.customCss}
+                    onChange={(e) => {
+                      const newCustomization = {
+                        ...customization,
+                        settings: {
+                          ...customization.settings,
+                          customCss: e.target.value
+                        }
+                      };
+                      setCustomization(newCustomization);
+                      debouncedSave.current(newCustomization);
+                    }}
+                    className="bg-gray-700 border-gray-600 text-white"
+                    placeholder="/* Your custom CSS here */"
+                    rows={4}
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Add your own CSS styles to customize the appearance further. Be careful with syntax!
                   </p>
                 </div>
-                <Switch
-                  checked={customization.settings.allowTrainerCustomization}
-                  onCheckedChange={(checked) => {
-                    const newCustomization = {
-                      ...customization,
-                      settings: {
-                        ...customization.settings,
-                        allowTrainerCustomization: checked
-                      }
-                    };
-                    setCustomization(newCustomization);
-                    debouncedSave.current(newCustomization);
-                  }}
-                />
               </div>
             </CardContent>
           </Card>
@@ -973,72 +1025,60 @@ const GymCustomization = () => {
         <TabsContent value="advanced" className="space-y-6">
           <Card className="bg-gray-800/50 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Advanced Options</CardTitle>
+              <CardTitle className="text-white">Advanced Settings</CardTitle>
               <CardDescription className="text-gray-400">
-                Import, export, and reset your customization settings
+                For advanced users who know what they are doing
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex flex-wrap gap-4">
-                <Button
-                  onClick={exportCustomization}
-                  variant="outline"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Settings
-                </Button>
-                
-                <Button
-                  onClick={() => document.getElementById('import-settings').click()}
-                  variant="outline"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Import Settings
-                </Button>
-                <input
-                  id="import-settings"
-                  type="file"
-                  accept=".json"
-                  onChange={importCustomization}
-                  className="hidden"
-                />
-                
-                <Button
-                  onClick={resetToOriginal}
-                  variant="outline"
-                  className="border-red-600 text-red-400 hover:bg-red-900/20"
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset to Original
-                </Button>
-              </div>
-              
-              <Separator className="bg-gray-700" />
-              
-              {/* Custom CSS */}
+            <CardContent>
               <div className="space-y-4">
-                <Label className="text-white">Custom CSS</Label>
-                <p className="text-gray-400 text-sm">
-                  Add custom CSS to further customize your gym's appearance. Use with caution.
-                </p>
-                <textarea
-                  value={customization.settings.customCss}
-                  onChange={(e) => {
-                    const newCustomization = {
-                      ...customization,
-                      settings: {
-                        ...customization.settings,
-                        customCss: e.target.value
-                      }
-                    };
-                    setCustomization(newCustomization);
-                    debouncedSave.current(newCustomization);
-                  }}
-                  className="w-full h-32 bg-gray-700 border-gray-600 rounded-md p-3 text-white font-mono text-sm"
-                  placeholder="/* Add your custom CSS here */"
-                />
+                {/* Reset Settings */}
+                <div className="flex items-center justify-between">
+                  <Label className="text-white">Reset to Default</Label>
+                  <Button
+                    variant="outline"
+                    onClick={resetToOriginal}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset
+                  </Button>
+                </div>
+                
+                {/* Export Settings */}
+                <div className="flex items-center justify-between">
+                  <Label className="text-white">Export Customization</Label>
+                  <Button
+                    variant="outline"
+                    onClick={exportCustomization}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
+                
+                {/* Import Settings */}
+                <div className="flex items-center justify-between">
+                  <Label className="text-white">Import Customization</Label>
+                  <div className="flex-1">
+                    <input
+                      id="import-customization"
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={importCustomization}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => document.getElementById('import-customization').click()}
+                      className="border-gray-600 text-gray-300 hover:bg-gray-700 w-full"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
