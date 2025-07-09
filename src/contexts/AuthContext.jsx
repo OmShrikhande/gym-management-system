@@ -273,12 +273,29 @@ export const AuthProvider = ({ children }) => {
       }
       
       if (userType === 'trainer') {
+        if (!user || user.role !== 'gym-owner') {
+          const errorMessage = 'Only gym owners can create trainers';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, message: errorMessage };
+        }
+        
+        if (!user.gymId && !user._id) {
+          const errorMessage = 'Gym ID is missing for the logged-in gym owner';
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, message: errorMessage };
+        }
+        
         requestBody = {
           ...requestBody,
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
-          trainerFee: parseInt(userData.salary || userData.trainerFee) || null
+          trainerFee: parseInt(userData.salary || userData.trainerFee) || null,
+          gymId: user?.gymId || user?._id
         };
       }
       
@@ -357,6 +374,30 @@ export const AuthProvider = ({ children }) => {
         console.log('Final gymId being used:', requestBody.gymId);
         
         const requiredFields = ['name', 'email', 'password', 'planType'];
+        const missingFields = requiredFields.filter(field => !requestBody[field] || (typeof requestBody[field] === 'string' && requestBody[field].trim() === ''));
+        
+        // Check gymId separately since it might not be a string
+        if (!requestBody.gymId) {
+          missingFields.push('gymId');
+        }
+        
+        if (missingFields.length > 0) {
+          const errorMessage = `Missing required fields: ${missingFields.join(', ')}`;
+          console.error('Validation error:', errorMessage);
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, message: errorMessage };
+        }
+      }
+      
+      if (userType === 'trainer') {
+        // Debug: Log user object and gymId for trainer creation
+        console.log('Current user object:', user);
+        console.log('User gymId:', user?.gymId);
+        console.log('User _id:', user?._id);
+        console.log('Final gymId being used:', requestBody.gymId);
+        
+        const requiredFields = ['name', 'email', 'password'];
         const missingFields = requiredFields.filter(field => !requestBody[field] || (typeof requestBody[field] === 'string' && requestBody[field].trim() === ''));
         
         // Check gymId separately since it might not be a string
