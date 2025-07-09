@@ -353,8 +353,18 @@ export const AuthProvider = ({ children }) => {
       
       // Add additional fields for trainer
       if (userType === 'trainer') {
+        // Determine gymId - for gym owners it's their user ID, for others it's their gymId
+        const gymId = user?.role === 'gym-owner' ? user._id : user?.gymId;
+        
+        if (!gymId) {
+          setError('Unable to determine gym ID. Please ensure you are logged in properly.');
+          setIsLoading(false);
+          return { success: false, message: 'Unable to determine gym ID. Please ensure you are logged in properly.' };
+        }
+        
         requestBody = {
           ...requestBody,
+          gymId: gymId, // Add the gymId field for trainer association
           phone: userData.phone || '',
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
@@ -371,8 +381,18 @@ export const AuthProvider = ({ children }) => {
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + membershipDuration);
         
+        // Determine gymId - for gym owners it's their user ID, for others it's their gymId
+        const gymId = user?.role === 'gym-owner' ? user._id : user?.gymId;
+        
+        if (!gymId) {
+          setError('Unable to determine gym ID. Please ensure you are logged in properly.');
+          setIsLoading(false);
+          return { success: false, message: 'Unable to determine gym ID. Please ensure you are logged in properly.' };
+        }
+        
         requestBody = {
           ...requestBody,
+          gymId: gymId, // Add the required gymId field
           phone: userData.phone || '',
           gender: userData.gender || 'Male',
           dob: userData.dob || '',
