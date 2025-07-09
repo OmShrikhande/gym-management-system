@@ -359,7 +359,8 @@ export const AuthProvider = ({ children }) => {
           whatsapp: userData.whatsapp || '',
           address: userData.address || '',
           // Map salary field to trainerFee for backend compatibility
-          trainerFee: parseInt(userData.salary || userData.trainerFee) || null // Don't set default, let backend handle it
+          trainerFee: parseInt(userData.salary || userData.trainerFee) || null, // Don't set default, let backend handle it
+          gymId: user?._id // Set gymId to current gym owner's ID
         };
       }
       
@@ -391,7 +392,8 @@ export const AuthProvider = ({ children }) => {
           membershipStartDate: startDate.toISOString(),
           membershipEndDate: endDate.toISOString(),
           membershipDuration: membershipDuration.toString(),
-          membershipType: userData.planType || 'Basic'
+          membershipType: userData.planType || 'Basic',
+          gymId: user?._id // Set gymId to current gym owner's ID
         };
       }
       
@@ -401,6 +403,13 @@ export const AuthProvider = ({ children }) => {
         userType,
         requestBody: { ...requestBody, password: '[HIDDEN]' }
       });
+      
+      // Additional debugging for gymId
+      if (userType === 'member' || userType === 'trainer') {
+        console.log('Current user (gym owner):', user);
+        console.log('GymId being sent:', requestBody.gymId);
+        console.log('User ID from context:', user?._id);
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
