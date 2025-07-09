@@ -14,6 +14,16 @@ const gymCustomizationSchema = new mongoose.Schema({
       default: '',
       maxlength: 100
     },
+    systemName: {
+      type: String,
+      default: 'GymFlow',
+      maxlength: 50
+    },
+    systemSubtitle: {
+      type: String,
+      default: 'Gym Management Platform',
+      maxlength: 100
+    },
     primaryColor: {
       type: String,
       default: '#3B82F6',
@@ -244,6 +254,8 @@ gymCustomizationSchema.methods.applyThemePreset = function(preset) {
 gymCustomizationSchema.methods.resetToDefault = function() {
   this.branding = {
     gymName: '',
+    systemName: 'GymFlow',
+    systemSubtitle: 'Gym Management Platform',
     primaryColor: '#3B82F6',
     secondaryColor: '#8B5CF6',
     backgroundColor: '#111827',
