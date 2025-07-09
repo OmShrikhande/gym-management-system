@@ -30,7 +30,7 @@ import Subscription from './models/subscriptionModel.js';
 import { startSubscriptionCleanup } from './utils/subscriptionCleanup.js';
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: '../.env' });
 
 // Initialize express app
 const app = express();
