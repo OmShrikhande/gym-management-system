@@ -151,15 +151,38 @@ const checkGymPermission = async (req, res, next) => {
       });
     }
     
+    // Convert string to ObjectId for comparison
+    let gymObjectId;
+    try {
+      gymObjectId = new mongoose.Types.ObjectId(gymId);
+    } catch (objectIdError) {
+      console.log('Failed to convert gymId to ObjectId:', objectIdError);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid gym ID format'
+      });
+    }
+    
     // Check if user is gym owner
-    if (req.user.role === 'gym-owner' && req.user.id === gymId) {
+    if (req.user.role === 'gym-owner' && req.user.id.toString() === gymId) {
       req.isGymOwner = true;
       console.log('User is gym owner');
       return next();
     }
     
     // Check if user belongs to this gym
-    const user = await User.findById(userId);
+    let user;
+    try {
+      user = await User.findById(userId);
+    } catch (userError) {
+      console.error('Error finding user:', userError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error when finding user',
+        error: userError.message
+      });
+    }
+    
     if (!user) {
       console.log('User not found:', userId);
       return res.status(404).json({
@@ -220,7 +243,17 @@ router.get('/:gymId/customization', protect, checkGymPermission, async (req, res
       });
     }
     
-    let customization = await GymCustomization.findOne({ gymId });
+    let customization;
+    try {
+      customization = await GymCustomization.findOne({ gymId });
+    } catch (dbError) {
+      console.error('Database error in GET customization:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error',
+        error: dbError.message
+      });
+    }
     
     if (!customization) {
       // Create default customization if none exists
@@ -252,7 +285,16 @@ router.get('/:gymId/customization', protect, checkGymPermission, async (req, res
         }
       });
       
-      await customization.save();
+      try {
+        await customization.save();
+      } catch (saveError) {
+        console.error('Error saving default customization:', saveError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create default customization',
+          error: saveError.message
+        });
+      }
     }
     
     res.json({
@@ -263,7 +305,9 @@ router.get('/:gymId/customization', protect, checkGymPermission, async (req, res
     console.error('Error fetching gym customization:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: error.message,
+      errorName: error.name
     });
   }
 });
@@ -295,8 +339,19 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     
     // Check if customization exists to determine if this is an update or create
     console.log('Checking for existing customization...');
-    const existingCustomization = await GymCustomization.findOne({ gymId });
-    console.log('Existing customization found:', !!existingCustomization);
+    let existingCustomization;
+    try {
+      existingCustomization = await GymCustomization.findOne({ gymId });
+      console.log('Existing customization found:', !!existingCustomization);
+    } catch (dbError) {
+      console.error('Database error when checking existing customization:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection error',
+        error: dbError.message,
+        errorName: dbError.name
+      });
+    }
     
     if (existingCustomization) {
       console.log('Existing customization details:', {
@@ -309,29 +364,57 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
     let customization;
     if (existingCustomization) {
       console.log('Updating existing customization...');
-      // Update existing customization
-      customization = await GymCustomization.findOneAndUpdate(
-        { gymId },
-        {
-          $set: {
-            ...updateData,
-            gymId: gymId, // Ensure gymId is preserved
-            'metadata.lastUpdatedBy': req.user.id,
-            updatedAt: new Date()
+      // Update existing customization with proper nested structure
+      const updateFields = {};
+      
+      // Handle branding updates
+      if (updateData.branding) {
+        Object.keys(updateData.branding).forEach(key => {
+          updateFields[`branding.${key}`] = updateData.branding[key];
+        });
+      }
+      
+      // Handle settings updates
+      if (updateData.settings) {
+        Object.keys(updateData.settings).forEach(key => {
+          updateFields[`settings.${key}`] = updateData.settings[key];
+        });
+      }
+      
+      // Add metadata updates
+      updateFields['metadata.lastUpdatedBy'] = req.user.id;
+      updateFields['updatedAt'] = new Date();
+      
+      console.log('Update fields:', JSON.stringify(updateFields, null, 2));
+      
+      try {
+        customization = await GymCustomization.findOneAndUpdate(
+          { gymId },
+          {
+            $set: updateFields,
+            $inc: {
+              'metadata.version': 1
+            }
           },
-          $inc: {
-            'metadata.version': 1
-          }
-        },
-        { new: true, runValidators: true }
-      );
-      console.log('Customization updated successfully');
+          { new: true, runValidators: true }
+        );
+        console.log('Customization updated successfully');
+      } catch (updateError) {
+        console.error('Error updating customization:', updateError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to update customization',
+          error: updateError.message,
+          errorName: updateError.name
+        });
+      }
     } else {
       console.log('Creating new customization...');
       // Create new customization with proper structure
       const newCustomizationData = {
         gymId: gymId,
-        ...updateData,
+        branding: updateData.branding || {},
+        settings: updateData.settings || {},
         metadata: {
           createdBy: req.user.id,
           lastUpdatedBy: req.user.id,
@@ -341,9 +424,19 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
       
       console.log('New customization data:', JSON.stringify(newCustomizationData, null, 2));
       
-      customization = new GymCustomization(newCustomizationData);
-      await customization.save();
-      console.log('Customization created successfully');
+      try {
+        customization = new GymCustomization(newCustomizationData);
+        await customization.save();
+        console.log('Customization created successfully');
+      } catch (createError) {
+        console.error('Error creating customization:', createError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create customization',
+          error: createError.message,
+          errorName: createError.name
+        });
+      }
     }
     
     if (!customization) {
@@ -397,11 +490,16 @@ router.put('/:gymId/customization', protect, checkGymPermission, validateCustomi
       });
     }
     
+    // Always return error details for debugging
     res.status(500).json({
       success: false,
       message: 'Server error',
+      error: error.message,
+      errorName: error.name,
+      errorCode: error.code,
+      gymId: req.params.gymId,
+      userId: req.user?.id,
       ...(process.env.NODE_ENV === 'development' && { 
-        error: error.message,
         stack: error.stack 
       })
     });

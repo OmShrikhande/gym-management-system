@@ -111,6 +111,15 @@ app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/gym-owner-plans', gymOwnerPlanRoutes);
+// Debug middleware for gym routes
+app.use('/api/gym', (req, res, next) => {
+  console.log(`[GYM DEBUG] ${req.method} ${req.path}`);
+  console.log(`[GYM DEBUG] Headers:`, req.headers);
+  console.log(`[GYM DEBUG] Body:`, req.body);
+  console.log(`[GYM DEBUG] Query:`, req.query);
+  console.log(`[GYM DEBUG] Params:`, req.params);
+  next();
+});
 app.use('/api/gym', gymCustomizationRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
@@ -213,6 +222,22 @@ app.patch('/patch-test', (req, res) => {
   });
 });
 
+// Debug endpoint to check deployment status
+app.get('/deployment-status', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Deployment status check',
+    data: {
+      nodeEnv: process.env.NODE_ENV,
+      mongoUri: process.env.MONGODB_URI ? 'SET' : 'NOT SET',
+      jwtSecret: process.env.JWT_SECRET ? 'SET' : 'NOT SET',
+      codeVersion: 'v2.0-enhanced-error-handling',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    }
+  });
+});
+
 // Test endpoint for subscription cleanup
 app.get('/test-subscription-cleanup', async (req, res) => {
   try {
@@ -240,6 +265,54 @@ app.get('/test-subscription-cleanup', async (req, res) => {
   }
 });
 
+// Debug endpoint for gym customization
+app.get('/debug-gym/:gymId', async (req, res) => {
+  try {
+    const { gymId } = req.params;
+    const mongoose = await import('mongoose');
+    const User = await import('./models/userModel.js');
+    const GymCustomization = await import('./models/gymCustomizationModel.js');
+    
+    // Check if gymId is valid
+    const isValidObjectId = mongoose.default.Types.ObjectId.isValid(gymId);
+    
+    // Check if gym exists
+    const gym = await User.default.findById(gymId);
+    
+    // Check if customization exists
+    const customization = await GymCustomization.default.findOne({ gymId });
+    
+    res.json({
+      status: 'success',
+      data: {
+        gymId,
+        isValidObjectId,
+        gymExists: !!gym,
+        gymData: gym ? {
+          _id: gym._id,
+          name: gym.name,
+          email: gym.email,
+          role: gym.role
+        } : null,
+        customizationExists: !!customization,
+        customizationData: customization ? {
+          _id: customization._id,
+          gymId: customization.gymId,
+          metadata: customization.metadata
+        } : null,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -250,17 +323,24 @@ app.use('*', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+  // If response was already sent, don't try to send another one
+  if (res.headersSent) {
+    return next(err);
+  }
+  
   const statusCode = err.statusCode || 500;
-  const message = process.env.NODE_ENV === 'production' ? 
-    (statusCode === 500 ? 'Internal Server Error' : err.message) : 
-    err.message;
   
-  console.error('Error:', err);
+  console.error('Global error handler:', err);
   
+  // Always provide detailed error information for debugging
   res.status(statusCode).json({
     status: 'error',
     statusCode,
-    message,
+    message: err.message,
+    error: err.message,
+    errorName: err.name,
+    path: req.path,
+    method: req.method,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
