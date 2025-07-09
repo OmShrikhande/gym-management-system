@@ -5,6 +5,7 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n";
 import { AuthProvider } from "@/contexts/AuthContext.jsx";
 import { TranslationProvider } from "@/contexts/TranslationContext.jsx";
+import { GymCustomizationProvider } from "@/contexts/GymCustomizationContext.jsx";
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import SettingsInitializer from "@/components/SettingsInitializer.jsx";
 import Index from "./pages/Index.jsx";
@@ -30,6 +31,7 @@ import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
 import Enquiries from "./pages/Enquiries.jsx";
 import Attendance from "./pages/Attendance.jsx";
+import GymCustomizationPage from "./pages/GymCustomizationPage.jsx";
 
 const queryClient = new QueryClient();
 
@@ -37,10 +39,11 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <I18nextProvider i18n={i18n}>
       <AuthProvider>
-        <TranslationProvider>
-          <Toaster position="top-center" richColors />
-          <SettingsInitializer />
-          <BrowserRouter>
+        <GymCustomizationProvider>
+          <TranslationProvider>
+            <Toaster position="top-center" richColors />
+            <SettingsInitializer />
+            <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
           
@@ -115,6 +118,11 @@ const App = () => (
               <MembershipPlans />
             </ProtectedRoute>
           } />
+          <Route path="/gym-customization" element={
+            <ProtectedRoute allowedRoles={['gym-owner']}>
+              <GymCustomizationPage />
+            </ProtectedRoute>
+          } />
           
           {/* All Authenticated Users Routes */}
           <Route path="/workouts" element={
@@ -179,7 +187,8 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
-        </TranslationProvider>
+          </TranslationProvider>
+        </GymCustomizationProvider>
       </AuthProvider>
     </I18nextProvider>
   </QueryClientProvider>

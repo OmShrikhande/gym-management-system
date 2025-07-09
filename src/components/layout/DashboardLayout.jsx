@@ -3,6 +3,7 @@ import { AppSidebar } from "./AppSidebar";
 import DashboardHeader from "./DashboardHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/contexts/TranslationContext";
+import { useGymCustomization } from "@/contexts/GymCustomizationContext";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -19,6 +20,7 @@ import "@/styles/dashboard.css";
 const DashboardLayout = ({ children }) => {
   const { user, checkSubscriptionStatus, isMember, checkMembershipExpiration, updateCurrentUser } = useAuth();
   const { t } = useTranslation();
+  const { customization, isLoading: customizationLoading } = useGymCustomization();
   const [subscriptionActive, setSubscriptionActive] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();

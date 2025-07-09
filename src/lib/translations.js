@@ -31,6 +31,9 @@ const en = {
   systemSettings: "System Settings",
   gymManagement: "Gym Management",
   userManagement: "User Management",
+  gymCustomization: "Gym Customization",
+  enquiries: "Enquiries",
+  messages: "Messages",
   
   // Settings
   globalSettings: "Global Settings",

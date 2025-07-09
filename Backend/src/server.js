@@ -15,6 +15,7 @@ import dietPlanRoutes from './routes/dietPlanRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
 import gymOwnerPlanRoutes from './routes/gymOwnerPlanRoutes.js';
+import gymCustomizationRoutes from './routes/gymCustomizationRoutes.js';
 
 import attendanceRoutes from './routes/attendanceRoutes.js';
 
@@ -82,6 +83,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
 
+// Serve static files for gym assets
+app.use('/uploads', express.static('uploads'));
+
 // Handle preflight OPTIONS requests
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
@@ -107,6 +111,7 @@ app.use('/api/diet-plans', dietPlanRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/gym-owner-plans', gymOwnerPlanRoutes);
+app.use('/api/gym', gymCustomizationRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
 

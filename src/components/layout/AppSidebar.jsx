@@ -11,7 +11,8 @@ import {
   Building2,
   UserCheck,
   HelpCircle,
-  Package
+  Package,
+  Palette
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
 import { useTranslation } from "@/contexts/TranslationContext";
@@ -62,6 +63,7 @@ export function AppSidebar() {
           { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },
           { label: t('messages'), icon: MessageSquare, href: "/messages" },
           { label: t('reports'), icon: BarChart3, href: "/reports" },
+          { label: t('gymCustomization'), icon: Palette, href: "/gym-customization" },
           { label: t('settings'), icon: Settings, href: "/settings" }
         ];
       case 'trainer':

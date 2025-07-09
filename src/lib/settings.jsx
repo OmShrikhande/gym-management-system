@@ -247,12 +247,34 @@ export const applySettings = (settings, userId = null) => {
 };
 
 // Initialize settings from localStorage
-export const initializeSettings = (userId = null) => {
-  // Try to get user-specific settings first if userId is provided
-  const settings = getAppSettings(userId);
+export const initializeSettings = (userId = null, userRole = null, gymId = null) => {
+  // Don't apply gym customization for super admin
+  if (userRole === 'super-admin') {
+    const globalSettings = getAppSettings();
+    if (globalSettings) {
+      applySettings(globalSettings);
+    }
+    return;
+  }
+  
+  // Try to get gym-specific settings first if gymId is provided
+  let settings = null;
+  if (gymId) {
+    settings = getAppSettings(`gym_${gymId}`);
+  }
+  
+  // If no gym settings, try user-specific settings
+  if (!settings && userId) {
+    settings = getAppSettings(userId);
+  }
+  
+  // If no user settings, try global settings
+  if (!settings) {
+    settings = getAppSettings();
+  }
   
   if (settings) {
-    // Apply settings with user ID if provided
+    // Apply settings with appropriate ID
     applySettings(settings, userId);
     
     // Apply language if available
@@ -262,13 +284,6 @@ export const initializeSettings = (userId = null) => {
       }).catch(error => {
         console.error('Error importing i18n:', error);
       });
-    }
-  } else if (userId) {
-    // If no user-specific settings but userId was provided,
-    // try to load global settings as fallback
-    const globalSettings = getAppSettings();
-    if (globalSettings) {
-      applySettings(globalSettings);
     }
   }
 };
