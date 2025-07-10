@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // Schema for global settings
 const globalSettingsSchema = new mongoose.Schema({
   appName: { type: String, default: 'GymFlow' },
+  appSubtitle: { type: String, default: 'Gym Management Platform' },
   currency: { type: String, default: 'USD' },
   language: { type: String, default: 'English' },
   timezone: { type: String, default: 'UTC' },
@@ -19,6 +20,11 @@ const brandingSettingsSchema = new mongoose.Schema({
   secondaryColor: { type: String, default: '#8B5CF6' },
   logoUrl: { type: String, default: '' },
   faviconUrl: { type: String, default: '' },
+  backgroundColor: { type: String, default: '#111827' },
+  cardColor: { type: String, default: '#1F2937' },
+  sidebarColor: { type: String, default: '#1F2937' },
+  textColor: { type: String, default: '#FFFFFF' },
+  darkMode: { type: Boolean, default: true },
   customCss: { type: String, default: '' }
 });
 

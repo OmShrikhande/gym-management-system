@@ -2,6 +2,7 @@ import Setting from '../models/Setting.js';
 import User from '../models/userModel.js';
 import { errorHandler } from '../utils/errorHandler.js';
 import catchAsync from '../utils/catchAsync.js';
+import webSocketService from '../services/websocketService.js';
 
 /**
  * Get global settings
@@ -124,7 +125,7 @@ export const getGymSettings = catchAsync(async (req, res) => {
  */
 export const updateGymSettings = catchAsync(async (req, res) => {
   const { gymId } = req.params;
-  const { settings } = req.body;
+  const { settings, applyToUsers = true } = req.body;
 
   // Check if user is authorized (super admin or the gym owner)
   if (req.user.role !== 'super-admin' && req.user._id.toString() !== gymId) {
@@ -161,6 +162,51 @@ export const updateGymSettings = catchAsync(async (req, res) => {
     },
     { new: true, upsert: true }
   );
+
+  // If applyToUsers is true, propagate settings to all trainers and members of this gym
+  if (applyToUsers) {
+    try {
+      // Find all trainers and members associated with this gym
+      const gymUsers = await User.find({
+        gymId: gymId,
+        role: { $in: ['trainer', 'member'] }
+      });
+
+      // Collect user IDs for real-time updates
+      const userIds = gymUsers.map(user => user._id.toString());
+
+      // Update/create settings for each user concurrently
+      const updatePromises = gymUsers.map(async (user) => {
+        return Setting.findOneAndUpdate(
+          { userId: user._id },
+          { 
+            ...settings,
+            userId: user._id,
+            isGlobal: false
+          },
+          { new: true, upsert: true }
+        );
+      });
+
+      // Wait for all updates to complete
+      await Promise.all(updatePromises);
+
+      // Broadcast real-time updates via WebSocket
+      if (userIds.length > 0) {
+        const broadcastCount = webSocketService.broadcastSettingsUpdate(
+          settings,
+          userIds,
+          req.user._id.toString()
+        );
+        
+        console.log(`Settings propagated to ${gymUsers.length} users, ${broadcastCount} notified in real-time`);
+      }
+      
+    } catch (propagationError) {
+      console.error('Error propagating settings to users:', propagationError);
+      // We don't want to fail the main request if propagation fails
+    }
+  }
 
   res.status(200).json({
     success: true,
@@ -286,5 +332,86 @@ export const updateUserSettings = catchAsync(async (req, res) => {
     success: true,
     data: { settings: updatedSettings },
     message: 'User settings updated successfully'
+  });
+});
+
+/**
+ * Bulk update settings for multiple users
+ * @route POST /api/settings/bulk
+ * @access Private (Gym Owner, Super Admin)
+ */
+export const bulkUpdateSettings = catchAsync(async (req, res) => {
+  const { userIds, settings } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Valid user IDs array is required'
+    });
+  }
+
+  if (!settings) {
+    return res.status(400).json({
+      success: false,
+      message: 'Settings data is required'
+    });
+  }
+
+  // Verify all users exist and belong to the same gym (for gym owners)
+  const users = await User.find({ _id: { $in: userIds } });
+  
+  if (users.length !== userIds.length) {
+    return res.status(400).json({
+      success: false,
+      message: 'Some users not found'
+    });
+  }
+
+  // For gym owners, verify all users belong to their gym
+  if (req.user.role === 'gym-owner') {
+    const unauthorizedUsers = users.filter(user => 
+      user.gymId !== req.user._id.toString() || 
+      !['trainer', 'member'].includes(user.role)
+    );
+    
+    if (unauthorizedUsers.length > 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only update settings for trainers and members of your gym'
+      });
+    }
+  }
+
+  // Bulk update settings
+  const bulkOperations = userIds.map(userId => ({
+    updateOne: {
+      filter: { userId },
+      update: { 
+        ...settings,
+        userId,
+        isGlobal: false
+      },
+      upsert: true
+    }
+  }));
+
+  await Setting.bulkWrite(bulkOperations);
+
+  // Broadcast settings update via WebSocket
+  if (userIds.length > 0) {
+    webSocketService.broadcastSettingsUpdate(
+      settings,
+      userIds,
+      req.user._id.toString()
+    );
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { 
+      updatedCount: userIds.length,
+      userIds
+    },
+    message: `Settings updated for ${userIds.length} users`
   });
 });

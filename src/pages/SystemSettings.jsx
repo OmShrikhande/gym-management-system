@@ -5,18 +5,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2 } from "lucide-react";
+import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useTranslation } from "@/contexts/TranslationContext.jsx";
 import { useI18n } from "@/components/ui/translate";
 import { toast } from "sonner";
-import { applySettings as applyAppSettings } from "@/lib/settings.jsx";
+import { applySettings as applyAppSettings, forceRefreshSettings } from "@/lib/settings.jsx";
+import { useRealTimeSettings } from "@/hooks/useRealTimeSettings";
+import settingsCache from "@/lib/settingsCache.js";
+import SettingsPerformanceMonitor from "@/components/SettingsPerformanceMonitor";
 
 const SystemSettings = () => {
   const { user, authFetch, isSuperAdmin, isGymOwner } = useAuth();
   const { t, language, changeLanguage } = useTranslation();
   const { i18n } = useI18n();
+  
+  // Initialize real-time settings
+  const { isConnected, lastUpdate, broadcastSettingsUpdate, wsEnabled } = useRealTimeSettings();
 
   const [activeTab, setActiveTab] = useState("global");
   const [isLoading, setIsLoading] = useState(false);
@@ -153,6 +159,9 @@ const SystemSettings = () => {
     }
   };
   
+  // State for controlling whether to apply settings to gym users
+  const [applyToGymUsers, setApplyToGymUsers] = useState(true);
+
   // Save settings to the server
   const saveSettings = async () => {
     if (!user) {
@@ -160,7 +169,29 @@ const SystemSettings = () => {
       return;
     }
     
+    if (!hasPermission) {
+      toast.error('You do not have permission to save settings');
+      return;
+    }
+    
     setIsSaving(true);
+    
+    // Apply settings optimistically (immediate UI update)
+    try {
+      if (isSuperAdmin) {
+        applyAppSettings(settings);
+        toast.info('Applying global settings...', { duration: 1000 });
+      } else if (isGymOwner) {
+        applyAppSettings(settings, user._id, 'gym-owner', user._id);
+        toast.info('Applying settings to your dashboard...', { duration: 1000 });
+      } else {
+        applyAppSettings(settings, user._id, user.role, user.gymId);
+        toast.info('Applying settings to your dashboard...', { duration: 1000 });
+      }
+    } catch (error) {
+      console.error('Error applying settings optimistically:', error);
+    }
+    
     try {
       // Determine the appropriate endpoint based on user role
       let endpoint;
@@ -177,30 +208,112 @@ const SystemSettings = () => {
       }
       
       console.log(`Saving settings to endpoint: ${endpoint}`);
+      
+      // Prepare request body based on user role
+      const requestBody = { settings };
+      
+      // For gym owners, include the applyToUsers flag
+      if (isGymOwner) {
+        requestBody.applyToUsers = applyToGymUsers;
+      }
+      
       const response = await authFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ settings })
+        body: JSON.stringify(requestBody)
       });
       
       if (response.success) {
         toast.success(t('settingsSaved'));
         
-        // Apply settings immediately, but only to the current user's dashboard
+        // Clear all caches and force refresh
+        console.log('Clearing all caches and forcing refresh...');
+        
+        // Clear settings cache
+        if (typeof settingsCache !== 'undefined') {
+          settingsCache.clear();
+        }
+        
+        // Clear localStorage caches
+        const keys = Object.keys(localStorage).filter(key => key.includes('gym_settings') || key.includes('gym_branding'));
+        keys.forEach(key => localStorage.removeItem(key));
+        
+        // Force refresh settings
+        setTimeout(async () => {
+          try {
+            await forceRefreshSettings(user._id, user.role, user.gymId, authFetch);
+            
+            // Dispatch event to notify all components
+            window.dispatchEvent(new CustomEvent('settingsUpdated', { 
+              detail: { 
+                forceRefresh: true,
+                timestamp: new Date().toISOString() 
+              } 
+            }));
+            
+            toast.success('Settings applied and refreshed successfully!');
+          } catch (error) {
+            console.error('Error force refreshing settings:', error);
+            toast.warning('Settings saved but may need a page refresh to take effect');
+          }
+        }, 500);
+        
+        // For gym owners, broadcast to users if enabled
+        if (isGymOwner && applyToGymUsers) {
+          try {
+            // Use WebSocket to broadcast if available
+            if (broadcastSettingsUpdate && wsEnabled && isConnected) {
+              // Find all users in the gym and broadcast via WebSocket
+              const gymUsersResponse = await authFetch(`/users?gymId=${user._id}&role=trainer,member`);
+              
+              if (gymUsersResponse.success && gymUsersResponse.data) {
+                const userIds = gymUsersResponse.data.map(u => u._id);
+                if (userIds.length > 0) {
+                  broadcastSettingsUpdate(settings, userIds);
+                  toast.success(`Settings applied to ${userIds.length} trainers and members in real-time`, {
+                    duration: 5000
+                  });
+                } else {
+                  toast.info('No trainers or members found to apply settings to');
+                }
+              }
+            } else {
+              // WebSocket not available, settings will be applied via server-side propagation
+              toast.success('Settings saved and will be applied to all trainers and members', {
+                duration: 5000,
+                description: 'Users will see the updates on their next page refresh'
+              });
+            }
+          } catch (broadcastError) {
+            console.error('Error broadcasting settings:', broadcastError);
+            toast.info('Settings saved but may take a moment to sync to all users');
+          }
+        }
+        
+        // Success message based on user role
         if (isSuperAdmin) {
-          // Super admin can apply global settings
-          applySettings(settings);
           toast.info('Global settings applied to all users');
+        } else if (isGymOwner) {
+          if (applyToGymUsers) {
+            toast.success('Settings will be applied to all trainers and members of your gym', {
+              duration: 5000
+            });
+          } else {
+            toast.info('Settings applied to your dashboard only');
+          }
         } else {
-          // Other users apply settings only to their dashboard
-          applyAppSettings(settings, user._id);
-          toast.info('Settings will be applied to your dashboard only');
+          toast.info('Settings applied to your dashboard only');
         }
       } else {
+        // Revert optimistic update on error
         toast.error(response.message || t('error'));
+        // Reload to revert optimistic changes
+        setTimeout(() => window.location.reload(), 2000);
       }
     } catch (error) {
       console.error('Error saving settings:', error);
       toast.error('Failed to save settings');
+      // Reload to revert optimistic changes
+      setTimeout(() => window.location.reload(), 2000);
     } finally {
       setIsSaving(false);
     }
@@ -212,9 +325,22 @@ const SystemSettings = () => {
     if (isSuperAdmin) {
       // Use our utility function to apply global settings
       applyAppSettings(settingsToApply);
+    } else if (isGymOwner) {
+      // For gym owners, apply settings with role and ID
+      applyAppSettings(
+        settingsToApply, 
+        user?._id, 
+        'gym-owner', 
+        user?._id // For gym owners, gymId is their own ID
+      );
     } else {
-      // For other users, apply user-specific settings
-      applyAppSettings(settingsToApply, user?._id);
+      // For other users, apply user-specific settings with role and gymId
+      applyAppSettings(
+        settingsToApply, 
+        user?._id, 
+        user?.role, 
+        user?.gymId
+      );
     }
   };
 
@@ -248,29 +374,68 @@ const SystemSettings = () => {
   return (
     <DashboardLayout>
       <div className="space-y-8">
+        {/* Performance Monitor */}
+        <SettingsPerformanceMonitor />
+        
+        {/* Connection Status - Only show if WebSocket is connected (hide disconnected state in production) */}
+        {isGymOwner && wsEnabled && isConnected && (
+          <div className="flex items-center justify-between bg-gray-800/30 border border-gray-700 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-green-400" />
+              <span className="text-sm text-gray-300">
+                Real-time sync: Connected
+              </span>
+              <span className="text-xs text-gray-400">
+                (Settings will update instantly for all users)
+              </span>
+            </div>
+            {lastUpdate && (
+              <span className="text-xs text-gray-400">
+                Last update: {new Date(lastUpdate).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        )}
+        
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">{t('systemSettings')}</h1>
             <p className="text-gray-400">{t('configureSettings')}</p>
           </div>
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={saveSettings}
-            disabled={isSaving || !hasPermission}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {t('loading')}
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                {t('saveAllChanges')}
-              </>
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            {/* Show apply to gym users toggle only for gym owners */}
+            {isGymOwner && (
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="apply-to-users"
+                  checked={applyToGymUsers}
+                  onCheckedChange={setApplyToGymUsers}
+                />
+                <Label htmlFor="apply-to-users" className="text-sm text-gray-300">
+                  Apply to all trainers and members
+                </Label>
+              </div>
             )}
-          </Button>
+            
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={saveSettings}
+              disabled={isSaving || !hasPermission}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {t('loading')}
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {t('saveAllChanges')}
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

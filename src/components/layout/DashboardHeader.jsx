@@ -14,6 +14,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Dumbbell, Settings, User, LogOut, CreditCard, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/contexts/TranslationContext";
+import { useGymBranding } from "@/hooks/useGymBranding";
 
 import { Link } from "react-router-dom";
 import NotificationCenter from "./NotificationCenter";
@@ -31,6 +32,14 @@ const DashboardHeader = () => {
     checkSubscriptionStatus
   } = useAuth();
   const { t } = useTranslation();
+  const { 
+    getAppName, 
+    getAppLogo, 
+    getAppSubtitle, 
+    getPrimaryColor,
+    getSecondaryColor,
+    hasBranding 
+  } = useGymBranding();
 
   
   // Function to refresh the page
@@ -61,15 +70,39 @@ const DashboardHeader = () => {
           <div className="flex items-center space-x-4">
             <SidebarTrigger className="text-white hover:bg-gray-700" />
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
-                <Dumbbell className="h-6 w-6 text-white" />
+              <div 
+                className="p-2 rounded-lg"
+                style={{
+                  background: hasBranding() 
+                    ? `linear-gradient(to right, ${getPrimaryColor()}, ${getSecondaryColor()})` 
+                    : 'linear-gradient(to right, #3B82F6, #8B5CF6)'
+                }}
+              >
+                {getAppLogo() ? (
+                  <img 
+                    src={getAppLogo()} 
+                    alt="Gym Logo" 
+                    className="h-6 w-6 object-contain"
+                    onError={(e) => {
+                      // Fallback to default icon if logo fails to load
+                      e.target.style.display = 'none';
+                      const fallbackIcon = e.target.parentElement.querySelector('.fallback-icon');
+                      if (fallbackIcon) {
+                        fallbackIcon.style.display = 'block';
+                      }
+                    }}
+                  />
+                ) : null}
+                <Dumbbell 
+                  className={`h-6 w-6 text-white fallback-icon ${getAppLogo() ? 'hidden' : 'block'}`}
+                />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white">
-                  {/* {customization?.branding?.systemName || 'GymFlow'} */}
+                  {getAppName()}
                 </h1>
                 <p className="text-xs text-gray-400 hidden sm:block">
-                  {/* {customization?.branding?.systemSubtitle || 'Gym Management Platform'} */}
+                  {getAppSubtitle()}
                 </p>
               </div>
             </div>

@@ -8,6 +8,7 @@ import { TranslationProvider } from "@/contexts/TranslationContext.jsx";
 
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import SettingsInitializer from "@/components/SettingsInitializer.jsx";
+import BrandingManager from "@/components/BrandingManager.jsx";
 import Index from "./pages/Index.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import GymManagement from "./pages/GymManagement.jsx";
@@ -42,6 +43,7 @@ const App = () => (
           <TranslationProvider>
             <Toaster position="top-center" richColors />
             <SettingsInitializer />
+            <BrandingManager />
             <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />

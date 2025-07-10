@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import http from 'http';
+import webSocketService from './services/websocketService.js';
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -265,6 +267,18 @@ app.get('/test-subscription-cleanup', async (req, res) => {
   }
 });
 
+// WebSocket status endpoint
+app.get('/ws-status', (req, res) => {
+  res.json({
+    status: 'success',
+    data: {
+      websocketEnabled: !!webSocketService,
+      connectedClients: webSocketService?.getConnectedClientsCount() || 0,
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
 
 
 // 404 handler
@@ -320,11 +334,18 @@ connectDB().then(async () => {
   // Start subscription cleanup scheduler
   startSubscriptionCleanup();
   
-  app.listen(PORT, '0.0.0.0', () => {
+  // Create HTTP server
+  const server = http.createServer(app);
+  
+  // Initialize WebSocket service
+  webSocketService.initialize(server);
+  
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`📡 API available at https://gym-management-system-ckb0.onrender.com/api`);
     console.log(`🏥 Health check: https://gym-management-system-ckb0.onrender.com/health`);
+    console.log(`🔌 WebSocket service initialized on /ws`);
   });
 }).catch(err => {
   console.error('Failed to connect to database:', err);

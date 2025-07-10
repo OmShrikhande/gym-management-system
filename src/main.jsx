@@ -9,6 +9,19 @@ import { initializeSettings } from './lib/settings.jsx'; // Import initializeSet
 // Initialize application settings before rendering
 initializeSettings();
 
+// Register service worker for offline settings caching
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('Service Worker registered successfully:', registration);
+      })
+      .catch((error) => {
+        console.log('Service Worker registration failed:', error);
+      });
+  });
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

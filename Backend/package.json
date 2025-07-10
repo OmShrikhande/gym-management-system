@@ -25,7 +25,8 @@
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "razorpay": "^2.9.6",
-    "validator": "^13.11.0"
+    "validator": "^13.11.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

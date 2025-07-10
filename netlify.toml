@@ -2,7 +2,25 @@
   publish = "dist"
   command = "npm run build"
 
+[build.environment]
+  VITE_API_URL = "https://gym-management-system-ckb0.onrender.com"
+  NODE_VERSION = "18"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Headers for service worker
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# Headers for WebSocket upgrade
+[[headers]]
+  for = "/ws"
+  [headers.values]
+    Upgrade = "websocket"
+    Connection = "upgrade"

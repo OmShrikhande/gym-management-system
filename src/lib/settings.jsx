@@ -1,15 +1,39 @@
 
 // Get the current application settings
-export const getAppSettings = (userId = null) => {
+export const getAppSettings = (key = null) => {
   try {
-    // If userId is provided, get user-specific settings
-    const storageKey = userId ? `gym_settings_user_${userId}` : 'gym_settings';
+    let storageKey;
     
-    // First try to get user-specific settings
+    if (key) {
+      // Handle different key formats
+      if (key.startsWith('gym_')) {
+        storageKey = `gym_settings_${key}`;
+      } else {
+        storageKey = `gym_settings_user_${key}`;
+      }
+    } else {
+      storageKey = 'gym_settings';
+    }
+    
+    // First try to get the specific settings
     let settingsStr = localStorage.getItem(storageKey);
     
-    // If no user-specific settings and no userId was specified, try to get global settings
-    if (!settingsStr && !userId) {
+    // If no settings found and we have a key, try alternative formats
+    if (!settingsStr && key) {
+      const alternativeKeys = [
+        `gym_settings_gym_${key}`,
+        `gym_settings_user_${key}`,
+        `gym_settings_${key}`
+      ];
+      
+      for (const altKey of alternativeKeys) {
+        settingsStr = localStorage.getItem(altKey);
+        if (settingsStr) break;
+      }
+    }
+    
+    // If still no settings and no key was specified, try global settings
+    if (!settingsStr && !key) {
       settingsStr = localStorage.getItem('gym_settings');
     }
     
@@ -133,7 +157,7 @@ export const formatCurrency = (amount) => {
 };
 
 // Apply settings to the application
-export const applySettings = (settings, userId = null) => {
+export const applySettings = (settings, userId = null, userRole = null, gymId = null) => {
   if (!settings) return;
   
   try {
@@ -217,12 +241,36 @@ export const applySettings = (settings, userId = null) => {
       }
     `;
     
-    // Store settings in localStorage
-    // If userId is provided, store as user-specific settings
+    // Store settings in localStorage based on user role and ID
     if (userId) {
-      const storageKey = `gym_settings_user_${userId}`;
-      localStorage.setItem(storageKey, JSON.stringify(settings));
-      console.log(`Saved user-specific settings for user ${userId}`);
+      if (userRole === 'gym-owner') {
+        // For gym owners, store as both user and gym settings
+        const userStorageKey = `gym_settings_user_${userId}`;
+        const gymStorageKey = `gym_settings_gym_${userId}`;
+        localStorage.setItem(userStorageKey, JSON.stringify(settings));
+        localStorage.setItem(gymStorageKey, JSON.stringify(settings));
+        console.log(`Saved gym owner settings for user ${userId}`);
+        
+        // Store the gym ID for reference by trainers and members
+        localStorage.setItem('gym_id', userId);
+      } else if (userRole === 'trainer' || userRole === 'member') {
+        // For trainers and members, store gym settings and their user reference
+        const userStorageKey = `gym_settings_user_${userId}`;
+        localStorage.setItem(userStorageKey, JSON.stringify(settings));
+        
+        if (gymId) {
+          // Store gym settings for other users of this gym
+          const gymStorageKey = `gym_settings_gym_${gymId}`;
+          localStorage.setItem(gymStorageKey, JSON.stringify(settings));
+          localStorage.setItem('gym_id', gymId);
+          console.log(`Saved gym settings for trainer/member ${userId} of gym ${gymId}`);
+        }
+      } else {
+        // For other users, store as user-specific settings
+        const userStorageKey = `gym_settings_user_${userId}`;
+        localStorage.setItem(userStorageKey, JSON.stringify(settings));
+        console.log(`Saved user-specific settings for user ${userId}`);
+      }
     } else {
       // Store as global settings
       localStorage.setItem('gym_settings', JSON.stringify(settings));
@@ -241,27 +289,72 @@ export const applySettings = (settings, userId = null) => {
         console.error('Error applying language settings:', error);
       }
     }
+    
+    // Clear service worker cache for settings
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const channel = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLEAR_SETTINGS_CACHE'
+      }, [channel.port2]);
+      
+      channel.port1.onmessage = (event) => {
+        if (event.data.success) {
+          console.log('Service worker cache cleared successfully');
+        }
+      };
+    }
+    
+    // Dispatch an event to notify the application that settings have been applied
+    window.dispatchEvent(new CustomEvent('settingsApplied', { 
+      detail: { 
+        userId, 
+        userRole,
+        gymId,
+        timestamp: new Date().toISOString()
+      } 
+    }));
+    
+    console.log(`Settings applied successfully for ${userRole || 'user'} ${userId || 'global'}`);
   } catch (error) {
     console.error('Error applying settings:', error);
   }
 };
 
 // Initialize settings from localStorage
-export const initializeSettings = (userId = null, userRole = null) => {
+export const initializeSettings = (userId = null, userRole = null, gymId = null) => {
   // Try to get user-specific settings first
   let settings = null;
-  if (userId) {
+  let settingsKey = null;
+  
+  if (userRole === 'super-admin') {
+    // Super admin gets global settings
+    settings = getAppSettings();
+    settingsKey = 'global';
+  } else if (userRole === 'gym-owner' && userId) {
+    // Gym owner gets their own settings
     settings = getAppSettings(userId);
+    settingsKey = `gym_${userId}`;
+  } else if ((userRole === 'trainer' || userRole === 'member') && gymId) {
+    // Trainers and members get their gym's settings
+    settings = getAppSettings(`gym_${gymId}`);
+    settingsKey = `gym_${gymId}`;
+    
+    // If no gym settings found, try the gym owner's user settings
+    if (!settings) {
+      settings = getAppSettings(gymId);
+      settingsKey = `gym_${gymId}`;
+    }
   }
   
-  // If no user settings, try global settings
+  // If still no settings, try global settings
   if (!settings) {
     settings = getAppSettings();
+    settingsKey = 'global';
   }
   
   if (settings) {
-    // Apply settings with appropriate ID
-    applySettings(settings, userId);
+    // Apply settings with appropriate context
+    applySettings(settings, userId, userRole, gymId);
     
     // Apply language if available
     if (settings.global?.language) {
@@ -271,5 +364,156 @@ export const initializeSettings = (userId = null, userRole = null) => {
         console.error('Error importing i18n:', error);
       });
     }
+    
+    console.log(`Settings initialized for ${userRole} with key: ${settingsKey}`);
+  }
+};
+
+// Get settings based on user role with performance tracking
+export const getSettingsForUser = async (userId, userRole, gymId, authFetch) => {
+  if (!userId || !authFetch) return null;
+  
+  const startTime = performance.now();
+  
+  try {
+    let endpoint;
+    
+    // Determine the appropriate endpoint based on user role
+    if (userRole === 'super-admin') {
+      endpoint = '/settings';
+    } else if (userRole === 'gym-owner') {
+      endpoint = `/settings/gym/${userId}`;
+    } else if (userRole === 'trainer' || userRole === 'member') {
+      endpoint = `/settings/user/${userId}`;
+    } else {
+      // Fallback to user-specific settings
+      endpoint = `/settings/user/${userId}`;
+    }
+    
+    const response = await authFetch(endpoint);
+    const endTime = performance.now();
+    
+    // Dispatch performance event
+    window.dispatchEvent(new CustomEvent('settingsPerformance', {
+      detail: {
+        type: 'api_call',
+        timing: endTime - startTime,
+        success: response.success,
+        endpoint
+      }
+    }));
+    
+    if (response.success && response.data?.settings) {
+      return response.data.settings;
+    }
+  } catch (error) {
+    console.error('Error fetching settings for user:', error);
+    const endTime = performance.now();
+    
+    // Dispatch error event
+    window.dispatchEvent(new CustomEvent('settingsPerformance', {
+      detail: {
+        type: 'api_error',
+        timing: endTime - startTime,
+        success: false,
+        error: error.message
+      }
+    }));
+  }
+  
+  return null;
+};
+
+// Performance-optimized settings fetcher with caching
+export const getSettingsWithCache = async (userId, userRole, gymId, authFetch, settingsCache) => {
+  if (!userId || !authFetch) return null;
+  
+  // Check cache first
+  const cached = settingsCache?.get(userId, userRole, gymId);
+  if (cached) {
+    // Dispatch cache hit event
+    window.dispatchEvent(new CustomEvent('settingsPerformance', {
+      detail: {
+        type: 'cache_hit',
+        timing: 0,
+        success: true
+      }
+    }));
+    return cached;
+  }
+  
+  // Dispatch cache miss event
+  window.dispatchEvent(new CustomEvent('settingsPerformance', {
+    detail: {
+      type: 'cache_miss',
+      timing: 0,
+      success: false
+    }
+  }));
+  
+  // Fetch from API
+  const settings = await getSettingsForUser(userId, userRole, gymId, authFetch);
+  
+  // Cache the result
+  if (settings && settingsCache) {
+    settingsCache.set(userId, userRole, gymId, settings);
+  }
+  
+  return settings;
+};
+
+// Force refresh settings by clearing all caches
+export const forceRefreshSettings = async (userId, userRole, gymId, authFetch) => {
+  if (!authFetch) return null;
+  
+  try {
+    console.log('Force refreshing settings...');
+    
+    // Clear localStorage cache
+    const keys = Object.keys(localStorage).filter(key => key.includes('gym_settings') || key.includes('gym_branding'));
+    keys.forEach(key => localStorage.removeItem(key));
+    
+    // Clear service worker cache
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const channel = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLEAR_SETTINGS_CACHE'
+      }, [channel.port2]);
+      
+      await new Promise((resolve) => {
+        channel.port1.onmessage = () => resolve();
+        setTimeout(resolve, 1000); // Timeout after 1 second
+      });
+    }
+    
+    // Determine endpoint
+    let endpoint;
+    if (userRole === 'super-admin') {
+      endpoint = '/settings';
+    } else if (userRole === 'gym-owner') {
+      endpoint = `/settings/gym/${userId}`;
+    } else if (userRole === 'trainer' || userRole === 'member') {
+      endpoint = gymId ? `/settings/gym/${gymId}` : `/settings/user/${userId}`;
+    } else {
+      endpoint = `/settings/user/${userId}`;
+    }
+    
+    // Add cache-busting parameter
+    const cacheBustingUrl = `${endpoint}?_cb=${Date.now()}`;
+    
+    // Fetch fresh settings
+    const response = await authFetch(cacheBustingUrl);
+    
+    if (response.success && response.data?.settings) {
+      // Apply fresh settings
+      applySettings(response.data.settings, userId, userRole, gymId);
+      console.log('Settings force refreshed successfully');
+      return response.data.settings;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error force refreshing settings:', error);
+    return null;
   }
 };

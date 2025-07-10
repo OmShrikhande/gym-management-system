@@ -6,7 +6,8 @@ import {
   getGymSettings,
   updateGymSettings,
   getUserSettings,
-  updateUserSettings
+  updateUserSettings,
+  bulkUpdateSettings
 } from '../controllers/settingController.js';
 
 const router = express.Router();
@@ -22,5 +23,8 @@ router.post('/user/:userId', protect, updateUserSettings);
 // Gym-specific settings routes (Gym owners only)
 router.get('/gym/:gymId', protect, restrictTo('gym-owner'), getGymSettings);
 router.post('/gym/:gymId', protect, restrictTo('gym-owner'), updateGymSettings);
+
+// Bulk update settings (Gym owners and Super Admin only)
+router.post('/bulk', protect, restrictTo('gym-owner', 'super-admin'), bulkUpdateSettings);
 
 export default router;
