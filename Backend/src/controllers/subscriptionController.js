@@ -102,7 +102,23 @@ export const getActiveGymCount = catchAsync(async (req, res, next) => {
     }
   ]);
 
-  const activeGymCount = result.length > 0 ? result[0].activeGymCount : 0;
+  const subscriptionBasedCount = result.length > 0 ? result[0].activeGymCount : 0;
+
+  // Alternative approach: Count gym owners with active account status
+  // This is more accurate as it reflects the actual active gym owners
+  const activeGymOwners = await User.countDocuments({
+    role: 'gym-owner',
+    accountStatus: 'active'
+  });
+
+  // Use the account status based count as it's more reliable
+  const activeGymCount = activeGymOwners;
+
+  console.log('Active gym count comparison:', {
+    subscriptionBased: subscriptionBasedCount,
+    accountStatusBased: activeGymOwners,
+    usingCount: activeGymCount
+  });
 
   res.status(200).json({
     status: 'success',

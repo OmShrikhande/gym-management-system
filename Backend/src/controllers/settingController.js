@@ -84,15 +84,32 @@ export const getGymSettings = catchAsync(async (req, res) => {
     isAuthorized = true;
   } else if (req.user.role === 'gym-owner' && req.user._id.toString() === gymId) {
     isAuthorized = true;
-  } else if ((req.user.role === 'trainer' || req.user.role === 'member') && req.user.gymId?.toString() === gymId) {
-    // Allow trainers and members to read their gym's settings
-    isAuthorized = true;
+  } else if (req.user.role === 'trainer' || req.user.role === 'member') {
+    // For trainers and members, check both gymId and createdBy fields
+    const userGymId = req.user.gymId?.toString() || req.user.createdBy?.toString();
+    if (userGymId === gymId) {
+      isAuthorized = true;
+    }
   }
   
   if (!isAuthorized) {
+    console.log('Settings access denied:', {
+      userRole: req.user.role,
+      userId: req.user._id.toString(),
+      requestedGymId: gymId,
+      userGymId: req.user.gymId?.toString(),
+      userCreatedBy: req.user.createdBy?.toString()
+    });
+    
     return res.status(403).json({
       success: false,
-      message: 'Access denied. You can only access settings for your gym.'
+      message: 'Access denied. You can only access settings for your gym.',
+      debug: {
+        userRole: req.user.role,
+        requestedGymId: gymId,
+        userGymId: req.user.gymId?.toString(),
+        userCreatedBy: req.user.createdBy?.toString()
+      }
     });
   }
 
