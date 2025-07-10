@@ -129,11 +129,11 @@ const QRCodeScanner = ({ onScanSuccess, onClose, memberId }) => {
         throw new Error('Invalid QR code: Missing or invalid gymOwnerId');
       }
 
-      // Prepare request data
+      // Prepare request data - let server handle timestamp
       const requestData = {
         gymOwnerId: qrData.gymOwnerId,
-        memberId: memberId || user?._id,
-        timestamp: qrData.timestamp || new Date().toISOString()
+        memberId: memberId || user?._id
+        // Removed timestamp - server will use current time to avoid timezone issues
       };
 
       console.log('Request data being sent:', requestData);

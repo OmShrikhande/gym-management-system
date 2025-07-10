@@ -58,12 +58,24 @@ const Attendance = () => {
       const attendance = member.attendance || [];
       
       const sortedAttendance = attendance
-        .map(record => ({
-          ...record,
-          date: new Date(record.timestamp),
-          time: new Date(record.timestamp).toLocaleTimeString(),
-          dateString: new Date(record.timestamp).toLocaleDateString()
-        }))
+        .map(record => {
+          // Create date object and ensure it's in local timezone
+          const date = new Date(record.timestamp);
+          return {
+            ...record,
+            date: date,
+            time: date.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true 
+            }),
+            dateString: date.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            })
+          };
+        })
         .sort((a, b) => b.date - a.date);
       
       setAttendanceData(sortedAttendance);
@@ -89,11 +101,12 @@ const Attendance = () => {
       return recordDate.getMonth() === thisMonth && recordDate.getFullYear() === thisYear;
     }).length;
     
-    // Today's count
+    // Today's count - more accurate comparison
     const todayCount = attendance.filter(record => {
       const recordDate = new Date(record.date);
-      recordDate.setHours(0, 0, 0, 0);
-      return recordDate.getTime() === today.getTime();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const recordStart = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+      return recordStart.getTime() === todayStart.getTime();
     }).length;
     
     // Calculate average per week (last 4 weeks)
@@ -140,13 +153,18 @@ const Attendance = () => {
   const getAttendanceStatus = (date) => {
     const today = new Date();
     const recordDate = new Date(date);
-    const diffTime = today - recordDate;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Set both dates to start of day for accurate comparison
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const recordStart = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+    
+    const diffTime = todayStart - recordStart;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays === 0) return { label: 'Today', variant: 'default' };
     if (diffDays === 1) return { label: 'Yesterday', variant: 'secondary' };
     if (diffDays <= 7) return { label: `${diffDays} days ago`, variant: 'outline' };
-    return { label: recordDate.toLocaleDateString(), variant: 'outline' };
+    return { label: recordDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), variant: 'outline' };
   };
 
   if (isLoading) {

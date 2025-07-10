@@ -476,11 +476,11 @@ export const joinGym = catchAsync(async (req, res, next) => {
 });
 
 export const markAttendance = catchAsync(async (req, res, next) => {
-  const { gymOwnerId, memberId, timestamp } = req.body;
+  const { gymOwnerId, memberId } = req.body;
 
   // Validate input
-  if (!gymOwnerId || !memberId || !timestamp) {
-    return next(new AppError('Gym owner ID, member ID, and timestamp are required', 400));
+  if (!gymOwnerId || !memberId) {
+    return next(new AppError('Gym owner ID and member ID are required', 400));
   }
 
   // Check if the requesting user is the member
@@ -516,9 +516,10 @@ export const markAttendance = catchAsync(async (req, res, next) => {
     });
   }
 
-  // Record attendance
+  // Record attendance with current server time to avoid timezone issues
   member.attendance = member.attendance || [];
-  member.attendance.push({ gymOwnerId, timestamp: new Date(timestamp) });
+  const attendanceTimestamp = new Date(); // Use server's current time
+  member.attendance.push({ gymOwnerId, timestamp: attendanceTimestamp });
   await member.save({ validateBeforeSave: false });
 
   res.status(200).json({
@@ -532,7 +533,7 @@ export const markAttendance = catchAsync(async (req, res, next) => {
         name: gymOwner.gymName || gymOwner.name + "'s Gym",
         owner: gymOwner.name
       },
-      attendance: { gymOwnerId, timestamp }
+      attendance: { gymOwnerId, timestamp: attendanceTimestamp }
     }
   });
 });
