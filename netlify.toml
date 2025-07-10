@@ -3,7 +3,7 @@
   command = "npm run build"
 
 [build.environment]
-  VITE_API_URL = "https://gym-management-system-ckb0.onrender.com"
+  VITE_API_URL = "https://gym-management-system-ckb0.onrender.com/api"
   NODE_VERSION = "18"
 
 [[redirects]]
