@@ -20,8 +20,10 @@ router.post('/', protect, restrictTo('super-admin'), updateGlobalSettings);
 router.get('/user/:userId', protect, getUserSettings);
 router.post('/user/:userId', protect, updateUserSettings);
 
-// Gym-specific settings routes (Gym owners only)
-router.get('/gym/:gymId', protect, restrictTo('gym-owner'), getGymSettings);
+// Gym-specific settings routes 
+// GET: Allow gym-owner, trainer, and member to read settings
+// POST: Only gym-owner can update settings
+router.get('/gym/:gymId', protect, restrictTo('gym-owner', 'trainer', 'member'), getGymSettings);
 router.post('/gym/:gymId', protect, restrictTo('gym-owner'), updateGymSettings);
 
 // Bulk update settings (Gym owners and Super Admin only)

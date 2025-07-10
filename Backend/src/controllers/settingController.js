@@ -71,16 +71,28 @@ export const updateGlobalSettings = catchAsync(async (req, res) => {
 /**
  * Get gym settings
  * @route GET /api/settings/gym/:gymId
- * @access Private (Gym Owner, Super Admin)
+ * @access Private (Gym Owner, Trainer, Member, Super Admin)
+ * Note: Trainers and Members can only read their gym's settings
  */
 export const getGymSettings = catchAsync(async (req, res) => {
   const { gymId } = req.params;
 
-  // Check if user is authorized (super admin or the gym owner)
-  if (req.user.role !== 'super-admin' && req.user._id.toString() !== gymId) {
+  // Check if user is authorized
+  let isAuthorized = false;
+  
+  if (req.user.role === 'super-admin') {
+    isAuthorized = true;
+  } else if (req.user.role === 'gym-owner' && req.user._id.toString() === gymId) {
+    isAuthorized = true;
+  } else if ((req.user.role === 'trainer' || req.user.role === 'member') && req.user.gymId?.toString() === gymId) {
+    // Allow trainers and members to read their gym's settings
+    isAuthorized = true;
+  }
+  
+  if (!isAuthorized) {
     return res.status(403).json({
       success: false,
-      message: 'Access denied. You can only access your own gym settings.'
+      message: 'Access denied. You can only access settings for your gym.'
     });
   }
 

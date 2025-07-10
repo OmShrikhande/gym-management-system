@@ -12,12 +12,13 @@ export const useGymBranding = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Get gym ID - for gym owners it's their user ID, for trainers/members it's their gymId
+  // Get gym ID - for gym owners it's their user ID, for trainers/members it's their gymId or createdBy
   const getGymId = () => {
     if (isGymOwner) {
       return user?._id;
     } else if (userRole === 'trainer' || userRole === 'member') {
-      return user?.gymId;
+      // Try gymId first, then createdBy as fallback
+      return user?.gymId || user?.createdBy;
     }
     return null;
   };
@@ -32,10 +33,13 @@ export const useGymBranding = () => {
     try {
       const gymId = getGymId();
       if (!gymId) {
+        console.log('No gym ID found for user:', { user, userRole });
         setError('No gym ID found');
         setLoading(false);
         return;
       }
+      
+      console.log('Fetching gym settings for:', { gymId, userRole });
 
       let endpoint;
       // For gym owners, get their own settings
