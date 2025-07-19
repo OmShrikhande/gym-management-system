@@ -1,6 +1,7 @@
 import express from 'express';
 import { protect, restrictTo } from '../middleware/authMiddleware.js';
 import * as userController from '../controllers/userController.js';
+import { dashboardCache, userListCache } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -12,9 +13,9 @@ router.get('/me', userController.getMe);
 router.patch('/update-me', userController.updateMe);
 router.get('/:id/details', userController.getUserDetails);
 
-// Routes restricted to super admin only
-router.get('/stats/new-gym-owners', restrictTo('super-admin'), userController.getNewGymOwnersCount);
-router.get('/stats/monthly-gym-owners', restrictTo('super-admin'), userController.getMonthlyGymOwnerStats);
+// Routes restricted to super admin only (with caching)
+router.get('/stats/new-gym-owners', restrictTo('super-admin'), dashboardCache, userController.getNewGymOwnersCount);
+router.get('/stats/monthly-gym-owners', restrictTo('super-admin'), dashboardCache, userController.getMonthlyGymOwnerStats);
 
 // Trainer routes
 router.get('/trainer/:trainerId/members', userController.getTrainerMembers);
@@ -26,7 +27,7 @@ router.get('/:id', userController.getUser);
 
 // Routes restricted to admin users
 router.use(restrictTo('super-admin', 'gym-owner'));
-router.get('/', userController.getAllUsers);
+router.get('/', userListCache, userController.getAllUsers);
 router.get('/gym-owner/:gymOwnerId/members', userController.getGymOwnerMembers);
 router.patch('/:id', userController.updateUser);
 router.delete('/:id', userController.deleteUser);

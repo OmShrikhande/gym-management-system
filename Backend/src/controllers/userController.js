@@ -3,47 +3,57 @@ import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import mongoose from 'mongoose';
 
-// Get new gym owners count for the current month
+// Get new gym owners count for the current month (optimized with parallel queries)
 export const getNewGymOwnersCount = catchAsync(async (req, res, next) => {
-  // Calculate the first day of the current month
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  
-  // Count gym owners created this month
-  const newGymOwnersCount = await User.countDocuments({
-    role: 'gym-owner',
-    createdAt: { $gte: firstDayOfMonth }
-  });
-  
-  // Get previous month for comparison
-  const firstDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-  
-  // Count gym owners created in the previous month
-  const prevMonthGymOwnersCount = await User.countDocuments({
-    role: 'gym-owner',
-    createdAt: { 
-      $gte: firstDayOfPrevMonth,
-      $lte: lastDayOfPrevMonth
+  try {
+    // Calculate date ranges
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    // Execute both queries in parallel for better performance
+    const [newGymOwnersCount, prevMonthGymOwnersCount] = await Promise.all([
+      User.countDocuments({
+        role: 'gym-owner',
+        createdAt: { $gte: firstDayOfMonth }
+      }),
+      User.countDocuments({
+        role: 'gym-owner',
+        createdAt: { 
+          $gte: firstDayOfPrevMonth,
+          $lte: lastDayOfPrevMonth
+        }
+      })
+    ]);
+    
+    // Calculate growth percentage
+    let growthPercentage = 0;
+    if (prevMonthGymOwnersCount > 0) {
+      growthPercentage = Math.round(((newGymOwnersCount - prevMonthGymOwnersCount) / prevMonthGymOwnersCount) * 100);
+    } else if (newGymOwnersCount > 0) {
+      growthPercentage = 100;
     }
-  });
-  
-  // Calculate growth percentage
-  let growthPercentage = 0;
-  if (prevMonthGymOwnersCount > 0) {
-    growthPercentage = Math.round(((newGymOwnersCount - prevMonthGymOwnersCount) / prevMonthGymOwnersCount) * 100);
-  } else if (newGymOwnersCount > 0) {
-    growthPercentage = 100; // If there were no gym owners last month but there are this month
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        newGymOwnersCount,
+        prevMonthGymOwnersCount,
+        growthPercentage
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+        period: {
+          current: firstDayOfMonth.toISOString(),
+          previous: `${firstDayOfPrevMonth.toISOString()} - ${lastDayOfPrevMonth.toISOString()}`
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in getNewGymOwnersCount:', error);
+    return next(new AppError('Failed to get gym owners count', 500));
   }
-  
-  res.status(200).json({
-    status: 'success',
-    data: {
-      newGymOwnersCount,
-      prevMonthGymOwnersCount,
-      growthPercentage
-    }
-  });
 });
 
 // Get monthly gym owner statistics for the year

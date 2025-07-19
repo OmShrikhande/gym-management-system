@@ -2,6 +2,7 @@ import express from 'express';
 import * as subscriptionController from '../controllers/subscriptionController.js';
 import * as authController from '../controllers/authController.js';
 import * as paymentController from '../controllers/paymentController.js';
+import { subscriptionCache, dashboardCache } from '../middleware/cache.js';
 
 const router = express.Router();
 
@@ -23,9 +24,10 @@ router.post('/:id/renew', subscriptionController.renewSubscription);
 // Create subscription - accessible to gym owners for test mode and super admin
 router.post('/', subscriptionController.createSubscription);
 
-// Routes accessible to super admin only
+// Routes accessible to super admin only (with caching)
 router.get('/revenue/total', 
   authController.restrictTo('super-admin'),
+  dashboardCache,
   subscriptionController.getTotalRevenue
 );
 

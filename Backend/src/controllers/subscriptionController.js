@@ -9,123 +9,154 @@ import AppError from '../utils/appError.js';
 export const getTotalRevenue = catchAsync(async (req, res, next) => {
   const today = new Date();
   
-  // First, update any expired subscriptions to inactive
-  await Subscription.updateMany(
-    { 
-      isActive: true,
-      endDate: { $lt: today }
-    },
-    { 
-      $set: { 
-        isActive: false,
-        paymentStatus: 'Overdue'
+  try {
+    // Use a more efficient approach with parallel operations
+    const [updateResult, revenueResult] = await Promise.all([
+      // Update expired subscriptions
+      Subscription.updateMany(
+        { 
+          isActive: true,
+          endDate: { $lt: today }
+        },
+        { 
+          $set: { 
+            isActive: false,
+            paymentStatus: 'Overdue'
+          }
+        }
+      ),
+      // Aggregate revenue with optimized pipeline
+      Subscription.aggregate([
+        // Match only active subscriptions that haven't expired
+        { 
+          $match: { 
+            isActive: true,
+            endDate: { $gte: today },
+            paymentStatus: { $ne: 'Overdue' },
+            paymentHistory: { $exists: true, $ne: [] }
+          } 
+        },
+        // Unwind the payment history array to get individual payments
+        { $unwind: "$paymentHistory" },
+        // Filter for successful payments only
+        { $match: { "paymentHistory.status": "Success" } },
+        // Group by null to sum all payments
+        { 
+          $group: { 
+            _id: null, 
+            totalRevenue: { $sum: "$paymentHistory.amount" },
+            paymentCount: { $sum: 1 }
+          } 
+        }
+      ])
+    ]);
+
+    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+    const paymentCount = revenueResult.length > 0 ? revenueResult[0].paymentCount : 0;
+
+    // Log performance metrics
+    if (updateResult.modifiedCount > 0) {
+      console.log(`Updated ${updateResult.modifiedCount} expired subscriptions`);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        totalRevenue,
+        paymentCount
+      },
+      meta: {
+        expiredSubscriptionsUpdated: updateResult.modifiedCount,
+        timestamp: new Date().toISOString()
       }
-    }
-  );
-  
-  // Aggregate revenue from active subscriptions only
-  const result = await Subscription.aggregate([
-    // Match only active subscriptions that haven't expired
-    { 
-      $match: { 
-        isActive: true,
-        endDate: { $gte: today },
-        paymentStatus: { $ne: 'Overdue' }
-      } 
-    },
-    // Unwind the payment history array to get individual payments
-    { $unwind: "$paymentHistory" },
-    // Filter for successful payments only
-    { $match: { "paymentHistory.status": "Success" } },
-    // Group by null to sum all payments
-    { 
-      $group: { 
-        _id: null, 
-        totalRevenue: { $sum: "$paymentHistory.amount" },
-        paymentCount: { $sum: 1 }
-      } 
-    }
-  ]);
-
-  const totalRevenue = result.length > 0 ? result[0].totalRevenue : 0;
-  const paymentCount = result.length > 0 ? result[0].paymentCount : 0;
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      totalRevenue,
-      paymentCount
-    }
-  });
+    });
+  } catch (error) {
+    console.error('Error in getTotalRevenue:', error);
+    return next(new AppError('Failed to calculate total revenue', 500));
+  }
 });
 
 // Get count of active gyms (gyms with active subscriptions)
 export const getActiveGymCount = catchAsync(async (req, res, next) => {
   const today = new Date();
   
-  // First, update any expired subscriptions to inactive
-  await Subscription.updateMany(
-    { 
-      isActive: true,
-      endDate: { $lt: today }
-    },
-    { 
-      $set: { 
-        isActive: false,
-        paymentStatus: 'Overdue'
+  try {
+    // Use parallel operations for better performance
+    const [updateResult, subscriptionResult, userResult] = await Promise.all([
+      // Update expired subscriptions
+      Subscription.updateMany(
+        { 
+          isActive: true,
+          endDate: { $lt: today }
+        },
+        { 
+          $set: { 
+            isActive: false,
+            paymentStatus: 'Overdue'
+          }
+        }
+      ),
+      // Count unique gym owners with active subscriptions
+      Subscription.aggregate([
+        { 
+          $match: { 
+            isActive: true,
+            endDate: { $gte: today },
+            paymentStatus: { $ne: 'Overdue' }
+          } 
+        },
+        { 
+          $group: { 
+            _id: "$gymOwner"
+          } 
+        },
+        { 
+          $group: { 
+            _id: null, 
+            activeGymCount: { $sum: 1 }
+          } 
+        }
+      ]),
+      // Count gym owners with active account status
+      User.countDocuments({
+        role: 'gym-owner',
+        accountStatus: 'active'
+      })
+    ]);
+
+    const subscriptionBasedCount = subscriptionResult.length > 0 ? subscriptionResult[0].activeGymCount : 0;
+    const accountStatusBasedCount = userResult;
+
+    // Use the higher of the two counts for accuracy
+    const activeGymCount = Math.max(subscriptionBasedCount, accountStatusBasedCount);
+
+    // Log performance metrics
+    if (updateResult.modifiedCount > 0) {
+      console.log(`Updated ${updateResult.modifiedCount} expired subscriptions`);
+    }
+
+    console.log('Active gym count comparison:', {
+      subscriptionBased: subscriptionBasedCount,
+      accountStatusBased: accountStatusBasedCount,
+      finalCount: activeGymCount
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        activeGymCount
+      },
+      meta: {
+        subscriptionBasedCount,
+        accountStatusBasedCount,
+        expiredSubscriptionsUpdated: updateResult.modifiedCount,
+        timestamp: new Date().toISOString()
       }
-    }
-  );
-  
-  // Count unique gym owners with truly active subscriptions
-  const result = await Subscription.aggregate([
-    // Match only active subscriptions that haven't expired
-    { 
-      $match: { 
-        isActive: true,
-        endDate: { $gte: today },
-        paymentStatus: { $ne: 'Overdue' }
-      } 
-    },
-    // Group by gym owner to get unique gym owners
-    { 
-      $group: { 
-        _id: "$gymOwner"
-      } 
-    },
-    // Count the number of unique gym owners
-    { 
-      $group: { 
-        _id: null, 
-        activeGymCount: { $sum: 1 }
-      } 
-    }
-  ]);
-
-  const subscriptionBasedCount = result.length > 0 ? result[0].activeGymCount : 0;
-
-  // Alternative approach: Count gym owners with active account status
-  // This is more accurate as it reflects the actual active gym owners
-  const activeGymOwners = await User.countDocuments({
-    role: 'gym-owner',
-    accountStatus: 'active'
-  });
-
-  // Use the account status based count as it's more reliable
-  const activeGymCount = activeGymOwners;
-
-  console.log('Active gym count comparison:', {
-    subscriptionBased: subscriptionBasedCount,
-    accountStatusBased: activeGymOwners,
-    usingCount: activeGymCount
-  });
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      activeGymCount
-    }
-  });
+    });
+  } catch (error) {
+    console.error('Error in getActiveGymCount:', error);
+    return next(new AppError('Failed to get active gym count', 500));
+  }
 });
 
 // Get all subscriptions (for Super Admin)

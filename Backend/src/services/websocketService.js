@@ -12,6 +12,19 @@ class WebSocketService {
     this.wss = new WebSocketServer({ 
       server,
       path: '/ws',
+      maxPayload: 16 * 1024, // 16KB max payload
+      perMessageDeflate: {
+        zlibDeflateOptions: {
+          level: 3,
+          chunkSize: 1024,
+        },
+        threshold: 1024,
+        concurrencyLimit: 10,
+        clientMaxWindowBits: 13,
+        serverMaxWindowBits: 13,
+        serverMaxNoContextTakeover: false,
+        clientMaxNoContextTakeover: false,
+      },
       verifyClient: (info) => {
         // Basic verification - more detailed auth happens in connection handler
         return true;

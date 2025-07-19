@@ -9,10 +9,40 @@ const connectDB = async () => {
       console.log('Attempting to connect to MongoDB...');
     }
     
+    // Configure mongoose settings for high load
+    // Note: bufferCommands and bufferMaxEntries are deprecated in newer versions
+    // mongoose.set('bufferCommands', false);
+    // mongoose.set('bufferMaxEntries', 0);
+    
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
+      // Connection pool settings for high concurrency
+      maxPoolSize: 50, // Increased from 10 to handle more concurrent connections
+      minPoolSize: 5,  // Maintain minimum connections
+      maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      
+      // Timeout settings
+      serverSelectionTimeoutMS: 10000, // Increased from 5000
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      
+      // Heartbeat settings
+      heartbeatFrequencyMS: 10000,
+      
+      // Write concern for better performance
+      writeConcern: {
+        w: 'majority',
+        j: true,
+        wtimeout: 5000
+      },
+      
+      // Read preference for load distribution
+      readPreference: 'primaryPreferred',
+      
+      // Compression for better network performance
+      compressors: ['zlib'],
+      
+      // Auto index creation
+      autoIndex: process.env.NODE_ENV === 'development'
     });
     
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
