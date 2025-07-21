@@ -28,7 +28,12 @@ const initializeRazorpay = () => {
 };
 
 // Initialize Razorpay on module load
-razorpay = initializeRazorpay();
+try {
+  razorpay = initializeRazorpay();
+} catch (error) {
+  console.error('❌ Failed to initialize Razorpay on module load:', error);
+  razorpay = null;
+}
 
 // Force re-initialization if needed
 const forceReinitialize = () => {
@@ -41,10 +46,17 @@ const forceReinitialize = () => {
 const getRazorpayInstance = () => {
   if (!razorpay) {
     console.log('🔄 Razorpay not initialized, attempting to initialize...');
-    razorpay = initializeRazorpay();
+    try {
+      razorpay = initializeRazorpay();
+    } catch (initError) {
+      console.error('❌ Error during Razorpay initialization:', initError);
+    }
+    
     if (!razorpay) {
       console.error('❌ Failed to initialize Razorpay. Environment variables:');
       console.error('NODE_ENV:', process.env.NODE_ENV);
+      console.error('RAZORPAY_TEST_KEY_ID:', process.env.RAZORPAY_TEST_KEY_ID ? 'SET' : 'NOT SET');
+      console.error('RAZORPAY_TEST_KEY_SECRET:', process.env.RAZORPAY_TEST_KEY_SECRET ? 'SET' : 'NOT SET');
       console.error('RAZORPAY_LIVE_KEY_ID:', process.env.RAZORPAY_LIVE_KEY_ID ? 'SET' : 'NOT SET');
       console.error('RAZORPAY_LIVE_KEY_SECRET:', process.env.RAZORPAY_LIVE_KEY_SECRET ? 'SET' : 'NOT SET');
       throw new Error('Razorpay is not initialized. Please check your configuration.');

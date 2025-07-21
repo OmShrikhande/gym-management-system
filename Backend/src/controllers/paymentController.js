@@ -36,9 +36,12 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
     let razorpay;
     try {
       razorpay = getRazorpayInstance();
+      if (!razorpay) {
+        throw new Error('Razorpay instance is null');
+      }
     } catch (error) {
       console.error('Failed to get Razorpay instance:', error);
-      return next(new AppError('Payment service initialization failed. Please try again later.', 503));
+      return next(new AppError('Payment service initialization failed. Please check your Razorpay configuration.', 503));
     }
     const orderData = {
       amount: amount * 100, // Razorpay expects amount in paise

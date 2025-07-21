@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { razorpay, validateRazorpayCredentials, getRazorpayPublicKey } from './src/config/razorpay.js';
+import { getRazorpayInstance, validateRazorpayCredentials, getRazorpayPublicKey } from './src/config/razorpay.js';
 
 // Load environment variables
 dotenv.config();
@@ -21,7 +21,8 @@ if (isValid) {
   // Test 3: Create a test order
   console.log('\n3. Testing order creation...');
   try {
-    const order = await razorpay.orders.create({
+    const razorpayInstance = getRazorpayInstance();
+    const order = await razorpayInstance.orders.create({
       amount: 100, // ₹1.00 in paise
       currency: 'INR',
       receipt: 'test_receipt_' + Date.now(),
