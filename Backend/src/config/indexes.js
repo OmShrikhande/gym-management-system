@@ -106,13 +106,13 @@ export const createIndexes = async () => {
     console.log('✅ Database indexes created successfully');
     
     // Log index information
-    const userIndexes = await User.collection.listIndexes().toArray();
-    const subscriptionIndexes = await Subscription.collection.listIndexes().toArray();
-    const notificationIndexes = await Notification.collection.listIndexes().toArray();
+    const currentUserIndexes = await User.collection.listIndexes().toArray();
+    const currentSubscriptionIndexes = await Subscription.collection.listIndexes().toArray();
+    const currentNotificationIndexes = await Notification.collection.listIndexes().toArray();
     
-    console.log(`📊 User collection indexes: ${userIndexes.length}`);
-    console.log(`📊 Subscription collection indexes: ${subscriptionIndexes.length}`);
-    console.log(`📊 Notification collection indexes: ${notificationIndexes.length}`);
+    console.log(`📊 User collection indexes: ${currentUserIndexes.length}`);
+    console.log(`📊 Subscription collection indexes: ${currentSubscriptionIndexes.length}`);
+    console.log(`📊 Notification collection indexes: ${currentNotificationIndexes.length}`);
 
   } catch (error) {
     console.error('❌ Error creating database indexes:', error.message);
@@ -128,24 +128,24 @@ export const dropIndexes = async () => {
     console.log('Dropping custom database indexes...');
     
     // Get all indexes except _id
-    const userIndexes = await User.collection.listIndexes().toArray();
-    const subscriptionIndexes = await Subscription.collection.listIndexes().toArray();
-    const notificationIndexes = await Notification.collection.listIndexes().toArray();
+    const allUserIndexes = await User.collection.listIndexes().toArray();
+    const allSubscriptionIndexes = await Subscription.collection.listIndexes().toArray();
+    const allNotificationIndexes = await Notification.collection.listIndexes().toArray();
     
     // Drop custom indexes (keep _id index)
-    for (const index of userIndexes) {
+    for (const index of allUserIndexes) {
       if (index.name !== '_id_') {
         await User.collection.dropIndex(index.name);
       }
     }
     
-    for (const index of subscriptionIndexes) {
+    for (const index of allSubscriptionIndexes) {
       if (index.name !== '_id_') {
         await Subscription.collection.dropIndex(index.name);
       }
     }
     
-    for (const index of notificationIndexes) {
+    for (const index of allNotificationIndexes) {
       if (index.name !== '_id_') {
         await Notification.collection.dropIndex(index.name);
       }
