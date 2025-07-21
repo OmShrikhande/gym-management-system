@@ -954,15 +954,7 @@ const GymOwnerPlans = () => {
                             <CreditCard className="h-4 w-4 mr-2" />
                             {isProcessing ? 'Processing...' : 'Activate Account'}
                           </Button>
-                          <Button 
-                            variant="outline"
-                            className="w-full border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                            onClick={() => handleTestModeActivation(plan)}
-                            disabled={isProcessing}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
-                          </Button>
+
                         </div>
                       ) : (
                         // Show normal plan management buttons for active accounts

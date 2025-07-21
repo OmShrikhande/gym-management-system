@@ -43,6 +43,10 @@ const getRazorpayInstance = () => {
     console.log('🔄 Razorpay not initialized, attempting to initialize...');
     razorpay = initializeRazorpay();
     if (!razorpay) {
+      console.error('❌ Failed to initialize Razorpay. Environment variables:');
+      console.error('NODE_ENV:', process.env.NODE_ENV);
+      console.error('RAZORPAY_LIVE_KEY_ID:', process.env.RAZORPAY_LIVE_KEY_ID ? 'SET' : 'NOT SET');
+      console.error('RAZORPAY_LIVE_KEY_SECRET:', process.env.RAZORPAY_LIVE_KEY_SECRET ? 'SET' : 'NOT SET');
       throw new Error('Razorpay is not initialized. Please check your configuration.');
     }
   }
