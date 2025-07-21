@@ -2295,8 +2295,7 @@ const Reports = () => {
               )}
 
               {/* Payment Details Table */}
-              {!isLoadingPayments && !paymentError && (
-              {showPaymentDetails && (
+              {!isLoadingPayments && !paymentError && showPaymentDetails && (
                 <div className="bg-gray-700/30 rounded-lg overflow-hidden">
                   <div className="max-h-96 overflow-y-auto">
                     <Table>
@@ -2336,9 +2335,10 @@ const Reports = () => {
                   </div>
                 </div>
               )}
+            
 
               {/* Quick Summary without table */}
-              {!showPaymentDetails && filteredPayments.length > 0 && (
+              {!isLoadingPayments && !paymentError && !showPaymentDetails && filteredPayments.length > 0 && (
                 <div className="bg-gray-700/30 p-4 rounded-lg">
                   <h4 className="text-white font-medium mb-3">
                     Payment Summary for {new Date(paymentFilters.year, paymentFilters.month - 1).toLocaleString('default', { month: 'long' })} {paymentFilters.year}
@@ -2399,7 +2399,6 @@ const Reports = () => {
                     </div>
                   </div>
                 </div>
-              )}
               )}
             </CardContent>
           </Card>
