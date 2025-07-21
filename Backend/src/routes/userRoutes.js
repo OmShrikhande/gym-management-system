@@ -12,6 +12,7 @@ router.use(protect);
 router.get('/me', userController.getMe);
 router.patch('/update-me', userController.updateMe);
 router.get('/:id/details', userController.getUserDetails);
+router.get('/gym-owner/:gymOwnerId/upi-id', userController.getGymOwnerUpiId);
 
 // Routes restricted to super admin only (with caching)
 router.get('/stats/new-gym-owners', restrictTo('super-admin'), dashboardCache, userController.getNewGymOwnersCount);

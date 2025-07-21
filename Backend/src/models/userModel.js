@@ -57,6 +57,21 @@ const userSchema = new mongoose.Schema({
       return this.role === 'trainer' || this.role === 'member';
     }
   },
+  // UPI ID for gym owners to receive payments
+  upiId: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(value) {
+        // Only validate if UPI ID is provided and user is gym owner
+        if (!value || this.role !== 'gym-owner') return true;
+        // Basic UPI ID validation pattern
+        const upiPattern = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+        return upiPattern.test(value);
+      },
+      message: 'Please provide a valid UPI ID (e.g., username@paytm, phone@ybl)'
+    }
+  },
   // Member specific fields
   phone: String,
   gender: {

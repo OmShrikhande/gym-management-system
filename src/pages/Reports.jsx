@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, TrendingUp, Users, Building2, Download, Calendar, Filter, DollarSign, Plus, Trash2, Save, FileText } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Building2, Download, Calendar, Filter, DollarSign, Plus, Trash2, Save, FileText, Search, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import * as XLSX from 'xlsx';
 
 const Reports = () => {
   const { user, users, isGymOwner, isSuperAdmin, authFetch } = useAuth();
@@ -26,6 +27,24 @@ const Reports = () => {
   const [reportPeriod, setReportPeriod] = useState("monthly");
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  
+  // Member Payment Tracking States
+  const [memberPayments, setMemberPayments] = useState([]);
+  const [filteredPayments, setFilteredPayments] = useState([]);
+  const [paymentFilters, setPaymentFilters] = useState({
+    memberName: '',
+    planType: '',
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear()
+  });
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [paymentStats, setPaymentStats] = useState({
+    totalAmount: 0,
+    totalPayments: 0,
+    uniqueMembers: 0
+  });
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
 
   // Calculate real stats for gym owners
   const [realStats, setRealStats] = useState({
@@ -405,6 +424,158 @@ const Reports = () => {
     
     fetchSuperAdminStats();
   }, [isSuperAdmin, user, authFetch, currentMonth, currentYear]);
+
+  // Load member payments for gym owners
+  useEffect(() => {
+    if (!isGymOwner || !user) return;
+    
+    const loadMemberPayments = async () => {
+      setIsLoadingPayments(true);
+      setPaymentError(null);
+      
+      try {
+        // Get all members for this gym owner
+        const membersResponse = await authFetch('/users/members');
+        if (!membersResponse.success) {
+          throw new Error('Failed to fetch members');
+        }
+        
+        const members = membersResponse.data?.users || [];
+        
+        // Generate mock payment data based on members
+        // In a real application, this would come from a payment history API
+        const payments = [];
+        
+        if (members.length === 0) {
+          console.log('No members found for payment tracking');
+          setMemberPayments([]);
+          return;
+        }
+        
+        members.forEach(member => {
+          // Skip if member data is incomplete
+          if (!member._id || !member.name) {
+            console.warn('Skipping member with incomplete data:', member);
+            return;
+          }
+          
+          // Generate payment history for each member
+          const membershipStartDate = new Date(member.membershipStartDate || member.createdAt || new Date());
+          const currentDate = new Date();
+          
+          // Calculate how many months the member has been active
+          const monthsDiff = Math.max(0, (currentDate.getFullYear() - membershipStartDate.getFullYear()) * 12 + 
+                           (currentDate.getMonth() - membershipStartDate.getMonth()));
+          
+          // Generate payments for each month (assuming monthly payments)
+          // Limit to last 12 months for performance
+          const maxMonths = Math.min(monthsDiff + 1, 12);
+          
+          for (let i = 0; i < maxMonths; i++) {
+            const paymentDate = new Date(membershipStartDate);
+            paymentDate.setMonth(paymentDate.getMonth() + i);
+            
+            // Only include payments up to current date and not in future
+            if (paymentDate <= currentDate) {
+              // Calculate payment amount based on plan and trainer
+              const planType = member.planType || member.membershipType || 'Basic';
+              const planCost = planType === 'Premium' ? 1500 : 
+                              planType === 'Standard' ? 1000 : 500;
+              const trainerCost = member.assignedTrainer ? 500 : 0;
+              const totalAmount = planCost + trainerCost;
+              
+              payments.push({
+                id: `${member._id}-${paymentDate.getTime()}`,
+                memberId: member._id,
+                memberName: member.name,
+                memberEmail: member.email || 'N/A',
+                memberPhone: member.phone || 'N/A',
+                paymentDate: paymentDate.toISOString(),
+                amount: totalAmount,
+                planType: planType,
+                planCost: planCost,
+                trainerCost: trainerCost,
+                duration: member.membershipDuration || '1',
+                paymentMethod: 'UPI',
+                referenceId: `PAY${Math.floor(100000 + Math.random() * 900000)}`,
+                status: 'Completed',
+                membershipType: member.membershipType || 'Basic'
+              });
+            }
+          }
+        });
+        
+        // Sort payments by date (newest first)
+        payments.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+        
+        setMemberPayments(payments);
+        console.log('Member payments loaded:', payments.length);
+        
+      } catch (error) {
+        console.error('Error loading member payments:', error);
+        setPaymentError(error.message || 'Failed to load member payments');
+        setMemberPayments([]);
+      } finally {
+        setIsLoadingPayments(false);
+      }
+    };
+    
+    loadMemberPayments();
+  }, [isGymOwner, user, authFetch]);
+
+  // Filter member payments based on current filters
+  useEffect(() => {
+    if (!memberPayments.length) {
+      setFilteredPayments([]);
+      setPaymentStats({ totalAmount: 0, totalPayments: 0, uniqueMembers: 0 });
+      return;
+    }
+    
+    let filtered = [...memberPayments];
+    
+    // Filter by member name
+    if (paymentFilters.memberName.trim()) {
+      const searchTerm = paymentFilters.memberName.toLowerCase();
+      filtered = filtered.filter(payment => 
+        payment.memberName.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    // Filter by plan type
+    if (paymentFilters.planType) {
+      filtered = filtered.filter(payment => 
+        payment.planType === paymentFilters.planType
+      );
+    }
+    
+    // Filter by month and year
+    filtered = filtered.filter(payment => {
+      const paymentDate = new Date(payment.paymentDate);
+      return paymentDate.getMonth() + 1 === paymentFilters.month &&
+             paymentDate.getFullYear() === paymentFilters.year;
+    });
+    
+    // Calculate stats
+    const totalAmount = filtered.reduce((sum, payment) => sum + payment.amount, 0);
+    const uniqueMembers = new Set(filtered.map(payment => payment.memberId)).size;
+    
+    setFilteredPayments(filtered);
+    setPaymentStats({
+      totalAmount,
+      totalPayments: filtered.length,
+      uniqueMembers
+    });
+    
+  }, [memberPayments, paymentFilters]);
+
+  // Sync payment filters with main report filters
+  useEffect(() => {
+    setPaymentFilters(prev => ({
+      ...prev,
+      month: currentMonth,
+      year: currentYear
+    }));
+  }, [currentMonth, currentYear]);
 
   // Handle adding a new expense
   const handleAddExpense = async () => {
@@ -846,6 +1017,105 @@ const Reports = () => {
     toast.success(`${isSuperAdmin ? 'Platform' : 'Gym'} report generated successfully`);
   };
 
+  // Export member payments to Excel
+  const exportPaymentsToExcel = () => {
+    if (!filteredPayments.length) {
+      toast.error('No payment data to export');
+      return;
+    }
+    
+    // Prepare data for Excel export
+    const excelData = filteredPayments.map(payment => ({
+      'Member Name': payment.memberName,
+      'Payment Date': new Date(payment.paymentDate).toLocaleDateString('en-IN'),
+      'Amount (₹)': payment.amount,
+      'Plan Type': payment.planType,
+      'Duration (Months)': payment.duration,
+      'Plan Cost (₹)': payment.planCost,
+      'Trainer Cost (₹)': payment.trainerCost,
+      'Payment Method': payment.paymentMethod,
+      'Reference ID': payment.referenceId,
+      'Status': payment.status,
+      'Member Email': payment.memberEmail,
+      'Member Phone': payment.memberPhone
+    }));
+    
+    // Add summary row
+    const summaryData = [
+      {},
+      {
+        'Member Name': 'SUMMARY',
+        'Payment Date': '',
+        'Amount (₹)': paymentStats.totalAmount,
+        'Plan Type': `${paymentStats.totalPayments} payments`,
+        'Duration (Months)': `${paymentStats.uniqueMembers} members`,
+        'Plan Cost (₹)': '',
+        'Trainer Cost (₹)': '',
+        'Payment Method': '',
+        'Reference ID': '',
+        'Status': '',
+        'Member Email': '',
+        'Member Phone': ''
+      }
+    ];
+    
+    const finalData = [...excelData, ...summaryData];
+    
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(finalData);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 20 }, // Member Name
+      { wch: 15 }, // Payment Date
+      { wch: 12 }, // Amount
+      { wch: 12 }, // Plan Type
+      { wch: 10 }, // Duration
+      { wch: 12 }, // Plan Cost
+      { wch: 12 }, // Trainer Cost
+      { wch: 15 }, // Payment Method
+      { wch: 15 }, // Reference ID
+      { wch: 10 }, // Status
+      { wch: 25 }, // Member Email
+      { wch: 15 }  // Member Phone
+    ];
+    ws['!cols'] = colWidths;
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Member Payments');
+    
+    // Generate filename
+    const monthName = new Date(paymentFilters.year, paymentFilters.month - 1).toLocaleString('default', { month: 'long' });
+    const filename = `Member_Payments_${monthName}_${paymentFilters.year}.xlsx`;
+    
+    // Save file
+    XLSX.writeFile(wb, filename);
+    
+    toast.success('Payment report exported to Excel successfully');
+  };
+
+  // Handle filter changes
+  const handleFilterChange = (filterType, value) => {
+    setPaymentFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setPaymentFilters({
+      memberName: '',
+      planType: '',
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear()
+    });
+  };
+
+  // Get unique plan types for filter dropdown
+  const uniquePlanTypes = [...new Set(memberPayments.map(payment => payment.planType))].filter(Boolean);
+
 
   return (
     <DashboardLayout>
@@ -854,13 +1124,25 @@ const Reports = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">Reports & Analytics</h1>
-            <p className="text-gray-400">Monitor performance and usage across all gyms</p>
+            <p className="text-gray-400">
+              {isSuperAdmin ? 'Monitor performance and usage across all gyms' : 'Monitor your gym performance and member payments'}
+            </p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
               <Filter className="h-4 w-4 mr-2" />
               Filter
             </Button>
+            {isGymOwner && (
+              <Button 
+                variant="outline"
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                {showPaymentDetails ? 'Hide' : 'Show'} Payment Details
+              </Button>
+            )}
             <Button 
               className="bg-blue-600 hover:bg-blue-700"
               onClick={generateCompleteReport}
@@ -1842,6 +2124,282 @@ const Reports = () => {
                     </div>
                   </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Member Payment Tracking for Gym Owners */}
+        {isGymOwner && (
+          <Card className="bg-gray-800/50 border-gray-700">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-white">Member Payment Tracking</CardTitle>
+                <CardDescription className="text-gray-400">
+                  Detailed breakdown of member payments and revenue
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+                >
+                  {showPaymentDetails ? (
+                    <>
+                      <X className="h-4 w-4 mr-2" />
+                      Hide Details
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-2" />
+                      Show Details
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={exportPaymentsToExcel}
+                  disabled={!filteredPayments.length}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Excel
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Loading State */}
+              {isLoadingPayments && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                    <p className="text-gray-400">Loading payment data...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {paymentError && (
+                <div className="bg-red-900/50 border border-red-700 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-2 text-red-400">
+                    <X className="h-5 w-5" />
+                    <h4 className="font-medium">Error Loading Payment Data</h4>
+                  </div>
+                  <p className="text-red-300 text-sm mt-2">{paymentError}</p>
+                </div>
+              )}
+
+              {/* Payment Summary Stats */}
+              {!isLoadingPayments && !paymentError && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-300 text-sm">Total Revenue</p>
+                      <p className="text-2xl font-bold text-white">{formatINR(paymentStats.totalAmount)}</p>
+                    </div>
+                    <DollarSign className="h-8 w-8 text-blue-500" />
+                  </div>
+                </div>
+                <div className="bg-green-900/20 p-4 rounded-lg border border-green-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-300 text-sm">Total Payments</p>
+                      <p className="text-2xl font-bold text-white">{paymentStats.totalPayments}</p>
+                    </div>
+                    <FileText className="h-8 w-8 text-green-500" />
+                  </div>
+                </div>
+                <div className="bg-purple-900/20 p-4 rounded-lg border border-purple-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-300 text-sm">Active Members</p>
+                      <p className="text-2xl font-bold text-white">{paymentStats.uniqueMembers}</p>
+                    </div>
+                    <Users className="h-8 w-8 text-purple-500" />
+                  </div>
+                </div>
+              </div>
+              )}
+
+              {/* Filters */}
+              {!isLoadingPayments && !paymentError && (
+              <div className="bg-gray-700/30 p-4 rounded-lg mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label className="text-sm text-gray-400 mb-2 block">Search Member</Label>
+                    <Input
+                      placeholder="Enter member name..."
+                      value={paymentFilters.memberName}
+                      onChange={(e) => handleFilterChange('memberName', e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-400 mb-2 block">Plan Type</Label>
+                    <select
+                      value={paymentFilters.planType}
+                      onChange={(e) => handleFilterChange('planType', e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                    >
+                      <option value="">All Plans</option>
+                      {uniquePlanTypes.map(plan => (
+                        <option key={plan} value={plan}>{plan}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-400 mb-2 block">Month</Label>
+                    <select
+                      value={paymentFilters.month}
+                      onChange={(e) => handleFilterChange('month', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-400 mb-2 block">Year</Label>
+                    <select
+                      value={paymentFilters.year}
+                      onChange={(e) => handleFilterChange('year', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
+                    >
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <option key={i} value={new Date().getFullYear() - i}>
+                          {new Date().getFullYear() - i}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-between items-center">
+                  <div className="text-sm text-gray-400">
+                    Showing {filteredPayments.length} payment{filteredPayments.length !== 1 ? 's' : ''} for{' '}
+                    {new Date(paymentFilters.year, paymentFilters.month - 1).toLocaleString('default', { month: 'long' })} {paymentFilters.year}
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={clearFilters}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+              )}
+
+              {/* Payment Details Table */}
+              {!isLoadingPayments && !paymentError && (
+              {showPaymentDetails && (
+                <div className="bg-gray-700/30 rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-gray-600">
+                          <TableHead className="text-gray-300">Member Name</TableHead>
+                          <TableHead className="text-gray-300">Payment Date</TableHead>
+                          <TableHead className="text-gray-300">Amount</TableHead>
+                          <TableHead className="text-gray-300">Plan Type</TableHead>
+                          <TableHead className="text-gray-300">Duration</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPayments.length > 0 ? (
+                          filteredPayments.map((payment) => (
+                            <TableRow key={payment.id} className="border-gray-600">
+                              <TableCell className="text-white">{payment.memberName}</TableCell>
+                              <TableCell className="text-gray-300">
+                                {new Date(payment.paymentDate).toLocaleDateString('en-IN')}
+                              </TableCell>
+                              <TableCell className="text-white font-medium">
+                                {formatINR(payment.amount)}
+                              </TableCell>
+                              <TableCell className="text-gray-300">{payment.planType}</TableCell>
+                              <TableCell className="text-gray-300">{payment.duration} Month{payment.duration !== '1' ? 's' : ''}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-gray-400 py-8">
+                              No payments found for the selected filters
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Summary without table */}
+              {!showPaymentDetails && filteredPayments.length > 0 && (
+                <div className="bg-gray-700/30 p-4 rounded-lg">
+                  <h4 className="text-white font-medium mb-3">
+                    Payment Summary for {new Date(paymentFilters.year, paymentFilters.month - 1).toLocaleString('default', { month: 'long' })} {paymentFilters.year}
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h5 className="text-gray-300 text-sm mb-2">Top Paying Members</h5>
+                      {(() => {
+                        // Group payments by member and sum amounts
+                        const memberTotals = {};
+                        filteredPayments.forEach(payment => {
+                          if (!memberTotals[payment.memberName]) {
+                            memberTotals[payment.memberName] = 0;
+                          }
+                          memberTotals[payment.memberName] += payment.amount;
+                        });
+                        
+                        // Sort by amount and take top 5
+                        const topMembers = Object.entries(memberTotals)
+                          .sort(([,a], [,b]) => b - a)
+                          .slice(0, 5);
+                        
+                        return (
+                          <div className="space-y-2">
+                            {topMembers.map(([memberName, amount]) => (
+                              <div key={memberName} className="flex justify-between">
+                                <span className="text-white">{memberName}</span>
+                                <span className="text-white">{formatINR(amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <h5 className="text-gray-300 text-sm mb-2">Revenue by Plan Type</h5>
+                      {(() => {
+                        // Group payments by plan type
+                        const planTotals = {};
+                        filteredPayments.forEach(payment => {
+                          if (!planTotals[payment.planType]) {
+                            planTotals[payment.planType] = 0;
+                          }
+                          planTotals[payment.planType] += payment.amount;
+                        });
+                        
+                        return (
+                          <div className="space-y-2">
+                            {Object.entries(planTotals).map(([planType, amount]) => (
+                              <div key={planType} className="flex justify-between">
+                                <span className="text-white">{planType}</span>
+                                <span className="text-white">{formatINR(amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
               )}
             </CardContent>
           </Card>

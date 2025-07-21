@@ -63,6 +63,8 @@ const Members = () => {
   const [trainerMembers, setTrainerMembers] = useState([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingMemberData, setPendingMemberData] = useState(null);
+  const [gymOwnerUpiId, setGymOwnerUpiId] = useState(null);
+  const [gymName, setGymName] = useState("");
   const [formStep, setFormStep] = useState(1); // 1: Basic Info, 2: Membership Details, 3: Review
   const [customDuration, setCustomDuration] = useState(''); // For custom duration input
   const [subscriptionInfo, setSubscriptionInfo] = useState({
@@ -124,6 +126,28 @@ const Members = () => {
       // No fallback - user should create plans first
       setGymOwnerPlans([]);
       toast.error('Failed to load membership plans. Please create your membership plans first.');
+    }
+  }, [user, isGymOwner, authFetch]);
+
+  // Fetch gym owner UPI ID for payments
+  const fetchGymOwnerUpiId = useCallback(async () => {
+    if (!user || !isGymOwner) return;
+    
+    try {
+      const response = await authFetch(`/auth/users/gym-owner/${user._id}/upi-id`);
+      if (response.status === 'success') {
+        if (response.data.hasUpiId) {
+          setGymOwnerUpiId(response.data.upiId);
+          setGymName(response.data.gymName || user.gymName || user.name);
+        } else {
+          setGymOwnerUpiId(null);
+          setGymName(user.gymName || user.name);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching gym owner UPI ID:', error);
+      setGymOwnerUpiId(null);
+      setGymName(user.gymName || user.name);
     }
   }, [user, isGymOwner, authFetch]);
 
@@ -298,6 +322,10 @@ const Members = () => {
         if (user && isGymOwner) {
           console.log('Fetching gym owner plans');
           await fetchGymOwnerPlans();
+          
+          // Step 4: Fetch gym owner UPI ID for payments
+          console.log('Fetching gym owner UPI ID');
+          await fetchGymOwnerUpiId();
         }
         
         console.log('Data loading complete');
@@ -325,7 +353,7 @@ const Members = () => {
     return () => {
       if (loadingTimeout) clearTimeout(loadingTimeout);
     };
-  }, [fetchUsers, user, isGymOwner, isTrainer]); // Simplified dependencies
+  }, [fetchUsers, fetchGymOwnerPlans, fetchGymOwnerUpiId, user, isGymOwner, isTrainer, checkSubscriptionStatus]); // Simplified dependencies
 
   // Separate effect to process subscription info when users or subscription changes
   useEffect(() => {
@@ -2807,6 +2835,8 @@ const Members = () => {
                   ? ` with Trainer: ${availableTrainers.find(t => t._id === pendingMemberData?.assignedTrainer)?.name || 'Selected Trainer'}` 
                   : ''
               })`}
+              gymOwnerUpiId={gymOwnerUpiId}
+              gymName={gymName}
             />
           )}
         </div>

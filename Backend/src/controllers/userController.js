@@ -294,7 +294,7 @@ export const updateMe = async (req, res) => {
     if (req.user.role === 'super-admin') {
       allowedFields = [...allowedFields, 'whatsapp', 'experience'];
     } else if (req.user.role === 'gym-owner') {
-      allowedFields = [...allowedFields, 'gymName', 'address', 'whatsapp'];
+      allowedFields = [...allowedFields, 'gymName', 'address', 'whatsapp', 'upiId'];
     } else if (req.user.role === 'trainer') {
       allowedFields = [...allowedFields, 'specialization', 'experience', 'certifications', 'availability'];
     } else if (req.user.role === 'member') {
@@ -734,6 +734,48 @@ export const updateAllTrainerMemberCounts = async (req, res) => {
     });
   }
 };
+
+// Get gym owner's UPI ID for member payments
+export const getGymOwnerUpiId = catchAsync(async (req, res, next) => {
+  const { gymOwnerId } = req.params;
+  
+  // Validate gymOwnerId format
+  if (!mongoose.Types.ObjectId.isValid(gymOwnerId)) {
+    return next(new AppError('Invalid gym owner ID format', 400));
+  }
+  
+  // Find the gym owner
+  const gymOwner = await User.findById(gymOwnerId).select('upiId gymName name role');
+  
+  if (!gymOwner) {
+    return next(new AppError('Gym owner not found', 404));
+  }
+  
+  if (gymOwner.role !== 'gym-owner') {
+    return next(new AppError('User is not a gym owner', 400));
+  }
+  
+  // Check if UPI ID is set
+  if (!gymOwner.upiId) {
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        hasUpiId: false,
+        gymName: gymOwner.gymName || gymOwner.name,
+        message: 'Gym owner has not set up UPI ID for payments'
+      }
+    });
+  }
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      hasUpiId: true,
+      upiId: gymOwner.upiId,
+      gymName: gymOwner.gymName || gymOwner.name
+    }
+  });
+});
 
 // Helper function to filter object
 const filterObj = (obj, ...allowedFields) => {

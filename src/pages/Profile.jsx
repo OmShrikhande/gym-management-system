@@ -51,6 +51,7 @@ const Profile = () => {
     gymName: "",
     address: "",
     whatsapp: "",
+    upiId: "",
     // Health metrics for members
     height: "",
     weight: "",
@@ -208,6 +209,7 @@ const Profile = () => {
       gymName: user.gymName || "",
       address: user.address || "",
       whatsapp: user.whatsapp || "",
+      upiId: user.upiId || "",
       height: user.height || "",
       weight: user.weight || "",
       fitnessGoal: user.fitnessGoal || user.goal || "weight-loss",
@@ -964,6 +966,33 @@ const Profile = () => {
                   />
                 </div>
               </>
+            )}
+            
+            {/* Payment Settings for Gym Owners */}
+            {user?.role === 'gym-owner' && (
+              <div className="border-t border-gray-600 pt-4 mt-4">
+                <h4 className="text-lg font-semibold text-white mb-3 flex items-center">
+                  <CreditCard className="h-5 w-5 mr-2" />
+                  Payment Settings
+                </h4>
+                <p className="text-gray-400 text-sm mb-4">
+                  Set up your UPI ID to receive payments from members directly
+                </p>
+                <div>
+                  <Label htmlFor="upiId" className="text-gray-300">UPI ID</Label>
+                  <Input
+                    id="upiId"
+                    value={profileData.upiId}
+                    onChange={(e) => handleInputChange("upiId", e.target.value)}
+                    disabled={!isEditing}
+                    className="bg-gray-700 border-gray-600 text-white"
+                    placeholder="e.g., yourname@paytm, 9876543210@ybl"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This UPI ID will be shown to members when they make payments for membership fees
+                  </p>
+                </div>
+              </div>
             )}
             
             {/* Trainer Fields */}
