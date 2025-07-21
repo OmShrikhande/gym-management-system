@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
 
 // API URL
 // API URL - Use environment variable or fallback to production
@@ -248,20 +249,6 @@ const SubscriptionRequired = () => {
       const order = orderResponse.data?.order;
       
       // Step 2: Load Razorpay script
-      const loadRazorpayScript = () => {
-        return new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          script.onload = () => {
-            resolve(true);
-          };
-          script.onerror = () => {
-            resolve(false);
-          };
-          document.body.appendChild(script);
-        });
-      };
-      
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         toast.error('Failed to load Razorpay checkout');
@@ -269,9 +256,17 @@ const SubscriptionRequired = () => {
         return;
       }
       
-      // Step 3: Open Razorpay checkout
+      // Step 3: Get Razorpay key dynamically
+      const razorpayKey = await getRazorpayKey();
+      if (!razorpayKey) {
+        toast.error('Failed to get payment configuration');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 4: Open Razorpay checkout
       const options = {
-        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        key: razorpayKey, // Dynamic key based on environment
         amount: order.amount,
         currency: order.currency,
         name: 'GymFlow',
@@ -551,23 +546,14 @@ const SubscriptionRequired = () => {
                           Logout
                         </Button>
                       </div>
-                      <Button 
-                        variant="outline"
-                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                        size="lg"
-                        disabled={isProcessing}
-                        onClick={handleTestModePayment}
-                      >
-                        <CheckCircle className="mr-2 h-5 w-5" />
-                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
-                      </Button>
+
                     </div>
                     <div className="mt-2 text-center space-y-1">
                       <p className="text-xs text-gray-400">
                         Secure payment powered by Razorpay. Your subscription will be activated immediately after payment.
                       </p>
-                      <p className="text-xs text-amber-500/70 italic">
-                        Test Mode: Payments are simulated for development purposes
+                      <p className="text-xs text-green-500/70 italic">
+                        🔒 SSL Encrypted • 100% Secure Payment Gateway
                       </p>
                     </div>
                   </div>

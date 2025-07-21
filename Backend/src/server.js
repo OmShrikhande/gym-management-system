@@ -1,7 +1,10 @@
+import dotenv from 'dotenv';
+// Load environment variables FIRST
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 import http from 'http';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -42,8 +45,7 @@ import User from './models/userModel.js';
 import Subscription from './models/subscriptionModel.js';
 import { startSubscriptionCleanup } from './utils/subscriptionCleanup.js';
 
-// Load environment variables
-dotenv.config({ path: '../.env' });
+// Environment variables already loaded at the top
 
 // Initialize express app
 const app = express();

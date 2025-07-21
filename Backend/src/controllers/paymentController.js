@@ -18,12 +18,8 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a valid amount', 400));
   }
   
-  // Check if Razorpay is available
-  if (!isRazorpayAvailable()) {
-    return next(new AppError('Payment service is not available. Please try again later.', 503));
-  }
-  
   try {
+    console.log('🔄 Creating Razorpay order...');
     // Check if this is a subscription renewal or a new gym owner registration
     const isSubscriptionRenewal = notes && notes.subscriptionId;
     
@@ -37,9 +33,17 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
     }
     
     // Create a Razorpay order using the initialized Razorpay instance
-    // This will create a real order in Razorpay's test environment
-    const razorpay = getRazorpayInstance();
-    const order = await razorpay.orders.create({
+    let razorpay;
+    try {
+      razorpay = getRazorpayInstance();
+      if (!razorpay) {
+        throw new Error('Razorpay instance is null');
+      }
+    } catch (error) {
+      console.error('Failed to get Razorpay instance:', error);
+      return next(new AppError('Payment service initialization failed. Please check your Razorpay configuration.', 503));
+    }
+    const orderData = {
       amount: amount * 100, // Razorpay expects amount in paise
       currency,
       receipt,
@@ -48,7 +52,13 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
         userId: req.user._id,
         userRole: req.user.role
       }
-    });
+    };
+    
+    console.log('📝 Order data:', orderData);
+    
+    const order = await razorpay.orders.create(orderData);
+    
+    console.log('✅ Order created successfully:', order.id);
     
     res.status(200).json({
       status: 'success',
@@ -57,8 +67,16 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error('Razorpay order creation error:', error);
-    return next(new AppError('Failed to create payment order', 500));
+    console.error('❌ Razorpay order creation error:', error);
+    
+    // Provide more specific error messages
+    if (error.message.includes('authentication')) {
+      return next(new AppError('Payment service authentication failed. Please contact support.', 503));
+    } else if (error.message.includes('network') || error.message.includes('timeout')) {
+      return next(new AppError('Payment service temporarily unavailable. Please try again.', 503));
+    } else {
+      return next(new AppError(`Failed to create payment order: ${error.message}`, 500));
+    }
   }
 });
 
@@ -71,21 +89,30 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
   }
   
   try {
-    // In a production environment, we would verify the signature
-    // For testing purposes, we'll skip the signature verification
-    console.log('Skipping signature verification for testing');
+    // Verify Razorpay payment signature for security
+    const razorpay_secret = process.env.NODE_ENV === 'production' 
+      ? process.env.RAZORPAY_LIVE_KEY_SECRET 
+      : process.env.RAZORPAY_TEST_KEY_SECRET;
     
-    // The following code would be used in production:
-    // const razorpay_secret = process.env.NODE_ENV === 'production' 
-    //   ? process.env.RAZORPAY_LIVE_KEY_SECRET 
-    //   : process.env.RAZORPAY_TEST_KEY_SECRET;
-    // const generated_signature = crypto.createHmac('sha256', razorpay_secret)
-    //   .update(razorpay_order_id + "|" + razorpay_payment_id)
-    //   .digest('hex');
-    // 
-    // if (generated_signature !== razorpay_signature) {
-    //   return next(new AppError('Invalid payment signature', 400));
-    // }
+    if (!razorpay_secret) {
+      return next(new AppError('Razorpay secret key not configured', 500));
+    }
+    
+    const generated_signature = crypto.createHmac('sha256', razorpay_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest('hex');
+    
+    if (generated_signature !== razorpay_signature) {
+      console.error('Payment signature verification failed:', {
+        expected: generated_signature,
+        received: razorpay_signature,
+        order_id: razorpay_order_id,
+        payment_id: razorpay_payment_id
+      });
+      return next(new AppError('Invalid payment signature', 400));
+    }
+    
+    console.log('✅ Payment signature verified successfully');
     
     // Payment signature is valid, proceed with creating the gym owner
     
@@ -288,15 +315,28 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
 
 // Get Razorpay public key for frontend
 export const getRazorpayKey = catchAsync(async (req, res, next) => {
+  console.log('🔍 Checking Razorpay availability...');
+  
+  // Force re-validation of credentials
+  const isValid = validateRazorpayCredentials();
+  if (!isValid) {
+    console.error('❌ Razorpay credentials validation failed');
+    return next(new AppError('Payment service configuration error', 503));
+  }
+  
   if (!isRazorpayAvailable()) {
+    console.error('❌ Razorpay service not available');
     return next(new AppError('Payment service is not available', 503));
   }
   
   const keyId = getRazorpayPublicKey();
   
   if (!keyId) {
+    console.error('❌ Failed to get Razorpay public key');
     return next(new AppError('Razorpay key not configured', 500));
   }
+  
+  console.log('✅ Razorpay key retrieved successfully');
   
   res.status(200).json({
     status: 'success',
@@ -305,6 +345,69 @@ export const getRazorpayKey = catchAsync(async (req, res, next) => {
       mode: process.env.NODE_ENV === 'production' ? 'live' : 'test'
     }
   });
+});
+
+// Health check for Razorpay service
+export const checkRazorpayHealth = catchAsync(async (req, res, next) => {
+  console.log('🏥 Razorpay health check requested...');
+  
+  try {
+    // Force re-validation
+    const isValid = validateRazorpayCredentials();
+    const isAvailable = isRazorpayAvailable();
+    
+    let instanceStatus = 'not_initialized';
+    let testOrderStatus = 'not_tested';
+    
+    try {
+      const instance = getRazorpayInstance();
+      instanceStatus = 'initialized';
+      
+      // Try to create a test order
+      const testOrder = await instance.orders.create({
+        amount: 100, // 1 rupee in paise
+        currency: 'INR',
+        receipt: 'health_check_' + Date.now()
+      });
+      
+      testOrderStatus = 'success';
+      
+      res.status(200).json({
+        status: 'success',
+        data: {
+          credentials_valid: isValid,
+          service_available: isAvailable,
+          instance_status: instanceStatus,
+          test_order_status: testOrderStatus,
+          test_order_id: testOrder.id,
+          mode: process.env.NODE_ENV === 'production' ? 'live' : 'test',
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (instanceError) {
+      console.error('❌ Razorpay instance error:', instanceError);
+      
+      res.status(503).json({
+        status: 'error',
+        data: {
+          credentials_valid: isValid,
+          service_available: isAvailable,
+          instance_status: 'failed',
+          test_order_status: 'failed',
+          error: instanceError.message,
+          mode: process.env.NODE_ENV === 'production' ? 'live' : 'test',
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Health check error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Health check failed',
+      error: error.message
+    });
+  }
 });
 
 // Generate a QR code for payment
@@ -341,9 +444,30 @@ export const verifyActivationPayment = catchAsync(async (req, res, next) => {
   }
   
   try {
-    // In a production environment, we would verify the signature
-    // For testing purposes, we'll skip the signature verification
-    console.log('Skipping signature verification for testing');
+    // Verify Razorpay payment signature for security
+    const razorpay_secret = process.env.NODE_ENV === 'production' 
+      ? process.env.RAZORPAY_LIVE_KEY_SECRET 
+      : process.env.RAZORPAY_TEST_KEY_SECRET;
+    
+    if (!razorpay_secret) {
+      return next(new AppError('Razorpay secret key not configured', 500));
+    }
+    
+    const generated_signature = crypto.createHmac('sha256', razorpay_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest('hex');
+    
+    if (generated_signature !== razorpay_signature) {
+      console.error('Payment signature verification failed:', {
+        expected: generated_signature,
+        received: razorpay_signature,
+        order_id: razorpay_order_id,
+        payment_id: razorpay_payment_id
+      });
+      return next(new AppError('Invalid payment signature', 400));
+    }
+    
+    console.log('✅ Payment signature verified successfully');
     
     // Get the gym owner from the request (should be authenticated)
     const gymOwner = req.user;

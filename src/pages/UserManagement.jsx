@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
 import { 
   Dialog, 
   DialogContent, 
@@ -448,8 +449,16 @@ function UserManagement() {
       }
       
       // For other payment methods, open Razorpay checkout
+      // Get Razorpay key dynamically
+      const razorpayKey = await getRazorpayKey();
+      if (!razorpayKey) {
+        setMessage({ type: 'error', text: 'Failed to get payment configuration' });
+        setIsProcessingPayment(false);
+        return;
+      }
+      
       const options = {
-        key: "rzp_test_VUpggvAt3u75cZ", // Your Razorpay Test Key ID
+        key: razorpayKey, // Dynamic key based on environment
         amount: order.amount,
         currency: order.currency,
         name: "GymFlow",

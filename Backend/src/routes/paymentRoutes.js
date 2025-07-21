@@ -11,6 +11,9 @@ router.use(protect);
 // Get Razorpay public key
 router.get('/razorpay/key', paymentController.getRazorpayKey);
 
+// Health check for Razorpay
+router.get('/razorpay/health', paymentController.checkRazorpayHealth);
+
 // Create a Razorpay order - needed for subscription renewal
 router.post('/razorpay/create-order', paymentController.createRazorpayOrder);
 

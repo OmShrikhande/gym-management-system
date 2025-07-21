@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 
@@ -28,12 +31,39 @@ const initializeRazorpay = () => {
 };
 
 // Initialize Razorpay on module load
-razorpay = initializeRazorpay();
+try {
+  razorpay = initializeRazorpay();
+} catch (error) {
+  console.error('❌ Failed to initialize Razorpay on module load:', error);
+  razorpay = null;
+}
+
+// Force re-initialization if needed
+const forceReinitialize = () => {
+  console.log('🔄 Force re-initializing Razorpay...');
+  razorpay = initializeRazorpay();
+  return razorpay;
+};
 
 // Get Razorpay instance safely
 const getRazorpayInstance = () => {
   if (!razorpay) {
-    throw new Error('Razorpay is not initialized. Please check your configuration.');
+    console.log('🔄 Razorpay not initialized, attempting to initialize...');
+    try {
+      razorpay = initializeRazorpay();
+    } catch (initError) {
+      console.error('❌ Error during Razorpay initialization:', initError);
+    }
+    
+    if (!razorpay) {
+      console.error('❌ Failed to initialize Razorpay. Environment variables:');
+      console.error('NODE_ENV:', process.env.NODE_ENV);
+      console.error('RAZORPAY_TEST_KEY_ID:', process.env.RAZORPAY_TEST_KEY_ID ? 'SET' : 'NOT SET');
+      console.error('RAZORPAY_TEST_KEY_SECRET:', process.env.RAZORPAY_TEST_KEY_SECRET ? 'SET' : 'NOT SET');
+      console.error('RAZORPAY_LIVE_KEY_ID:', process.env.RAZORPAY_LIVE_KEY_ID ? 'SET' : 'NOT SET');
+      console.error('RAZORPAY_LIVE_KEY_SECRET:', process.env.RAZORPAY_LIVE_KEY_SECRET ? 'SET' : 'NOT SET');
+      throw new Error('Razorpay is not initialized. Please check your configuration.');
+    }
   }
   return razorpay;
 };
@@ -94,5 +124,6 @@ export {
   isRazorpayAvailable,
   validateRazorpayCredentials, 
   verifyRazorpaySignature, 
-  getRazorpayPublicKey 
+  getRazorpayPublicKey,
+  forceReinitialize
 };

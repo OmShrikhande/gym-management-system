@@ -128,24 +128,41 @@ export const dropIndexes = async () => {
     console.log('Dropping custom database indexes...');
     
     // Get all indexes except _id
+<<<<<<< HEAD
     const existingUserIndexes = await User.collection.listIndexes().toArray();
     const existingSubscriptionIndexes = await Subscription.collection.listIndexes().toArray();
     const existingNotificationIndexes = await Notification.collection.listIndexes().toArray();
     
     // Drop custom indexes (keep _id index)
     for (const index of existingUserIndexes) {
+=======
+    const allUserIndexes = await User.collection.listIndexes().toArray();
+    const allSubscriptionIndexes = await Subscription.collection.listIndexes().toArray();
+    const allNotificationIndexes = await Notification.collection.listIndexes().toArray();
+    
+    // Drop custom indexes (keep _id index)
+    for (const index of allUserIndexes) {
+>>>>>>> 7a8732d75d9405b6dcd5a16b91a35616b41fec6a
       if (index.name !== '_id_') {
         await User.collection.dropIndex(index.name);
       }
     }
     
+<<<<<<< HEAD
     for (const index of existingSubscriptionIndexes) {
+=======
+    for (const index of allSubscriptionIndexes) {
+>>>>>>> 7a8732d75d9405b6dcd5a16b91a35616b41fec6a
       if (index.name !== '_id_') {
         await Subscription.collection.dropIndex(index.name);
       }
     }
     
+<<<<<<< HEAD
     for (const index of existingNotificationIndexes) {
+=======
+    for (const index of allNotificationIndexes) {
+>>>>>>> 7a8732d75d9405b6dcd5a16b91a35616b41fec6a
       if (index.name !== '_id_') {
         await Notification.collection.dropIndex(index.name);
       }
