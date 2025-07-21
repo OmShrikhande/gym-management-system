@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
 
 // API URL
 // API URL - Use environment variable or fallback to production
@@ -248,20 +249,6 @@ const SubscriptionRequired = () => {
       const order = orderResponse.data?.order;
       
       // Step 2: Load Razorpay script
-      const loadRazorpayScript = () => {
-        return new Promise((resolve) => {
-          const script = document.createElement('script');
-          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          script.onload = () => {
-            resolve(true);
-          };
-          script.onerror = () => {
-            resolve(false);
-          };
-          document.body.appendChild(script);
-        });
-      };
-      
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         toast.error('Failed to load Razorpay checkout');
@@ -269,9 +256,17 @@ const SubscriptionRequired = () => {
         return;
       }
       
-      // Step 3: Open Razorpay checkout
+      // Step 3: Get Razorpay key dynamically
+      const razorpayKey = await getRazorpayKey();
+      if (!razorpayKey) {
+        toast.error('Failed to get payment configuration');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 4: Open Razorpay checkout
       const options = {
-        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        key: razorpayKey, // Dynamic key based on environment
         amount: order.amount,
         currency: order.currency,
         name: 'GymFlow',

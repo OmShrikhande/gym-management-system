@@ -71,21 +71,30 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
   }
   
   try {
-    // In a production environment, we would verify the signature
-    // For testing purposes, we'll skip the signature verification
-    console.log('Skipping signature verification for testing');
+    // Verify Razorpay payment signature for security
+    const razorpay_secret = process.env.NODE_ENV === 'production' 
+      ? process.env.RAZORPAY_LIVE_KEY_SECRET 
+      : process.env.RAZORPAY_TEST_KEY_SECRET;
     
-    // The following code would be used in production:
-    // const razorpay_secret = process.env.NODE_ENV === 'production' 
-    //   ? process.env.RAZORPAY_LIVE_KEY_SECRET 
-    //   : process.env.RAZORPAY_TEST_KEY_SECRET;
-    // const generated_signature = crypto.createHmac('sha256', razorpay_secret)
-    //   .update(razorpay_order_id + "|" + razorpay_payment_id)
-    //   .digest('hex');
-    // 
-    // if (generated_signature !== razorpay_signature) {
-    //   return next(new AppError('Invalid payment signature', 400));
-    // }
+    if (!razorpay_secret) {
+      return next(new AppError('Razorpay secret key not configured', 500));
+    }
+    
+    const generated_signature = crypto.createHmac('sha256', razorpay_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest('hex');
+    
+    if (generated_signature !== razorpay_signature) {
+      console.error('Payment signature verification failed:', {
+        expected: generated_signature,
+        received: razorpay_signature,
+        order_id: razorpay_order_id,
+        payment_id: razorpay_payment_id
+      });
+      return next(new AppError('Invalid payment signature', 400));
+    }
+    
+    console.log('✅ Payment signature verified successfully');
     
     // Payment signature is valid, proceed with creating the gym owner
     
@@ -341,9 +350,30 @@ export const verifyActivationPayment = catchAsync(async (req, res, next) => {
   }
   
   try {
-    // In a production environment, we would verify the signature
-    // For testing purposes, we'll skip the signature verification
-    console.log('Skipping signature verification for testing');
+    // Verify Razorpay payment signature for security
+    const razorpay_secret = process.env.NODE_ENV === 'production' 
+      ? process.env.RAZORPAY_LIVE_KEY_SECRET 
+      : process.env.RAZORPAY_TEST_KEY_SECRET;
+    
+    if (!razorpay_secret) {
+      return next(new AppError('Razorpay secret key not configured', 500));
+    }
+    
+    const generated_signature = crypto.createHmac('sha256', razorpay_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest('hex');
+    
+    if (generated_signature !== razorpay_signature) {
+      console.error('Payment signature verification failed:', {
+        expected: generated_signature,
+        received: razorpay_signature,
+        order_id: razorpay_order_id,
+        payment_id: razorpay_payment_id
+      });
+      return next(new AppError('Invalid payment signature', 400));
+    }
+    
+    console.log('✅ Payment signature verified successfully');
     
     // Get the gym owner from the request (should be authenticated)
     const gymOwner = req.user;

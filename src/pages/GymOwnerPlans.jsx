@@ -8,6 +8,7 @@ import { Search, Plus, CreditCard, TrendingUp, Calendar, FileText, Edit, Downloa
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -393,9 +394,17 @@ const GymOwnerPlans = () => {
         return;
       }
       
-      // Step 3: Open Razorpay checkout
+      // Step 3: Get Razorpay key dynamically
+      const razorpayKey = await getRazorpayKey();
+      if (!razorpayKey) {
+        toast.error('Failed to get payment configuration');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 4: Open Razorpay checkout
       const options = {
-        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        key: razorpayKey, // Dynamic key based on environment
         amount: order.amount,
         currency: order.currency,
         name: 'GymFlow',
@@ -518,9 +527,17 @@ const GymOwnerPlans = () => {
         return;
       }
       
-      // Step 3: Open Razorpay checkout
+      // Step 3: Get Razorpay key dynamically
+      const razorpayKey = await getRazorpayKey();
+      if (!razorpayKey) {
+        toast.error('Failed to get payment configuration');
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Step 4: Open Razorpay checkout
       const options = {
-        key: 'rzp_test_VUpggvAt3u75cZ', // Replace with your Razorpay key
+        key: razorpayKey, // Dynamic key based on environment
         amount: order.amount,
         currency: order.currency,
         name: 'GymFlow',
