@@ -546,23 +546,14 @@ const SubscriptionRequired = () => {
                           Logout
                         </Button>
                       </div>
-                      <Button 
-                        variant="outline"
-                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                        size="lg"
-                        disabled={isProcessing}
-                        onClick={handleTestModePayment}
-                      >
-                        <CheckCircle className="mr-2 h-5 w-5" />
-                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
-                      </Button>
+
                     </div>
                     <div className="mt-2 text-center space-y-1">
                       <p className="text-xs text-gray-400">
                         Secure payment powered by Razorpay. Your subscription will be activated immediately after payment.
                       </p>
-                      <p className="text-xs text-amber-500/70 italic">
-                        Test Mode: Payments are simulated for development purposes
+                      <p className="text-xs text-green-500/70 italic">
+                        🔒 SSL Encrypted • 100% Secure Payment Gateway
                       </p>
                     </div>
                   </div>

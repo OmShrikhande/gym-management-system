@@ -830,15 +830,6 @@ const GymOwnerPlans = () => {
                         <CreditCard className="h-4 w-4 mr-2" />
                         {isProcessing ? 'Processing...' : 'Renew Subscription'}
                       </Button>
-                      <Button 
-                        variant="outline"
-                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                        onClick={handleTestModeRenewal}
-                        disabled={isProcessing}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
-                      </Button>
                     </>
                   )}
                   {hasActiveSubscription && daysRemaining <= 5 && (
@@ -851,20 +842,11 @@ const GymOwnerPlans = () => {
                         <CreditCard className="h-4 w-4 mr-2" />
                         {isProcessing ? 'Processing...' : 'Extend Subscription'}
                       </Button>
-                      <Button 
-                        variant="outline"
-                        className="border-amber-600 text-amber-500 hover:bg-amber-900/20"
-                        onClick={handleTestModeRenewal}
-                        disabled={isProcessing}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        {isProcessing ? 'Processing...' : 'Skip Payment (Test Mode)'}
-                      </Button>
                     </>
                   )}
                 </div>
-                <div className="text-xs text-amber-500/70 text-right italic">
-                  Test Mode: Payments are simulated for development purposes
+                <div className="text-xs text-green-500/70 text-right italic">
+                  🔒 Secure Payment Gateway • SSL Encrypted
                 </div>
               </div>
             </CardContent>

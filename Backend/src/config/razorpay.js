@@ -30,10 +30,21 @@ const initializeRazorpay = () => {
 // Initialize Razorpay on module load
 razorpay = initializeRazorpay();
 
+// Force re-initialization if needed
+const forceReinitialize = () => {
+  console.log('🔄 Force re-initializing Razorpay...');
+  razorpay = initializeRazorpay();
+  return razorpay;
+};
+
 // Get Razorpay instance safely
 const getRazorpayInstance = () => {
   if (!razorpay) {
-    throw new Error('Razorpay is not initialized. Please check your configuration.');
+    console.log('🔄 Razorpay not initialized, attempting to initialize...');
+    razorpay = initializeRazorpay();
+    if (!razorpay) {
+      throw new Error('Razorpay is not initialized. Please check your configuration.');
+    }
   }
   return razorpay;
 };
@@ -94,5 +105,6 @@ export {
   isRazorpayAvailable,
   validateRazorpayCredentials, 
   verifyRazorpaySignature, 
-  getRazorpayPublicKey 
+  getRazorpayPublicKey,
+  forceReinitialize
 };
