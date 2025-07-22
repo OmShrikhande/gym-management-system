@@ -134,7 +134,7 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
-      const response = await authFetch(`/auth/users/gym-owner/${user._id}/upi-id`);
+      const response = await authFetch(`/users/gym-owner/${user._id}/upi-id`);
       if (response.status === 'success') {
         if (response.data.hasUpiId) {
           setGymOwnerUpiId(response.data.upiId);

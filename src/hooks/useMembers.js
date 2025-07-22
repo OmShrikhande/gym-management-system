@@ -13,10 +13,13 @@ export const useMembers = () => {
       setLoading(true);
       setError(null);
       
-      const response = await authFetch('/api/members');
+      const response = await authFetch('/users/');
       
       if (response.success || response.status === 'success') {
-        setMembers(response.data || []);
+        // Filter only members from the response
+        const allUsers = response.data?.users || response.data || [];
+        const membersOnly = allUsers.filter(user => user.role === 'member');
+        setMembers(membersOnly);
       } else {
         throw new Error(response.message || 'Failed to fetch members');
       }
@@ -30,12 +33,12 @@ export const useMembers = () => {
 
   const addMember = async (memberData) => {
     try {
-      const response = await authFetch('/api/members', {
+      const response = await authFetch('/auth/create-user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(memberData),
+        body: JSON.stringify({...memberData, role: 'member'}),
       });
 
       if (response.success || response.status === 'success') {
@@ -54,7 +57,7 @@ export const useMembers = () => {
 
   const updateMember = async (memberId, memberData) => {
     try {
-      const response = await authFetch(`/api/members/${memberId}`, {
+      const response = await authFetch(`/auth/users/${memberId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -82,7 +85,7 @@ export const useMembers = () => {
 
   const deleteMember = async (memberId) => {
     try {
-      const response = await authFetch(`/api/members/${memberId}`, {
+      const response = await authFetch(`/users/${memberId}`, {
         method: 'DELETE',
       });
 
@@ -101,7 +104,7 @@ export const useMembers = () => {
 
   const getMember = async (memberId) => {
     try {
-      const response = await authFetch(`/api/members/${memberId}`);
+      const response = await authFetch(`/users/${memberId}`);
       
       if (response.success || response.status === 'success') {
         return response.data;
