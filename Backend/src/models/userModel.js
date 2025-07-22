@@ -63,8 +63,8 @@ const userSchema = new mongoose.Schema({
     trim: true,
     validate: {
       validator: function(value) {
-        // Only validate if UPI ID is provided and user is gym owner
-        if (!value || this.role !== 'gym-owner') return true;
+        // Only validate if UPI ID is provided
+        if (!value) return true;
         // Basic UPI ID validation pattern
         const upiPattern = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
         return upiPattern.test(value);

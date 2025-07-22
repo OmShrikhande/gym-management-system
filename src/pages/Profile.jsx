@@ -420,6 +420,12 @@ const Profile = () => {
         upiId: profileData.upiId
       };
       
+      // Debug UPI ID updates
+      if (user?.role === 'gym-owner' && updateData.upiId !== undefined) {
+        console.log(`🔄 Updating profile with UPI ID: ${updateData.upiId || 'None'}`);
+        console.log('Current user UPI ID:', user.upiId || 'None');
+      }
+      
       // Add member-specific fields if user is a member
       if (user?.role === 'member') {
         updateData.height = profileData.height;
@@ -468,8 +474,25 @@ const Profile = () => {
       
       const data = response;
       
+      // Debug the response
+      if (user?.role === 'gym-owner' && updateData.upiId !== undefined) {
+        console.log('📋 Profile update response:', data);
+        console.log('✅ Updated user UPI ID:', data.data?.user?.upiId || 'None');
+      }
+      
       // Update user in context
       updateCurrentUser(data.data.user);
+      
+      // If UPI ID was updated, trigger a custom event for other components to listen to
+      if (user?.role === 'gym-owner' && updateData.upiId !== undefined) {
+        console.log('🔄 Triggering UPI ID update event');
+        window.dispatchEvent(new CustomEvent('upiIdUpdated', { 
+          detail: { 
+            upiId: data.data?.user?.upiId,
+            gymOwnerId: user._id
+          } 
+        }));
+      }
       
       setIsEditing(false);
       toast.success('Profile updated successfully');

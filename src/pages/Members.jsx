@@ -134,12 +134,17 @@ const Members = () => {
     if (!user || !isGymOwner) return;
     
     try {
+      console.log(`🔍 Fetching UPI ID for gym owner: ${user._id}`);
       const response = await authFetch(`/users/gym-owner/${user._id}/upi-id`);
+      console.log('📋 UPI ID Response:', response);
+      
       if (response.status === 'success') {
         if (response.data.hasUpiId) {
+          console.log(`✅ UPI ID found: ${response.data.upiId}`);
           setGymOwnerUpiId(response.data.upiId);
           setGymName(response.data.gymName || user.gymName || user.name);
         } else {
+          console.log('❌ No UPI ID found');
           setGymOwnerUpiId(null);
           setGymName(user.gymName || user.name);
         }
@@ -364,8 +369,20 @@ const Members = () => {
       }
     };
 
+    const handleUpiIdUpdate = (event) => {
+      if (user && isGymOwner && event.detail?.gymOwnerId === user._id) {
+        console.log('🔄 UPI ID update event received, refreshing UPI ID...', event.detail);
+        fetchGymOwnerUpiId();
+      }
+    };
+
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    window.addEventListener('upiIdUpdated', handleUpiIdUpdate);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('upiIdUpdated', handleUpiIdUpdate);
+    };
   }, [user, isGymOwner, fetchGymOwnerUpiId]);
 
   // Separate effect to process subscription info when users or subscription changes
