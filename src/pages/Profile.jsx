@@ -416,7 +416,8 @@ const Profile = () => {
         certifications: profileData.certifications,
         gymName: profileData.gymName,
         address: profileData.address,
-        whatsapp: profileData.whatsapp
+        whatsapp: profileData.whatsapp,
+        upiId: profileData.upiId
       };
       
       // Add member-specific fields if user is a member
