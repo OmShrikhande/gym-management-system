@@ -355,6 +355,19 @@ const Members = () => {
     };
   }, [fetchUsers, fetchGymOwnerPlans, fetchGymOwnerUpiId, user, isGymOwner, isTrainer, checkSubscriptionStatus]); // Simplified dependencies
 
+  // Add window focus listener to refresh UPI ID when user returns to page
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user && isGymOwner) {
+        console.log('Window focused, refreshing UPI ID...');
+        fetchGymOwnerUpiId();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, isGymOwner, fetchGymOwnerUpiId]);
+
   // Separate effect to process subscription info when users or subscription changes
   useEffect(() => {
     if (user && isGymOwner && subscription && users.length > 0) {
@@ -1017,6 +1030,7 @@ const Members = () => {
                     
                     if (user && isGymOwner) {
                       promises.push(checkSubscriptionStatus(user._id, null, true));
+                      promises.push(fetchGymOwnerUpiId());
                     }
                     
                     // Wait for all promises to resolve
