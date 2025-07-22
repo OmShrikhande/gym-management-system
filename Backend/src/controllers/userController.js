@@ -303,11 +303,23 @@ export const updateMe = async (req, res) => {
     
     const filteredBody = filterObj(req.body, ...allowedFields);
     
+    // Add debugging for UPI ID updates
+    if (req.user.role === 'gym-owner' && (filteredBody.upiId !== undefined)) {
+      console.log(`🔄 Updating UPI ID for gym owner ${req.user.name} (${req.user.email})`);
+      console.log(`   Current UPI ID: ${req.user.upiId || 'None'}`);
+      console.log(`   New UPI ID: ${filteredBody.upiId || 'None'}`);
+    }
+    
     // 3) Update user document
     const updatedUser = await User.findByIdAndUpdate(req.user.id, filteredBody, {
       new: true,
       runValidators: true
     });
+    
+    // More debugging for UPI ID
+    if (req.user.role === 'gym-owner' && (filteredBody.upiId !== undefined)) {
+      console.log(`✅ UPI ID updated successfully: ${updatedUser.upiId || 'None'}`);
+    }
     
     res.status(200).json({
       status: 'success',
@@ -739,6 +751,8 @@ export const updateAllTrainerMemberCounts = async (req, res) => {
 export const getGymOwnerUpiId = catchAsync(async (req, res, next) => {
   const { gymOwnerId } = req.params;
   
+  console.log(`🔍 Fetching UPI ID for gym owner: ${gymOwnerId}`);
+  
   // Validate gymOwnerId format
   if (!mongoose.Types.ObjectId.isValid(gymOwnerId)) {
     return next(new AppError('Invalid gym owner ID format', 400));
@@ -748,15 +762,22 @@ export const getGymOwnerUpiId = catchAsync(async (req, res, next) => {
   const gymOwner = await User.findById(gymOwnerId).select('upiId gymName name role');
   
   if (!gymOwner) {
+    console.log(`❌ Gym owner not found: ${gymOwnerId}`);
     return next(new AppError('Gym owner not found', 404));
   }
   
   if (gymOwner.role !== 'gym-owner') {
+    console.log(`❌ User is not a gym owner: ${gymOwner.email} (role: ${gymOwner.role})`);
     return next(new AppError('User is not a gym owner', 400));
   }
   
+  console.log(`📋 Found gym owner: ${gymOwner.name} (${gymOwner.email || 'no email'})`);
+  console.log(`   UPI ID: ${gymOwner.upiId || 'None'}`);
+  console.log(`   Gym Name: ${gymOwner.gymName || gymOwner.name}`);
+  
   // Check if UPI ID is set
   if (!gymOwner.upiId) {
+    console.log(`❌ No UPI ID found for gym owner`);
     return res.status(200).json({
       status: 'success',
       data: {
