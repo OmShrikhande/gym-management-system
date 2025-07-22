@@ -127,12 +127,19 @@ const QRPaymentModal = ({
                 Please ask the gym owner to add their UPI ID in their profile settings 
                 before proceeding with the payment.
               </p>
-              <div className="mt-3">
+              <div className="mt-3 flex gap-2">
                 <Button 
                   onClick={onClose}
                   className="bg-red-600 hover:bg-red-700 text-white"
                 >
                   Close
+                </Button>
+                <Button 
+                  onClick={() => window.location.reload()}
+                  variant="outline"
+                  className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                >
+                  Refresh
                 </Button>
               </div>
             </div>

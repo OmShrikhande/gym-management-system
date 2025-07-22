@@ -961,6 +961,9 @@ const Members = () => {
     const totalFee = planCost + totalTrainerCost;
   
     
+    // Refresh UPI ID before showing payment modal
+    await fetchGymOwnerUpiId();
+    
     // Store the member data with calculated fee and show payment modal
     setPendingMemberData({
       ...formData,

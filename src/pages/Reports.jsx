@@ -435,9 +435,13 @@ const Reports = () => {
       
       try {
         // Get all members for this gym owner
+        console.log('Fetching members for payment reports...');
         const membersResponse = await authFetch('/users/');
+        console.log('Members response:', membersResponse);
+        
         if (!membersResponse.success && membersResponse.status !== 'success') {
-          throw new Error('Failed to fetch members');
+          console.error('Failed to fetch members:', membersResponse);
+          throw new Error(membersResponse.message || 'Failed to fetch members');
         }
         
         const members = membersResponse.data?.users || [];
