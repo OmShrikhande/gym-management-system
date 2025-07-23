@@ -8,7 +8,7 @@ import { Search, Plus, CreditCard, TrendingUp, Calendar, FileText, Edit, Downloa
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
+import { getRazorpayKey, getRazorpayKeyWithValidation, loadRazorpayScript } from "@/utils/razorpayUtils";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";

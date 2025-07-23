@@ -57,23 +57,22 @@ const QRPaymentModal = ({
     }, 3000);
   };
   
-  // Verify payment (in a real app, this would call your backend API)
-  const handleVerifyPayment = async () => {
+  // Complete payment with transaction ID
+  const handleCompletePayment = async () => {
     if (!paymentId.trim()) {
-      toast.error("Please enter the payment reference ID");
+      toast.error("Please enter the transaction ID");
       return;
     }
     
     setVerifying(true);
     
     try {
-      // Simulate API call with a delay
+      // Simulate processing with a delay
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // In a real app, you would verify the payment with your backend
-      // For demo purposes, we'll just simulate a successful verification
+      // Mark payment as verified
       setPaymentVerified(true);
-      toast.success("Payment verified successfully!");
+      toast.success("Payment completed successfully!");
       
       // Call the onPaymentComplete callback after a short delay
       setTimeout(() => {
@@ -85,8 +84,8 @@ const QRPaymentModal = ({
         });
       }, 1000);
     } catch (error) {
-      console.error("Payment verification error:", error);
-      toast.error("Failed to verify payment. Please try again.");
+      console.error("Payment completion error:", error);
+      toast.error("Failed to complete payment. Please try again.");
     } finally {
       setVerifying(false);
     }
@@ -99,9 +98,9 @@ const QRPaymentModal = ({
       <Card className="w-full max-w-md bg-gray-800 border-gray-700">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-white">Complete Payment</CardTitle>
+            <CardTitle className="text-white">Member Payment</CardTitle>
             <CardDescription className="text-gray-400">
-              Scan QR code or use UPI ID to pay
+              Scan QR code or use UPI ID, then enter transaction ID
             </CardDescription>
           </div>
           <Button 
@@ -259,21 +258,23 @@ const QRPaymentModal = ({
             </div>
           </div>
           
-          {/* Payment Verification */}
+          {/* Transaction ID Input */}
           <div className="space-y-3">
             <Label htmlFor="paymentId" className="text-gray-300">
-              Enter Payment Reference ID
+              Enter Transaction ID <span className="text-red-400">*</span>
             </Label>
             <Input
               id="paymentId"
-              placeholder="e.g. UPI123456789"
+              placeholder="e.g. UPI123456789, TXN987654321"
               value={paymentId}
               onChange={(e) => setPaymentId(e.target.value)}
-              className="bg-gray-700 border-gray-600 text-white"
+              className="bg-gray-700 border-gray-600 text-white focus:border-blue-500"
               disabled={paymentVerified || verifying}
             />
             <p className="text-xs text-gray-400">
-              After completing the payment, enter the reference ID from your UPI app
+              1. Scan the QR code or use the UPI ID to make payment<br/>
+              2. Enter the transaction ID you received after payment<br/>
+              3. Click "Complete Payment" to create the member
             </p>
           </div>
             </>
@@ -284,22 +285,22 @@ const QRPaymentModal = ({
             <>
               <div className="flex gap-2 w-full">
                 <Button 
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                  onClick={handleVerifyPayment}
+                  className={`flex-1 ${!paymentId.trim() ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
+                  onClick={handleCompletePayment}
                   disabled={paymentVerified || verifying || !paymentId.trim()}
                 >
                   {verifying ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Verifying...
+                      Processing...
                     </>
                   ) : paymentVerified ? (
                     <>
                       <Check className="h-4 w-4 mr-2" />
-                      Payment Verified
+                      Payment Completed
                     </>
                   ) : (
-                    "Verify Payment"
+                    "Complete Payment"
                   )}
                 </Button>
                 
@@ -327,7 +328,7 @@ const QRPaymentModal = ({
               </div>
               
               <p className="text-xs text-gray-400 text-center">
-                Please complete the payment before verifying. Your membership will be activated after payment verification.
+                Complete the payment using the QR code or UPI ID above, then enter your transaction ID to create the member.
                 <br />
                 <span className="text-amber-400">For testing: Use the "Skip Payment" button to bypass actual payment.</span>
               </p>

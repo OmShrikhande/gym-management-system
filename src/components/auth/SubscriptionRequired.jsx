@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
+import { getRazorpayKey, getRazorpayKeyWithValidation, loadRazorpayScript } from "@/utils/razorpayUtils";
 
 // API URL
 // API URL - Use environment variable or fallback to production
@@ -256,10 +256,13 @@ const SubscriptionRequired = () => {
         return;
       }
       
-      // Step 3: Get Razorpay key dynamically
-      const razorpayKey = await getRazorpayKey();
-      if (!razorpayKey) {
-        toast.error('Failed to get payment configuration');
+      // Step 3: Get Razorpay key dynamically with validation
+      let razorpayKey;
+      try {
+        razorpayKey = await getRazorpayKeyWithValidation();
+      } catch (keyError) {
+        console.error('Razorpay key error:', keyError);
+        toast.error('Failed to get payment configuration. Please try again or contact support.');
         setIsProcessing(false);
         return;
       }

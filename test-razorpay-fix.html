@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razorpay Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { border-color: #4CAF50; background-color: #f8fff8; }
+        .error { border-color: #f44336; background-color: #fff8f8; }
+        .warning { border-color: #ff9800; background-color: #fffaf0; }
+        button {
+            background-color: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #005a87; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .log {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Razorpay Integration Test</h1>
+        <p>This test will help diagnose and verify the Razorpay integration issues.</p>
+
+        <div class="test-section" id="auth-test">
+            <h3>1. Authentication Token Test</h3>
+            <p>Checking if authentication tokens are available...</p>
+            <button onclick="testAuthToken()">Test Auth Token</button>
+            <div id="auth-result"></div>
+        </div>
+
+        <div class="test-section" id="api-test">
+            <h3>2. Backend API Test</h3>
+            <p>Testing connection to the backend API...</p>
+            <button onclick="testBackendAPI()">Test Backend API</button>
+            <div id="api-result"></div>
+        </div>
+
+        <div class="test-section" id="razorpay-test">
+            <h3>3. Razorpay Key Test</h3>
+            <p>Testing Razorpay key retrieval...</p>
+            <button onclick="testRazorpayKey()" id="razorpay-btn">Test Razorpay Key</button>
+            <div id="razorpay-result"></div>
+        </div>
+
+        <div class="test-section" id="script-test">
+            <h3>4. Razorpay Script Test</h3>
+            <p>Testing Razorpay script loading...</p>
+            <button onclick="testRazorpayScript()">Test Script Loading</button>
+            <div id="script-result"></div>
+        </div>
+
+        <div class="test-section" id="integration-test">
+            <h3>5. Full Integration Test</h3>
+            <p>Testing complete Razorpay integration...</p>
+            <button onclick="testFullIntegration()" id="integration-btn" disabled>Test Full Integration</button>
+            <div id="integration-result"></div>
+        </div>
+
+        <div class="log" id="console-log">
+            <strong>Console Log:</strong><br>
+        </div>
+    </div>
+
+    <script>
+        // Override console.log to show in our log area
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function addToLog(message, type = 'log') {
+            const logDiv = document.getElementById('console-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'warn' ? 'orange' : 'black';
+            logDiv.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span><br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addToLog(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addToLog(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addToLog(args.join(' '), 'warn');
+        };
+
+        // Test functions
+        function testAuthToken() {
+            console.log('🔍 Testing authentication tokens...');
+            
+            const tokenSources = [
+                { name: 'gymflow_token (localStorage)', value: localStorage.getItem('gymflow_token') },
+                { name: 'token (localStorage)', value: localStorage.getItem('token') },
+                { name: 'gymflow_token (sessionStorage)', value: sessionStorage.getItem('gymflow_token') },
+                { name: 'token (sessionStorage)', value: sessionStorage.getItem('token') }
+            ];
+
+            let resultHTML = '<h4>Token Check Results:</h4>';
+            let hasToken = false;
+
+            tokenSources.forEach(source => {
+                const status = source.value ? '✅' : '❌';
+                const preview = source.value ? `${source.value.substring(0, 20)}...` : 'Not found';
+                resultHTML += `<p>${status} ${source.name}: ${preview}</p>`;
+                if (source.value) hasToken = true;
+            });
+
+            const authDiv = document.getElementById('auth-result');
+            authDiv.innerHTML = resultHTML;
+            
+            if (hasToken) {
+                document.getElementById('auth-test').className = 'test-section success';
+                console.log('✅ Authentication token found');
+            } else {
+                document.getElementById('auth-test').className = 'test-section error';
+                console.error('❌ No authentication token found');
+                
+                // Provide instructions for getting a token
+                authDiv.innerHTML += `
+                    <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px;">
+                        <strong>To fix this:</strong><br>
+                        1. Go to <a href="http://localhost:5173" target="_blank">http://localhost:5173</a><br>
+                        2. Log in with your credentials<br>
+                        3. Come back and run this test again
+                    </div>
+                `;
+            }
+        }
+
+        async function testBackendAPI() {
+            console.log('🌐 Testing backend API connection...');
+            
+            try {
+                const response = await fetch('http://localhost:5000/health');
+                const data = await response.json();
+                
+                const apiDiv = document.getElementById('api-result');
+                if (response.ok) {
+                    document.getElementById('api-test').className = 'test-section success';
+                    apiDiv.innerHTML = `
+                        <h4>✅ Backend API is working</h4>
+                        <p>Status: ${data.status}</p>
+                        <p>Environment: ${data.environment}</p>
+                        <p>Timestamp: ${data.timestamp}</p>
+                    `;
+                    console.log('✅ Backend API connection successful');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                document.getElementById('api-test').className = 'test-section error';
+                document.getElementById('api-result').innerHTML = `
+                    <h4>❌ Backend API connection failed</h4>
+                    <p>Error: ${error.message}</p>
+                    <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px;">
+                        <strong>To fix this:</strong><br>
+                        1. Make sure the backend server is running<br>
+                        2. Check if it's accessible at <a href="http://localhost:5000/health" target="_blank">http://localhost:5000/health</a>
+                    </div>
+                `;
+                console.error('❌ Backend API connection failed:', error);
+            }
+        }
+
+        async function testRazorpayKey() {
+            console.log('🔑 Testing Razorpay key retrieval...');
+            
+            const token = localStorage.getItem('gymflow_token') || 
+                         localStorage.getItem('token') || 
+                         sessionStorage.getItem('gymflow_token') ||
+                         sessionStorage.getItem('token');
+            
+            if (!token) {
+                document.getElementById('razorpay-test').className = 'test-section error';
+                document.getElementById('razorpay-result').innerHTML = `
+                    <h4>❌ Cannot test Razorpay key</h4>
+                    <p>No authentication token found. Please run the Auth Token test first.</p>
+                `;
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:5000/api/payments/razorpay/key', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                const razorpayDiv = document.getElementById('razorpay-result');
+
+                if (response.ok && data.status === 'success') {
+                    document.getElementById('razorpay-test').className = 'test-section success';
+                    razorpayDiv.innerHTML = `
+                        <h4>✅ Razorpay key retrieved successfully</h4>
+                        <p>Key ID: ${data.data.keyId}</p>
+                        <p>Mode: ${data.data.mode}</p>
+                    `;
+                    console.log('✅ Razorpay key test successful');
+                    
+                    // Enable integration test
+                    document.getElementById('integration-btn').disabled = false;
+                } else {
+                    throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                document.getElementById('razorpay-test').className = 'test-section error';
+                document.getElementById('razorpay-result').innerHTML = `
+                    <h4>❌ Razorpay key retrieval failed</h4>
+                    <p>Error: ${error.message}</p>
+                `;
+                console.error('❌ Razorpay key test failed:', error);
+            }
+        }
+
+        async function testRazorpayScript() {
+            console.log('📜 Testing Razorpay script loading...');
+            
+            return new Promise((resolve) => {
+                // Check if already loaded
+                if (window.Razorpay) {
+                    document.getElementById('script-test').className = 'test-section success';
+                    document.getElementById('script-result').innerHTML = `
+                        <h4>✅ Razorpay script already loaded</h4>
+                        <p>Razorpay object is available</p>
+                    `;
+                    console.log('✅ Razorpay script already loaded');
+                    resolve(true);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+                
+                script.onload = () => {
+                    document.getElementById('script-test').className = 'test-section success';
+                    document.getElementById('script-result').innerHTML = `
+                        <h4>✅ Razorpay script loaded successfully</h4>
+                        <p>Script loaded from: ${script.src}</p>
+                        <p>Razorpay object available: ${window.Razorpay ? 'Yes' : 'No'}</p>
+                    `;
+                    console.log('✅ Razorpay script loaded successfully');
+                    resolve(true);
+                };
+                
+                script.onerror = () => {
+                    document.getElementById('script-test').className = 'test-section error';
+                    document.getElementById('script-result').innerHTML = `
+                        <h4>❌ Razorpay script loading failed</h4>
+                        <p>Failed to load script from: ${script.src}</p>
+                    `;
+                    console.error('❌ Razorpay script loading failed');
+                    resolve(false);
+                };
+                
+                document.head.appendChild(script);
+            });
+        }
+
+        async function testFullIntegration() {
+            console.log('🧪 Testing full Razorpay integration...');
+            
+            try {
+                // Ensure script is loaded
+                if (!window.Razorpay) {
+                    const scriptLoaded = await testRazorpayScript();
+                    if (!scriptLoaded) {
+                        throw new Error('Failed to load Razorpay script');
+                    }
+                }
+
+                // Test payment options
+                const options = {
+                    key: 'rzp_test_VUpggvAt3u75cZ', // Use test key directly
+                    amount: 100, // ₹1.00 in paise
+                    currency: 'INR',
+                    name: 'GymFlow Test',
+                    description: 'Integration Test Payment',
+                    order_id: 'test_order_' + Date.now(),
+                    handler: function (response) {
+                        document.getElementById('integration-test').className = 'test-section success';
+                        document.getElementById('integration-result').innerHTML = `
+                            <h4>✅ Integration test completed successfully!</h4>
+                            <p>Payment ID: ${response.razorpay_payment_id}</p>
+                            <p>The Razorpay integration is working correctly.</p>
+                        `;
+                        console.log('✅ Integration test successful:', response);
+                    },
+                    prefill: {
+                        name: 'Test User',
+                        email: 'test@example.com',
+                        contact: '9999999999'
+                    },
+                    theme: {
+                        color: '#3399cc'
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            document.getElementById('integration-test').className = 'test-section warning';
+                            document.getElementById('integration-result').innerHTML = `
+                                <h4>⚠️ Integration test cancelled</h4>
+                                <p>Payment modal was closed by user</p>
+                                <p>The integration is working, but payment was not completed.</p>
+                            `;
+                            console.log('Integration test cancelled by user');
+                        }
+                    }
+                };
+
+                const razorpay = new window.Razorpay(options);
+                razorpay.open();
+                
+                document.getElementById('integration-result').innerHTML = `
+                    <h4>🚀 Integration test started</h4>
+                    <p>Razorpay checkout modal should have opened.</p>
+                    <p>Complete the payment or close the modal to see results.</p>
+                `;
+                console.log('✅ Integration test initiated');
+                
+            } catch (error) {
+                document.getElementById('integration-test').className = 'test-section error';
+                document.getElementById('integration-result').innerHTML = `
+                    <h4>❌ Integration test failed</h4>
+                    <p>Error: ${error.message}</p>
+                `;
+                console.error('❌ Integration test failed:', error);
+            }
+        }
+
+        // Auto-run auth test on page load
+        window.onload = function() {
+            console.log('🔧 Razorpay Integration Test Tool loaded');
+            testAuthToken();
+        };
+    </script>
+</body>
+</html>
