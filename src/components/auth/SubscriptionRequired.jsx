@@ -6,7 +6,13 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { getRazorpayKey, getRazorpayKeyWithValidation, loadRazorpayScript } from "@/utils/razorpayUtils";
+import { 
+  getRazorpayKeyWithValidation, 
+  loadRazorpayScript, 
+  createRazorpayOrder, 
+  verifyRazorpayPayment,
+  initializeRazorpayCheckout 
+} from "@/utils/razorpayUtils";
 
 // API URL
 // API URL - Use environment variable or fallback to production
@@ -200,89 +206,35 @@ const SubscriptionRequired = () => {
       // Determine if this is a new subscription or renewal
       const isRenewal = subscription?.subscription?._id;
       
-      // Step 1: Create a Razorpay order
-      let orderEndpoint, orderBody;
+      console.log('🚀 Starting payment process...', { isRenewal, plan: selectedPlan.name });
       
-      if (isRenewal) {
-        // Create order for renewal
-        orderEndpoint = `${API_URL}/payments/razorpay/create-order`;
-        orderBody = {
-          amount: selectedPlan.price,
-          currency: 'INR',
-          receipt: `renewal_${Date.now()}`,
-          notes: {
-            subscriptionId: subscription.subscription._id,
-            gymOwnerId: user._id,
-            plan: selectedPlan.name
-          }
-        };
-      } else {
-        // Create order for new subscription
-        orderEndpoint = `${API_URL}/payments/razorpay/create-order`;
-        orderBody = {
-          amount: selectedPlan.price,
-          currency: 'INR',
-          receipt: `subscription_${Date.now()}`,
-          notes: {
-            gymOwnerId: user._id,
-            plan: selectedPlan.name
-          }
-        };
-      }
-      
-      const orderResponse = await authFetch(orderEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+      // Use the improved Razorpay initialization
+      const checkoutInstance = await initializeRazorpayCheckout(authFetch, {
+        amount: selectedPlan.price,
+        currency: 'INR',
+        receipt: `${isRenewal ? 'renewal' : 'subscription'}_${Date.now()}`,
+        notes: {
+          subscriptionId: isRenewal ? subscription.subscription._id : undefined,
+          gymOwnerId: user._id,
+          plan: selectedPlan.name
         },
-        body: JSON.stringify(orderBody)
-      });
-      
-      console.log('Order response:', orderResponse);
-      
-      if (!orderResponse || (!orderResponse.success && orderResponse.status !== 'success')) {
-        toast.error('Failed to create payment order');
-        setIsProcessing(false);
-        return;
-      }
-      
-      const order = orderResponse.data?.order;
-      
-      // Step 2: Load Razorpay script
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        toast.error('Failed to load Razorpay checkout');
-        setIsProcessing(false);
-        return;
-      }
-      
-      // Step 3: Get Razorpay key dynamically with validation
-      let razorpayKey;
-      try {
-        razorpayKey = await getRazorpayKeyWithValidation();
-      } catch (keyError) {
-        console.error('Razorpay key error:', keyError);
-        toast.error('Failed to get payment configuration. Please try again or contact support.');
-        setIsProcessing(false);
-        return;
-      }
-      
-      // Step 4: Open Razorpay checkout
-      const options = {
-        key: razorpayKey, // Dynamic key based on environment
-        amount: order.amount,
-        currency: order.currency,
         name: 'GymFlow',
         description: `${isRenewal ? 'Subscription Renewal' : 'New Subscription'} - ${selectedPlan.name}`,
-        order_id: order.id,
+        prefill: {
+          name: user.name,
+          email: user.email,
+          contact: user.phone || ''
+        },
         handler: async function(response) {
           try {
+            console.log('💳 Payment completed, verifying...', response);
+            
             // Step 4: Verify payment and create/renew subscription
             let endpoint, method, body;
             
             if (isRenewal) {
               // Renew existing subscription
-              endpoint = `${API_URL}/subscriptions/${subscription.subscription._id}/renew`;
+              endpoint = `/subscriptions/${subscription.subscription._id}/renew`;
               method = 'POST';
               body = {
                 durationMonths: 1,
@@ -291,11 +243,22 @@ const SubscriptionRequired = () => {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature
               };
+              
+              const renewResponse = await authFetch(endpoint, {
+                method,
+                body: JSON.stringify(body)
+              });
+              
+              if (renewResponse.success || renewResponse.status === 'success') {
+                toast.success('Subscription renewed successfully!');
+                await checkSubscriptionStatus(user._id, null, true);
+                navigate("/");
+              } else {
+                toast.error(renewResponse.message || 'Subscription renewal failed. Please try again.');
+              }
             } else {
               // Create new subscription with Razorpay verification
-              endpoint = `${API_URL}/payments/razorpay/verify`;
-              method = 'POST';
-              body = {
+              const verifyResponse = await verifyRazorpayPayment(authFetch, {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
@@ -304,51 +267,46 @@ const SubscriptionRequired = () => {
                   plan: selectedPlan.name,
                   price: selectedPlan.price
                 }
-              };
-            }
-            
-            const verifyResponse = await authFetch(endpoint, {
-              method,
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(body)
-            });
-            
-            if (verifyResponse.success || verifyResponse.status === 'success') {
-              toast.success(`Subscription ${isRenewal ? 'renewed' : 'purchased'} successfully!`);
+              });
               
-              // Refresh subscription status
-              await checkSubscriptionStatus(user._id, null, true);
-              
-              // Navigate to dashboard
-              navigate("/");
-            } else {
-              toast.error(verifyResponse.message || 'Subscription failed. Please try again.');
+              if (verifyResponse.success || verifyResponse.status === 'success') {
+                toast.success('Subscription purchased successfully!');
+                await checkSubscriptionStatus(user._id, null, true);
+                navigate("/");
+              } else {
+                toast.error(verifyResponse.message || 'Subscription failed. Please try again.');
+              }
             }
           } catch (error) {
-            console.error('Error verifying payment:', error);
-            toast.error('Failed to verify payment');
+            console.error('❌ Error verifying payment:', error);
+            toast.error('Failed to verify payment. Please contact support if amount was deducted.');
           } finally {
             setIsProcessing(false);
           }
         },
-        prefill: {
-          name: user.name,
-          email: user.email,
-          contact: user.phone || ''
-        },
-        theme: {
-          color: '#3B82F6'
+        onDismiss: () => {
+          console.log('Payment modal dismissed');
+          setIsProcessing(false);
         }
-      };
+      });
       
-      const razorpay = new window.Razorpay(options);
-      razorpay.open();
+      // Open the payment modal
+      checkoutInstance.open();
       
     } catch (err) {
-      console.error('Subscription error:', err);
-      toast.error('Subscription failed. Please try again.');
+      console.error('❌ Subscription error:', err);
+      
+      // Provide more specific error messages
+      if (err.message.includes('Authentication')) {
+        toast.error('Authentication failed. Please log in again.');
+      } else if (err.message.includes('script')) {
+        toast.error('Failed to load payment system. Please check your internet connection.');
+      } else if (err.message.includes('key')) {
+        toast.error('Payment configuration error. Please contact support.');
+      } else {
+        toast.error('Subscription failed. Please try again.');
+      }
+      
       setIsProcessing(false);
     }
   };

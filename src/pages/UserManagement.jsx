@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { getRazorpayKey, loadRazorpayScript } from "@/utils/razorpayUtils";
+import { getRazorpayKeyWithValidation, loadRazorpayScript, initializeRazorpayCheckout } from "@/utils/razorpayUtils";
 import { 
   Dialog, 
   DialogContent, 
@@ -450,7 +450,7 @@ function UserManagement() {
       
       // For other payment methods, open Razorpay checkout
       // Get Razorpay key dynamically
-      const razorpayKey = await getRazorpayKey();
+      const razorpayKey = await getRazorpayKeyWithValidation(authFetch);
       if (!razorpayKey) {
         setMessage({ type: 'error', text: 'Failed to get payment configuration' });
         setIsProcessingPayment(false);

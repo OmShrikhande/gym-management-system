@@ -8,7 +8,13 @@ import { Search, Plus, CreditCard, TrendingUp, Calendar, FileText, Edit, Downloa
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { getRazorpayKey, getRazorpayKeyWithValidation, loadRazorpayScript } from "@/utils/razorpayUtils";
+import { 
+  getRazorpayKeyWithValidation, 
+  loadRazorpayScript, 
+  createRazorpayOrder, 
+  verifyRazorpayPayment,
+  initializeRazorpayCheckout 
+} from "@/utils/razorpayUtils";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -395,7 +401,7 @@ const GymOwnerPlans = () => {
       }
       
       // Step 3: Get Razorpay key dynamically
-      const razorpayKey = await getRazorpayKey();
+      const razorpayKey = await getRazorpayKeyWithValidation(authFetch);
       if (!razorpayKey) {
         toast.error('Failed to get payment configuration');
         setIsProcessing(false);
@@ -528,7 +534,7 @@ const GymOwnerPlans = () => {
       }
       
       // Step 3: Get Razorpay key dynamically
-      const razorpayKey = await getRazorpayKey();
+      const razorpayKey = await getRazorpayKeyWithValidation(authFetch);
       if (!razorpayKey) {
         toast.error('Failed to get payment configuration');
         setIsProcessing(false);

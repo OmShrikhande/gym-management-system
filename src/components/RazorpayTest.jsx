@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { getRazorpayKeyWithValidation, loadRazorpayScript, initializeRazorpayCheckout } from "@/utils/razorpayUtilsFixed";
+import { getRazorpayKeyWithValidation, loadRazorpayScript, initializeRazorpayCheckout } from "@/utils/razorpayUtils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const RazorpayTest = () => {
+  const { authFetch } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState({});
 
@@ -37,7 +39,7 @@ const RazorpayTest = () => {
     setIsLoading(true);
     try {
       console.log('🔑 Testing Razorpay key fetch...');
-      const key = await getRazorpayKeyWithValidation();
+      const key = await getRazorpayKeyWithValidation(authFetch);
       console.log('✅ Razorpay key test successful:', key);
       toast.success(`Razorpay key fetched: ${key}`);
       setTestResults(prev => ({ ...prev, razorpayKey: key }));
