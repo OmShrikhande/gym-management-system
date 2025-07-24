@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import { CreditCard, AlertTriangle, Calendar, CheckCircle } from "lucide-react";
+import { CreditCard, AlertTriangle, Calendar, CheckCircle, ArrowRight, Loader2, Building2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { 
   getRazorpayKeyWithValidation, 
@@ -24,6 +24,9 @@ const SubscriptionRequired = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [plans, setPlans] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [pendingActivation, setPendingActivation] = useState(null);
+  const [isActivating, setIsActivating] = useState(false);
   const navigate = useNavigate();
   
   // Fetch plans from API (created by super admin)
@@ -115,13 +118,75 @@ const SubscriptionRequired = () => {
   // Fetch plans when component mounts
   useEffect(() => {
     fetchPlans();
-  }, []);
+    
+    // Check for pending activation on component mount
+    const stored = localStorage.getItem('pendingActivation');
+    if (stored) {
+      try {
+        const activationData = JSON.parse(stored);
+        setPendingActivation(activationData);
+        setPaymentCompleted(true);
+        
+        // Find the plan that was paid for
+        const plan = plans.find(p => p.id === activationData.planData?.id);
+        if (plan) {
+          setSelectedPlan(plan);
+        }
+      } catch (error) {
+        console.error('Error parsing pending activation data:', error);
+        localStorage.removeItem('pendingActivation');
+      }
+    }
+  }, [plans]);
 
   // Handle plan selection
   const handlePlanSelection = (plan) => {
     setSelectedPlan(plan);
     // Scroll to payment section
     document.getElementById('payment-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+  
+  // Handle registration completion after payment
+  const handleCompleteRegistration = async () => {
+    if (!pendingActivation) {
+      toast.error('No pending payment found. Please make a payment first.');
+      return;
+    }
+
+    setIsActivating(true);
+
+    try {
+      // Verify payment and activate account
+      const activationResponse = await authFetch('/payments/razorpay/verify-activation', {
+        method: 'POST',
+        body: JSON.stringify(pendingActivation)
+      });
+
+      if (activationResponse.success || activationResponse.status === 'success') {
+        // Clear stored payment details
+        localStorage.removeItem('pendingActivation');
+        setPendingActivation(null);
+        setPaymentCompleted(false);
+        
+        toast.success('🎉 Registration completed successfully! Welcome to GymFlow!');
+        
+        // Refresh subscription status to get updated user data
+        await checkSubscriptionStatus(user._id, null, true);
+        
+        // Navigate to dashboard after a short delay
+        setTimeout(() => {
+          navigate('/');
+        }, 1500);
+        
+      } else {
+        throw new Error(activationResponse.message || 'Account activation failed');
+      }
+    } catch (error) {
+      console.error('Registration completion error:', error);
+      toast.error(error.message || 'Failed to complete registration. Please try again.');
+    } finally {
+      setIsActivating(false);
+    }
   };
 
   // Handle test mode payment (skip payment)
@@ -227,26 +292,19 @@ const SubscriptionRequired = () => {
         },
         handler: async function(response) {
           try {
-            console.log('💳 Payment completed, verifying...', response);
-            
-            // Step 4: Verify payment and create/renew subscription
-            let endpoint, method, body;
+            console.log('💳 Payment completed, processing...', response);
             
             if (isRenewal) {
-              // Renew existing subscription
-              endpoint = `/subscriptions/${subscription.subscription._id}/renew`;
-              method = 'POST';
-              body = {
-                durationMonths: 1,
-                paymentMethod: 'razorpay',
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature
-              };
-              
-              const renewResponse = await authFetch(endpoint, {
-                method,
-                body: JSON.stringify(body)
+              // For renewal, process immediately (existing flow)
+              const renewResponse = await authFetch(`/subscriptions/${subscription.subscription._id}/renew`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  durationMonths: 1,
+                  paymentMethod: 'razorpay',
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_signature: response.razorpay_signature
+                })
               });
               
               if (renewResponse.success || renewResponse.status === 'success') {
@@ -257,29 +315,31 @@ const SubscriptionRequired = () => {
                 toast.error(renewResponse.message || 'Subscription renewal failed. Please try again.');
               }
             } else {
-              // Create new subscription with Razorpay verification
-              const verifyResponse = await verifyRazorpayPayment(authFetch, {
+              // For new subscriptions, store payment details for manual completion
+              const paymentDetails = {
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature,
-                gymOwnerData: {
-                  gymOwnerId: user._id,
-                  plan: selectedPlan.name,
-                  price: selectedPlan.price
-                }
-              });
-              
-              if (verifyResponse.success || verifyResponse.status === 'success') {
-                toast.success('Subscription purchased successfully!');
-                await checkSubscriptionStatus(user._id, null, true);
-                navigate("/");
-              } else {
-                toast.error(verifyResponse.message || 'Subscription failed. Please try again.');
-              }
+                planData: {
+                  id: selectedPlan.id,
+                  name: selectedPlan.name,
+                  price: selectedPlan.price,
+                  maxMembers: selectedPlan.maxMembers,
+                  maxTrainers: selectedPlan.maxTrainers
+                },
+                timestamp: new Date().toISOString()
+              };
+
+              // Store in localStorage for manual completion
+              localStorage.setItem('pendingActivation', JSON.stringify(paymentDetails));
+              setPendingActivation(paymentDetails);
+              setPaymentCompleted(true);
+
+              toast.success('Payment successful! Please complete your registration to activate your account.');
             }
           } catch (error) {
-            console.error('❌ Error verifying payment:', error);
-            toast.error('Failed to verify payment. Please contact support if amount was deducted.');
+            console.error('❌ Error processing payment:', error);
+            toast.error('Failed to process payment. Please contact support if amount was deducted.');
           } finally {
             setIsProcessing(false);
           }
@@ -322,13 +382,65 @@ const SubscriptionRequired = () => {
     <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white">Subscription Required</h1>
+          <div className="flex justify-center mb-6">
+            <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
+              <Building2 className="h-12 w-12 text-white" />
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold text-white">
+            {paymentCompleted ? 'Complete Your Registration' : 'Activate Your Gym Account'}
+          </h1>
           <p className="mt-2 text-gray-400">
-            Your subscription has expired. Please renew to continue using the system.
+            {paymentCompleted 
+              ? 'Your payment was successful! Click the button below to activate your gym owner dashboard.'
+              : subscription?.subscription 
+                ? 'Your subscription has expired. Please renew to continue using the system.'
+                : 'Choose a subscription plan to activate your gym owner account and start managing your gym.'
+            }
           </p>
         </div>
 
-        {subscription && subscription.subscription && (
+        {/* Payment Success Banner */}
+        {paymentCompleted && (
+          <Card className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-green-500">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <CheckCircle className="h-8 w-8 text-green-400" />
+                  <div>
+                    <h3 className="text-xl font-semibold text-green-100">Payment Successful!</h3>
+                    <p className="text-green-200">
+                      Your payment for the {selectedPlan?.name} plan has been processed successfully.
+                    </p>
+                    <p className="text-green-300 text-sm mt-1">
+                      Click "Complete Registration" below to activate your gym owner dashboard.
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleCompleteRegistration}
+                  disabled={isActivating}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 text-lg"
+                >
+                  {isActivating ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Activating...
+                    </>
+                  ) : (
+                    <>
+                      Complete Registration
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Subscription Expired Banner */}
+        {!paymentCompleted && subscription?.subscription && (
           <Card className="bg-red-900/20 border-red-800">
             <CardHeader>
               <CardTitle className="text-white flex items-center">
@@ -366,7 +478,7 @@ const SubscriptionRequired = () => {
               key={plan.id}
               className={`bg-gray-800/50 border-gray-700 relative ${
                 selectedPlan?.id === plan.id ? "ring-2 ring-blue-500" : ""
-              }`}
+              } ${paymentCompleted && selectedPlan?.id === plan.id ? "ring-2 ring-green-500" : ""}`}
             >
               {plan.recommended && (
                 <div className="absolute -top-3 left-0 right-0 flex justify-center">
@@ -375,6 +487,16 @@ const SubscriptionRequired = () => {
                   </span>
                 </div>
               )}
+              
+              {paymentCompleted && selectedPlan?.id === plan.id && (
+                <div className="absolute -top-3 right-4">
+                  <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full flex items-center">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Paid
+                  </span>
+                </div>
+              )}
+
               <CardHeader>
                 <CardTitle className="text-white">{plan.name}</CardTitle>
                 <CardDescription className="text-gray-400">
@@ -390,26 +512,61 @@ const SubscriptionRequired = () => {
                     </li>
                   ))}
                 </ul>
+                
+                {/* Plan Stats */}
+                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-600">
+                  <div className="text-center p-2 bg-gray-700/50 rounded">
+                    <Users className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+                    <div className="text-sm font-bold text-white">{plan.maxMembers}</div>
+                    <div className="text-xs text-gray-400">Max Members</div>
+                  </div>
+                  <div className="text-center p-2 bg-gray-700/50 rounded">
+                    <Users className="h-4 w-4 text-green-400 mx-auto mb-1" />
+                    <div className="text-sm font-bold text-white">{plan.maxTrainers}</div>
+                    <div className="text-xs text-gray-400">Max Trainers</div>
+                  </div>
+                </div>
               </CardContent>
               <CardFooter>
-                <Button 
-                  className={`w-full ${
-                    selectedPlan?.id === plan.id 
-                      ? "bg-blue-600 hover:bg-blue-700" 
-                      : "bg-gray-700 hover:bg-gray-600"
-                  }`}
-                  onClick={() => handlePlanSelection(plan)}
-                >
-                  {selectedPlan?.id === plan.id ? "Selected" : "Select Plan"}
-                </Button>
+                {paymentCompleted && selectedPlan?.id === plan.id ? (
+                  <Button 
+                    onClick={handleCompleteRegistration}
+                    disabled={isActivating}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isActivating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Activating...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Complete Registration
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button 
+                    className={`w-full ${
+                      selectedPlan?.id === plan.id 
+                        ? "bg-blue-600 hover:bg-blue-700" 
+                        : "bg-gray-700 hover:bg-gray-600"
+                    }`}
+                    onClick={() => handlePlanSelection(plan)}
+                    disabled={paymentCompleted}
+                  >
+                    {selectedPlan?.id === plan.id ? "Selected" : "Select Plan"}
+                  </Button>
+                )}
               </CardFooter>
             </Card>
             ))
           )}
         </div>
 
-        {/* Payment Section */}
-        {selectedPlan && (
+        {/* Payment Section - Only show if payment not completed */}
+        {selectedPlan && !paymentCompleted && (
           <div id="payment-section" className="mt-8 bg-gray-800/50 border border-gray-700 rounded-lg p-6">
             <h3 className="text-xl font-bold text-white mb-4">Complete Your Subscription</h3>
             
@@ -490,7 +647,10 @@ const SubscriptionRequired = () => {
                           onClick={handlePayment}
                         >
                           {isProcessing ? (
-                            <>Processing...</>
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Processing...
+                            </>
                           ) : (
                             <>
                               <CreditCard className="mr-2 h-5 w-5" />
@@ -507,6 +667,27 @@ const SubscriptionRequired = () => {
                           Logout
                         </Button>
                       </div>
+                      
+                      {/* Test Mode Button for Development */}
+                      {process.env.NODE_ENV === 'development' && (
+                        <div className="pt-2 border-t border-gray-600">
+                          <Button 
+                            variant="outline"
+                            className="w-full border-yellow-600 text-yellow-400 hover:bg-yellow-600 hover:text-white"
+                            disabled={isProcessing}
+                            onClick={handleTestModePayment}
+                          >
+                            {isProcessing ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Processing Test Payment...
+                              </>
+                            ) : (
+                              "Test Mode Activation (Dev Only)"
+                            )}
+                          </Button>
+                        </div>
+                      )}
 
                     </div>
                     <div className="mt-2 text-center space-y-1">

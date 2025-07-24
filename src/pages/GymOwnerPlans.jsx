@@ -27,6 +27,7 @@ const GymOwnerPlans = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [showCompletionButton, setShowCompletionButton] = useState(false);
   const [plans, setPlans] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showPlanDialog, setShowPlanDialog] = useState(false);
@@ -63,6 +64,13 @@ const GymOwnerPlans = () => {
     }
     
     fetchGymOwnerPlans();
+    
+    // Check for pending payment completion
+    const pendingPayment = localStorage.getItem('pendingActivation');
+    if (pendingPayment) {
+      console.log('🔍 Found pending payment, showing completion button');
+      setShowCompletionButton(true);
+    }
   }, [user, checkSubscriptionStatus, isGymOwner]);
   
   // Fetch gym owner plans from API
@@ -475,8 +483,61 @@ const GymOwnerPlans = () => {
     return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
   };
 
+  // Handle manual completion of registration after payment
+  const handleCompleteRegistration = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Get stored payment details
+      const storedPaymentDetails = localStorage.getItem('pendingActivation');
+      if (!storedPaymentDetails) {
+        toast.error('No pending payment found. Please try again.');
+        return;
+      }
+      
+      const paymentDetails = JSON.parse(storedPaymentDetails);
+      console.log('🔍 Completing registration with payment details:', paymentDetails);
+      
+      // Send activation request
+      const activationResponse = await authFetch(`/payments/razorpay/verify-activation`, {
+        method: 'POST',
+        body: JSON.stringify(paymentDetails)
+      });
+      
+      console.log('🔍 Activation response:', activationResponse);
+      
+      if (activationResponse.success || activationResponse.status === 'success') {
+        toast.success('Registration completed successfully! Welcome to GymFlow!');
+        
+        // Clear stored payment details
+        localStorage.removeItem('pendingActivation');
+        setShowCompletionButton(false);
+        
+        // Refresh the page to update user status
+        window.location.reload();
+      } else {
+        console.error('❌ Registration completion failed:', activationResponse);
+        toast.error(`Registration failed: ${activationResponse.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('❌ Error completing registration:', error);
+      toast.error(`Failed to complete registration: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Handle account activation by purchasing a plan
   const handleActivateAccount = async (plan) => {
+    // Validate plan data
+    if (!plan || !plan.id || !plan.name || !plan.price) {
+      console.error('❌ Invalid plan data:', plan);
+      toast.error('Invalid plan data. Please try again.');
+      return;
+    }
+    
+    console.log('🚀 Starting account activation for plan:', plan);
+    
     try {
       setIsProcessing(true);
       
@@ -549,48 +610,33 @@ const GymOwnerPlans = () => {
         name: 'GymFlow',
         description: `Account Activation - ${plan.name}`,
         order_id: order.id,
-        handler: async function(response) {
-          try {
-            // Step 4: Verify payment and activate account
-            const activationResponse = await authFetch(`/payments/razorpay/verify-activation`, {
-              method: 'POST',
-              body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                planData: {
-                  id: plan.id,
-                  name: plan.name,
-                  price: plan.price,
-                  maxMembers: plan.maxMembers,
-                  maxTrainers: plan.maxTrainers
-                }
-              })
-            });
-            
-            if (activationResponse.success || activationResponse.status === 'success') {
-              toast.success('Account activated successfully! Welcome to GymFlow!');
-              
-              // Update user in context (they should now be active)
-              if (activationResponse.data?.user) {
-                // Update user object with new account status
-                const updatedUser = { ...user, accountStatus: 'active' };
-                // You might need to call a function to update the user in context
-                // This depends on your AuthContext implementation
-                window.location.reload(); // Temporary solution to refresh the page
-              }
-              
-              // Refresh subscription status
-              await checkSubscriptionStatus(user._id, null, true);
-            } else {
-              toast.error(activationResponse.message || 'Account activation failed');
-            }
-          } catch (error) {
-            console.error('Error activating account:', error);
-            toast.error('Failed to activate account');
-          } finally {
-            setIsProcessing(false);
-          }
+        handler: function(response) {
+          // Payment successful! Store the payment details for manual completion
+          console.log('✅ Payment successful:', response);
+          
+          // Store payment details in localStorage for manual completion
+          const paymentDetails = {
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+            planData: {
+              id: plan.id,
+              name: plan.name,
+              price: plan.price,
+              maxMembers: plan.maxMembers,
+              maxTrainers: plan.maxTrainers
+            },
+            timestamp: new Date().toISOString()
+          };
+          
+          localStorage.setItem('pendingActivation', JSON.stringify(paymentDetails));
+          
+          // Show success message and completion button
+          toast.success('Payment successful! Please complete your registration.');
+          setIsProcessing(false);
+          
+          // Set a flag to show the completion button
+          setShowCompletionButton(true);
         },
         prefill: {
           name: user.name,
@@ -711,6 +757,21 @@ const GymOwnerPlans = () => {
   return (
     <DashboardLayout>
       <div className="space-y-8">
+        {/* Pending Payment Notification */}
+        {showCompletionButton && (
+          <Card className="bg-blue-900/50 border-blue-500">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-3">
+                <CheckCircle className="h-6 w-6 text-blue-400" />
+                <div>
+                  <h3 className="text-lg font-semibold text-blue-100">Payment Successful!</h3>
+                  <p className="text-blue-200">Your payment has been processed. Click "Complete Registration" on any plan to activate your account.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -952,14 +1013,27 @@ const GymOwnerPlans = () => {
                       {user?.accountStatus === 'inactive' ? (
                         // Show activation buttons for inactive accounts
                         <div className="flex flex-col w-full space-y-2">
-                          <Button 
-                            className="w-full bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => handleActivateAccount(plan)}
-                            disabled={isProcessing}
-                          >
-                            <CreditCard className="h-4 w-4 mr-2" />
-                            {isProcessing ? 'Processing...' : 'Activate Account'}
-                          </Button>
+                          {showCompletionButton ? (
+                            // Show completion button if payment is pending
+                            <Button 
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={handleCompleteRegistration}
+                              disabled={isProcessing}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              {isProcessing ? 'Completing...' : 'Complete Registration'}
+                            </Button>
+                          ) : (
+                            // Show normal activation button
+                            <Button 
+                              className="w-full bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() => handleActivateAccount(plan)}
+                              disabled={isProcessing}
+                            >
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              {isProcessing ? 'Processing...' : 'Activate Account'}
+                            </Button>
+                          )}
 
                         </div>
                       ) : (

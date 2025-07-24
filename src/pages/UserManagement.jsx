@@ -162,10 +162,24 @@ function UserManagement() {
     
     fetchSubscriptionPlans();
   }, [authFetch]);
+
+  // Check for pending payment completion on component mount
+  useEffect(() => {
+    const pendingPayment = sessionStorage.getItem('pendingPaymentVerification');
+    if (pendingPayment) {
+      console.log('🔍 Found pending payment verification, showing completion button');
+      setShowPaymentCompletion(true);
+      setMessage({ 
+        type: 'info', 
+        text: 'Payment successful! Click "Complete Registration" to finish creating the gym owner account.' 
+      });
+    }
+  }, []);
   
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [showPaymentSection, setShowPaymentSection] = useState(false);
+  const [showPaymentCompletion, setShowPaymentCompletion] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState(null);
   
@@ -465,8 +479,35 @@ function UserManagement() {
         description: `${selectedPlan.name} Plan Subscription`,
         order_id: order.id,
         handler: function(response) {
-          // Handle successful payment
-          verifyPaymentAndCreateGymOwner(response);
+          // Payment successful! Store details for manual completion
+          console.log('✅ Payment successful in UserManagement:', response);
+          
+          // Get the stored gym owner data
+          const pendingGymOwnerDataStr = sessionStorage.getItem('pendingGymOwnerData');
+          if (pendingGymOwnerDataStr) {
+            const pendingGymOwnerData = JSON.parse(pendingGymOwnerDataStr);
+            
+            // Store complete payment details for manual verification
+            const paymentDetails = {
+              ...response,
+              gymOwnerData: pendingGymOwnerData
+            };
+            
+            sessionStorage.setItem('pendingPaymentVerification', JSON.stringify(paymentDetails));
+            
+            // Show success message
+            setMessage({ 
+              type: 'success', 
+              text: 'Payment successful! Click "Complete Registration" to finish creating the gym owner account.' 
+            });
+            
+            // Show completion button
+            setShowPaymentCompletion(true);
+          } else {
+            setMessage({ type: 'error', text: 'Payment successful but gym owner data not found. Please try again.' });
+          }
+          
+          setIsProcessingPayment(false);
         },
         prefill: {
           name: formData.name,
@@ -537,6 +578,64 @@ function UserManagement() {
   };
   
   // Function to verify payment and create gym owner
+  // Handle manual completion of gym owner creation after payment
+  const handleCompleteGymOwnerRegistration = async () => {
+    try {
+      setIsProcessingPayment(true);
+      setMessage({ type: 'info', text: 'Completing gym owner registration...' });
+      
+      // Get stored payment details
+      const storedPaymentDetails = sessionStorage.getItem('pendingPaymentVerification');
+      if (!storedPaymentDetails) {
+        setMessage({ type: 'error', text: 'No pending payment found. Please try again.' });
+        setIsProcessingPayment(false);
+        return;
+      }
+      
+      const paymentDetails = JSON.parse(storedPaymentDetails);
+      console.log('🔍 Completing gym owner registration with payment details:', paymentDetails);
+      
+      // Send verification request
+      const verifyResponse = await authFetch(`/payments/razorpay/verify`, {
+        method: 'POST',
+        body: JSON.stringify(paymentDetails)
+      });
+      
+      console.log('🔍 Gym owner registration response:', verifyResponse);
+      
+      if (verifyResponse.success || verifyResponse.status === 'success') {
+        toast.success('Gym owner account created successfully!');
+        setMessage({ 
+          type: 'success', 
+          text: `Gym owner created successfully with ${verifyResponse.data.subscription.plan} subscription plan.` 
+        });
+        
+        // Clear stored payment details
+        sessionStorage.removeItem('pendingPaymentVerification');
+        sessionStorage.removeItem('pendingGymOwnerData');
+        setShowPaymentCompletion(false);
+        
+        // Reset form and refresh user list
+        resetForm();
+        fetchUsers();
+      } else {
+        console.error('❌ Gym owner registration failed:', verifyResponse);
+        setMessage({ 
+          type: 'error', 
+          text: `Registration failed: ${verifyResponse.message || 'Unknown error'}` 
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error completing gym owner registration:', error);
+      setMessage({ 
+        type: 'error', 
+        text: `Failed to complete registration: ${error.message || 'Unknown error'}. Please contact support if amount was deducted.` 
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
   const verifyPaymentAndCreateGymOwner = async (paymentResponse) => {
     try {
       setMessage({ type: 'info', text: 'Verifying payment and creating account...' });
@@ -549,23 +648,44 @@ function UserManagement() {
         return;
       }
       
-      const pendingGymOwnerData = JSON.parse(pendingGymOwnerDataStr);
-      console.log('Retrieved pending gym owner data:', pendingGymOwnerData);
+      let pendingGymOwnerData;
+      try {
+        pendingGymOwnerData = JSON.parse(pendingGymOwnerDataStr);
+        console.log('Retrieved pending gym owner data:', pendingGymOwnerData);
+        
+        // Validate the structure
+        if (!pendingGymOwnerData.formData || !pendingGymOwnerData.planId) {
+          console.error('❌ Invalid pending gym owner data structure:', pendingGymOwnerData);
+          throw new Error('Invalid gym owner data structure');
+        }
+      } catch (parseError) {
+        console.error('❌ Error parsing pending gym owner data:', parseError);
+        setMessage({ type: 'error', text: 'Invalid gym owner data. Please try again.' });
+        setIsProcessingPayment(false);
+        return;
+      }
       
       const requestBody = {
         ...paymentResponse,
         gymOwnerData: pendingGymOwnerData
       };
       
-      console.log('Sending payment verification request:', requestBody);
+      console.log('🔍 Sending payment verification request:', requestBody);
+      console.log('📋 Gym owner data structure:', pendingGymOwnerData);
       
       const verifyResponse = await authFetch(`/payments/razorpay/verify`, {
         method: 'POST',
         body: JSON.stringify(requestBody)
       });
       
-      if (!verifyResponse.success && !verifyResponse.status === 'success') {
-        setMessage({ type: 'error', text: verifyResponse.message || 'Payment verification failed' });
+      console.log('🔍 Payment verification response:', verifyResponse);
+      
+      if (!verifyResponse.success && verifyResponse.status !== 'success') {
+        console.error('❌ Payment verification failed:', verifyResponse);
+        setMessage({ 
+          type: 'error', 
+          text: `Payment verification failed: ${verifyResponse.message || 'Unknown error'}` 
+        });
         setIsProcessingPayment(false);
         return;
       }
@@ -588,8 +708,11 @@ function UserManagement() {
       fetchUsers();
       
     } catch (error) {
-      console.error('Error verifying payment:', error);
-      setMessage({ type: 'error', text: 'An error occurred during payment verification' });
+      console.error('❌ Error verifying payment:', error);
+      setMessage({ 
+        type: 'error', 
+        text: `Failed to verify payment: ${error.message || 'Unknown error'}. Please contact support if amount was deducted.` 
+      });
     } finally {
       setIsProcessingPayment(false);
     }
@@ -1043,16 +1166,31 @@ function UserManagement() {
                 
                 {/* Super Admin can ONLY create Gym Owners */}
                 {isSuperAdmin && (
-                  <Button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleCreateUser('gym-owner');
-                    }}
-                    className="bg-green-600 hover:bg-green-700 px-6"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? 'Creating...' : 'Create Gym Owner'}
-                  </Button>
+                  <>
+                    {showPaymentCompletion ? (
+                      <Button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleCompleteGymOwnerRegistration();
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 px-6"
+                        disabled={isProcessingPayment}
+                      >
+                        {isProcessingPayment ? 'Completing...' : 'Complete Registration'}
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleCreateUser('gym-owner');
+                        }}
+                        className="bg-green-600 hover:bg-green-700 px-6"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? 'Creating...' : 'Create Gym Owner'}
+                      </Button>
+                    )}
+                  </>
                 )}
                 
                 {/* Gym Owner can ONLY create Trainers and Members */}
