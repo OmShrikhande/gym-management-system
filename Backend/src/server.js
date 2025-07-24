@@ -4,6 +4,7 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
+import { corsMiddleware, additionalCorsHeaders, preflightHandler } from './middleware/cors.js';
 import morgan from 'morgan';
 import http from 'http';
 import helmet from 'helmet';
@@ -93,51 +94,32 @@ app.use(sanitizeInput);
 // General rate limiting
 app.use(generalLimiter);
 
-// Middleware
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5000',
-  'https://gentle-gingersnap-9fde09.netlify.app', // Your actual frontend URL
-  'https://gentle-gingersnap-9fde09.netlify.app/', // With trailing slash
-  process.env.FRONTEND_URL
-].filter(Boolean);
+// EMERGENCY CORS FIX - Allow all origins temporarily
+app.use((req, res, next) => {
+  // Set CORS headers for all requests
+  res.header('Access-Control-Allow-Origin', req.headers.origin || 'https://gentle-gingersnap-9fde09.netlify.app');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.header('Access-Control-Expose-Headers', 'Authorization');
+  res.header('Vary', 'Origin');
+  
+  // Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    console.log('=== EMERGENCY PREFLIGHT ===');
+    console.log('Origin:', req.headers.origin);
+    console.log('Method:', req.headers['access-control-request-method']);
+    console.log('Headers:', req.headers['access-control-request-headers']);
+    res.header('Access-Control-Max-Age', '86400');
+    return res.status(200).end();
+  }
+  
+  console.log(`${req.method} ${req.path} from origin: ${req.headers.origin}`);
+  next();
+});
 
-// Add wildcard for development
-if (process.env.NODE_ENV === 'development') {
-  allowedOrigins.push('*');
-}
-
-app.use(cors({
-  origin: function (origin, callback) {
-    console.log('CORS Request from origin:', origin);
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      console.log('CORS: Allowing request with no origin');
-      return callback(null, true);
-    }
-    
-    // In development, allow all origins
-    if (process.env.NODE_ENV === 'development') {
-      console.log('CORS: Development mode - allowing all origins');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log('CORS: Origin allowed:', origin);
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      console.log('Allowed origins:', allowedOrigins);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
-}));
+// CORS Configuration (backup)
+app.use(corsMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined'));
@@ -145,13 +127,21 @@ app.use(morgan('combined'));
 // Serve static files for gym assets
 app.use('/uploads', express.static('uploads'));
 
-// Handle preflight OPTIONS requests
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.status(200).end();
+// Handle preflight OPTIONS requests (backup)
+app.options('*', preflightHandler);
+
+// Additional CORS headers for all routes (backup)
+app.use(additionalCorsHeaders);
+
+// CORS test endpoint
+app.get('/api/cors-test', (req, res) => {
+  console.log('CORS test endpoint hit from:', req.headers.origin);
+  res.json({ 
+    message: 'CORS is working!', 
+    origin: req.headers.origin,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV 
+  });
 });
 
 // Routes with specific rate limiting and cache invalidation
