@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,10 +27,16 @@ const SubscriptionRequired = () => {
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [pendingActivation, setPendingActivation] = useState(null);
   const [isActivating, setIsActivating] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const navigate = useNavigate();
   
   // Fetch plans from API (created by super admin)
   const fetchPlans = async () => {
+    if (!user || !authFetch) {
+      console.log('User or authFetch not available yet, skipping plan fetch');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await authFetch('/subscription-plans');
@@ -112,42 +118,60 @@ const SubscriptionRequired = () => {
       ]);
     } finally {
       setIsLoading(false);
+      setIsInitialized(true);
     }
   };
 
-  // Fetch plans when component mounts
+  // Initialize component when user and authFetch are available
   useEffect(() => {
-    fetchPlans();
-    
-    // Check for pending activation on component mount
-    const stored = localStorage.getItem('pendingActivation');
-    if (stored) {
-      try {
-        const activationData = JSON.parse(stored);
-        setPendingActivation(activationData);
-        setPaymentCompleted(true);
-        
-        // Find the plan that was paid for
-        const plan = plans.find(p => p.id === activationData.planData?.id);
-        if (plan) {
-          setSelectedPlan(plan);
-        }
-      } catch (error) {
-        console.error('Error parsing pending activation data:', error);
-        localStorage.removeItem('pendingActivation');
-      }
+    if (user && authFetch && !isInitialized) {
+      fetchPlans();
     }
-  }, [plans]);
+  }, [user, authFetch, isInitialized]);
+
+  // Check for pending activation once when component is initialized
+  useEffect(() => {
+    if (!isInitialized || paymentCompleted) return;
+
+    const checkPendingActivation = () => {
+      const stored = localStorage.getItem('pendingActivation');
+      if (stored) {
+        try {
+          const activationData = JSON.parse(stored);
+          console.log('Found pending activation:', activationData);
+          
+          setPendingActivation(activationData);
+          setPaymentCompleted(true);
+          
+          // Find the plan that was paid for
+          if (plans.length > 0 && activationData.planData?.id) {
+            const plan = plans.find(p => p.id === activationData.planData.id);
+            if (plan) {
+              setSelectedPlan(plan);
+              console.log('Set selected plan:', plan.name);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing pending activation data:', error);
+          localStorage.removeItem('pendingActivation');
+        }
+      }
+    };
+
+    // Small delay to ensure plans are loaded
+    const timer = setTimeout(checkPendingActivation, 100);
+    return () => clearTimeout(timer);
+  }, [isInitialized, plans.length]);
 
   // Handle plan selection
-  const handlePlanSelection = (plan) => {
+  const handlePlanSelection = useCallback((plan) => {
     setSelectedPlan(plan);
     // Scroll to payment section
     document.getElementById('payment-section')?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
   
   // Handle registration completion after payment
-  const handleCompleteRegistration = async () => {
+  const handleCompleteRegistration = useCallback(async () => {
     if (!pendingActivation) {
       toast.error('No pending payment found. Please make a payment first.');
       return;
@@ -187,7 +211,7 @@ const SubscriptionRequired = () => {
     } finally {
       setIsActivating(false);
     }
-  };
+  }, [pendingActivation, authFetch, user._id, checkSubscriptionStatus, navigate]);
 
   // Handle test mode payment (skip payment)
   const handleTestModePayment = async () => {
@@ -378,6 +402,120 @@ const SubscriptionRequired = () => {
     }
   }, [user, navigate]);
 
+  // Memoize plan cards to prevent unnecessary re-renders
+  const planCards = useMemo(() => {
+    if (plans.length === 0) {
+      return (
+        <div className="col-span-full text-center py-8">
+          <p className="text-gray-400">No subscription plans available at the moment.</p>
+        </div>
+      );
+    }
+
+    return plans.map((plan) => (
+      <Card 
+        key={plan.id}
+        className={`bg-gray-800/50 border-gray-700 relative ${
+          selectedPlan?.id === plan.id ? "ring-2 ring-blue-500" : ""
+        } ${paymentCompleted && selectedPlan?.id === plan.id ? "ring-2 ring-green-500" : ""}`}
+      >
+        {plan.recommended && (
+          <div className="absolute -top-3 left-0 right-0 flex justify-center">
+            <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
+              Recommended
+            </span>
+          </div>
+        )}
+        
+        {paymentCompleted && selectedPlan?.id === plan.id && (
+          <div className="absolute -top-3 right-4">
+            <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full flex items-center">
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Paid
+            </span>
+          </div>
+        )}
+
+        <CardHeader>
+          <CardTitle className="text-white">{plan.name}</CardTitle>
+          <CardDescription className="text-gray-400">
+            <span className="text-2xl font-bold text-white">₹{plan.price}</span> / month
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2">
+            {plan.features.map((feature, index) => (
+              <li key={index} className="flex items-start">
+                <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                <span className="text-gray-300">{feature}</span>
+              </li>
+            ))}
+          </ul>
+          
+          {/* Plan Stats */}
+          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-600">
+            <div className="text-center p-2 bg-gray-700/50 rounded">
+              <Users className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+              <div className="text-sm font-bold text-white">{plan.maxMembers}</div>
+              <div className="text-xs text-gray-400">Max Members</div>
+            </div>
+            <div className="text-center p-2 bg-gray-700/50 rounded">
+              <Users className="h-4 w-4 text-green-400 mx-auto mb-1" />
+              <div className="text-sm font-bold text-white">{plan.maxTrainers}</div>
+              <div className="text-xs text-gray-400">Max Trainers</div>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          {paymentCompleted && selectedPlan?.id === plan.id ? (
+            <Button 
+              onClick={handleCompleteRegistration}
+              disabled={isActivating}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isActivating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Activating...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Complete Registration
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button 
+              className={`w-full ${
+                selectedPlan?.id === plan.id 
+                  ? "bg-blue-600 hover:bg-blue-700" 
+                  : "bg-gray-700 hover:bg-gray-600"
+              }`}
+              onClick={() => handlePlanSelection(plan)}
+              disabled={paymentCompleted}
+            >
+              {selectedPlan?.id === plan.id ? "Selected" : "Select Plan"}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    ));
+  }, [plans, selectedPlan, paymentCompleted, isActivating, handleCompleteRegistration, handlePlanSelection]);
+
+  // Show loading screen while initializing
+  if (!isInitialized || (isLoading && plans.length === 0)) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-white mb-2">Loading Subscription Plans...</h2>
+          <p className="text-gray-400">Please wait while we prepare your options.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full space-y-8">
@@ -460,109 +598,7 @@ const SubscriptionRequired = () => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          {isLoading ? (
-            // Loading state
-            <div className="col-span-full text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="text-gray-400 mt-4">Loading subscription plans...</p>
-            </div>
-          ) : plans.length === 0 ? (
-            // No plans found
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-400">No subscription plans available at the moment.</p>
-            </div>
-          ) : (
-            // Plans list
-            plans.map((plan) => (
-            <Card 
-              key={plan.id}
-              className={`bg-gray-800/50 border-gray-700 relative ${
-                selectedPlan?.id === plan.id ? "ring-2 ring-blue-500" : ""
-              } ${paymentCompleted && selectedPlan?.id === plan.id ? "ring-2 ring-green-500" : ""}`}
-            >
-              {plan.recommended && (
-                <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                  <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">
-                    Recommended
-                  </span>
-                </div>
-              )}
-              
-              {paymentCompleted && selectedPlan?.id === plan.id && (
-                <div className="absolute -top-3 right-4">
-                  <span className="bg-green-600 text-white text-xs px-3 py-1 rounded-full flex items-center">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Paid
-                  </span>
-                </div>
-              )}
-
-              <CardHeader>
-                <CardTitle className="text-white">{plan.name}</CardTitle>
-                <CardDescription className="text-gray-400">
-                  <span className="text-2xl font-bold text-white">₹{plan.price}</span> / month
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {plan.features.map((feature, index) => (
-                    <li key={index} className="flex items-start">
-                      <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                      <span className="text-gray-300">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                
-                {/* Plan Stats */}
-                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-600">
-                  <div className="text-center p-2 bg-gray-700/50 rounded">
-                    <Users className="h-4 w-4 text-blue-400 mx-auto mb-1" />
-                    <div className="text-sm font-bold text-white">{plan.maxMembers}</div>
-                    <div className="text-xs text-gray-400">Max Members</div>
-                  </div>
-                  <div className="text-center p-2 bg-gray-700/50 rounded">
-                    <Users className="h-4 w-4 text-green-400 mx-auto mb-1" />
-                    <div className="text-sm font-bold text-white">{plan.maxTrainers}</div>
-                    <div className="text-xs text-gray-400">Max Trainers</div>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                {paymentCompleted && selectedPlan?.id === plan.id ? (
-                  <Button 
-                    onClick={handleCompleteRegistration}
-                    disabled={isActivating}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    {isActivating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Activating...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        Complete Registration
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <Button 
-                    className={`w-full ${
-                      selectedPlan?.id === plan.id 
-                        ? "bg-blue-600 hover:bg-blue-700" 
-                        : "bg-gray-700 hover:bg-gray-600"
-                    }`}
-                    onClick={() => handlePlanSelection(plan)}
-                    disabled={paymentCompleted}
-                  >
-                    {selectedPlan?.id === plan.id ? "Selected" : "Select Plan"}
-                  </Button>
-                )}
-              </CardFooter>
-            </Card>
-            ))
-          )}
+          {planCards}
         </div>
 
         {/* Payment Section - Only show if payment not completed */}
