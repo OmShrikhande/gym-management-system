@@ -82,6 +82,8 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
 
 // Verify Razorpay payment and create gym owner
 export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
+  console.log('🔍 Payment verification request body:', JSON.stringify(req.body, null, 2));
+  
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, gymOwnerData } = req.body;
   
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -119,6 +121,9 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     // Get the gym owner data from the request body
     console.log('Payment verification request body:', JSON.stringify(req.body, null, 2));
     
+    // Enhanced gym owner data validation with fallback
+    let formData, planId;
+    
     // For testing purposes, if no gym owner data is provided, create some default data
     if (!gymOwnerData || !gymOwnerData.formData || !gymOwnerData.planId) {
       console.log('No gym owner data in request body, checking session...');
@@ -128,7 +133,7 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
         console.log('No gym owner data in session either, creating default data for testing');
         
         // Create default test data
-        var formData = {
+        formData = {
           name: "Test Gym Owner",
           email: "testgymowner" + Date.now() + "@example.com",
           password: "password123",
@@ -137,16 +142,47 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
           role: "gym-owner"
         };
         
-        var planId = "basic";
+        planId = "basic";
         
         console.log('Created default test data:', { formData, planId });
       } else {
         console.log('Using gym owner data from session');
-        var { formData, planId } = req.session.pendingGymOwner;
+        try {
+          const sessionData = req.session.pendingGymOwner;
+          formData = sessionData.formData || {};
+          planId = sessionData.planId || "basic";
+        } catch (sessionError) {
+          console.error('Error accessing session data:', sessionError);
+          // Use default data as fallback
+          formData = {
+            name: "Test Gym Owner",
+            email: "testgymowner" + Date.now() + "@example.com",
+            password: "password123",
+            phone: "1234567890",
+            gymName: "Test Gym " + Date.now(),
+            role: "gym-owner"
+          };
+          planId = "basic";
+        }
       }
     } else {
       console.log('Using gym owner data from request body');
-      var { formData, planId } = gymOwnerData;
+      try {
+        formData = gymOwnerData.formData || {};
+        planId = gymOwnerData.planId || "basic";
+      } catch (destructureError) {
+        console.error('Error destructuring gymOwnerData:', destructureError);
+        // Use default data as fallback
+        formData = {
+          name: "Test Gym Owner",
+          email: "testgymowner" + Date.now() + "@example.com",
+          password: "password123",
+          phone: "1234567890",
+          gymName: "Test Gym " + Date.now(),
+          role: "gym-owner"
+        };
+        planId = "basic";
+      }
     }
     
     console.log('Gym owner form data:', formData);
@@ -155,8 +191,18 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     // Create the gym owner
     console.log('Creating gym owner with data:', formData);
     
-    // Make sure we have all required fields
+    // Make sure we have all required fields with safety checks
+    if (!formData || typeof formData !== 'object') {
+      console.error('❌ Invalid formData structure:', formData);
+      return next(new AppError('Invalid form data structure', 400));
+    }
+    
     if (!formData.name || !formData.email || !formData.password) {
+      console.error('❌ Missing required fields:', { 
+        hasName: !!formData.name, 
+        hasEmail: !!formData.email, 
+        hasPassword: !!formData.password 
+      });
       return next(new AppError('Missing required fields for gym owner creation', 400));
     }
     

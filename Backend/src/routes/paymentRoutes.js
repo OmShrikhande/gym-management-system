@@ -18,7 +18,15 @@ router.get('/razorpay/health', paymentController.checkRazorpayHealth);
 router.post('/razorpay/create-order', paymentController.createRazorpayOrder);
 
 // Verify Razorpay payment - needed for subscription renewal
-router.post('/razorpay/verify', paymentController.verifyRazorpayPayment);
+router.post('/razorpay/verify', 
+  (req, res, next) => {
+    console.log('🔍 Regular payment verification middleware - Request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 Content-Type:', req.headers['content-type']);
+    console.log('🔍 Request method:', req.method);
+    next();
+  },
+  paymentController.verifyRazorpayPayment
+);
 
 // Account activation routes (for gym owners)
 router.post('/razorpay/verify-activation', 
