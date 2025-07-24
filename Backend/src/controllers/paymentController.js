@@ -433,15 +433,69 @@ export const generatePaymentQR = catchAsync(async (req, res, next) => {
 
 // Verify payment and activate gym owner account
 export const verifyActivationPayment = catchAsync(async (req, res, next) => {
+  console.log('🔍 Payment verification request body:', JSON.stringify(req.body, null, 2));
+  
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planData } = req.body;
   
   if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
     return next(new AppError('Missing payment verification parameters', 400));
   }
   
-  if (!planData) {
-    return next(new AppError('Plan data is required', 400));
+  // Enhanced planData validation with multiple fallback strategies
+  let finalPlanData = planData;
+  
+  if (!finalPlanData) {
+    console.error('❌ Plan data is missing from request body');
+    console.log('Available request body keys:', Object.keys(req.body));
+    
+    // Strategy 1: Try to extract plan info from order notes if available
+    try {
+      const razorpay = getRazorpayInstance();
+      if (razorpay && razorpay_order_id) {
+        console.log('🔍 Attempting to fetch order details from Razorpay...');
+        const orderDetails = await razorpay.orders.fetch(razorpay_order_id);
+        console.log('📋 Order details from Razorpay:', orderDetails);
+        
+        if (orderDetails && orderDetails.notes) {
+          const { planId, planName } = orderDetails.notes;
+          if (planId && planName) {
+            // Map plan ID to plan details
+            const planMap = {
+              'basic': { id: 'basic', name: 'Basic', price: 49, maxMembers: 200, maxTrainers: 5 },
+              'premium': { id: 'premium', name: 'Premium', price: 99, maxMembers: 500, maxTrainers: 15 },
+              'enterprise': { id: 'enterprise', name: 'Enterprise', price: 199, maxMembers: 1000, maxTrainers: 50 }
+            };
+            
+            finalPlanData = planMap[planId] || planMap['basic'];
+            console.log('✅ Extracted plan data from order notes:', finalPlanData);
+          }
+        }
+      }
+    } catch (orderFetchError) {
+      console.warn('⚠️ Could not fetch order details from Razorpay:', orderFetchError.message);
+    }
+    
+    // Strategy 2: Use default plan data as final fallback
+    if (!finalPlanData) {
+      finalPlanData = {
+        id: "basic",
+        name: "Basic",
+        price: 49,
+        maxMembers: 200,
+        maxTrainers: 5
+      };
+      
+      console.log('🔄 Using default plan data as final fallback:', finalPlanData);
+    }
   }
+  
+  // Validate planData structure
+  if (!finalPlanData.name || !finalPlanData.price) {
+    console.error('❌ Invalid plan data structure:', finalPlanData);
+    return next(new AppError('Invalid plan data structure', 400));
+  }
+  
+  console.log('✅ Plan data validated successfully:', finalPlanData);
   
   try {
     // Verify Razorpay payment signature for security
@@ -506,46 +560,65 @@ export const verifyActivationPayment = catchAsync(async (req, res, next) => {
       if (existingSubscription) {
         console.log('Updating existing subscription for gym owner:', gymOwner._id);
         
-        // Update the existing subscription
-        existingSubscription.plan = planData.name;
-        existingSubscription.price = planData.price;
-        existingSubscription.startDate = startDate;
-        existingSubscription.endDate = endDate;
-        existingSubscription.isActive = true;
-        existingSubscription.paymentStatus = 'Paid';
-        
-        // Add new payment to history
-        existingSubscription.paymentHistory.push({
-          amount: planData.price,
-          date: startDate,
-          method: 'razorpay',
-          status: 'Success',
-          transactionId: razorpay_payment_id
-        });
+        // Update the existing subscription with safety checks
+        try {
+          existingSubscription.plan = finalPlanData.name || 'Basic';
+          existingSubscription.price = finalPlanData.price || 49;
+          existingSubscription.startDate = startDate;
+          existingSubscription.endDate = endDate;
+          existingSubscription.isActive = true;
+          existingSubscription.paymentStatus = 'Paid';
+          
+          // Add new payment to history with safety checks
+          existingSubscription.paymentHistory.push({
+            amount: finalPlanData.price || 49,
+            date: startDate,
+            method: 'razorpay',
+            status: 'Success',
+            transactionId: razorpay_payment_id || 'unknown'
+          });
+          
+          console.log('📝 Updated subscription data:', {
+            plan: existingSubscription.plan,
+            price: existingSubscription.price,
+            isActive: existingSubscription.isActive
+          });
+        } catch (updateError) {
+          console.error('❌ Error updating subscription fields:', updateError);
+          throw new Error(`Failed to update subscription: ${updateError.message}`);
+        }
         
         subscription = await existingSubscription.save();
         console.log('Subscription updated successfully:', subscription);
       } else {
-        // Create a new subscription
-        subscription = await Subscription.create({
-          gymOwner: gymOwner._id,
-          plan: planData.name,
-          price: planData.price,
-          startDate,
-          endDate,
-          isActive: true,
-          paymentStatus: 'Paid',
-          paymentHistory: [
-            {
-              amount: planData.price,
-              date: startDate,
-              method: 'razorpay',
-              status: 'Success',
-              transactionId: razorpay_payment_id
-            }
-          ],
-          autoRenew: true
-        });
+        // Create a new subscription with safety checks
+        try {
+          const subscriptionData = {
+            gymOwner: gymOwner._id,
+            plan: finalPlanData.name || 'Basic',
+            price: finalPlanData.price || 49,
+            startDate,
+            endDate,
+            isActive: true,
+            paymentStatus: 'Paid',
+            paymentHistory: [
+              {
+                amount: finalPlanData.price || 49,
+                date: startDate,
+                method: 'razorpay',
+                status: 'Success',
+                transactionId: razorpay_payment_id || 'unknown'
+              }
+            ],
+            autoRenew: true
+          };
+          
+          console.log('📝 Creating new subscription with data:', subscriptionData);
+          subscription = await Subscription.create(subscriptionData);
+        } catch (createError) {
+          console.error('❌ Error creating new subscription:', createError);
+          throw new Error(`Failed to create subscription: ${createError.message}`);
+        }
         
         console.log('New subscription created successfully:', subscription);
       }

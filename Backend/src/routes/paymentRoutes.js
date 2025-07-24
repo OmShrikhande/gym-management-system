@@ -21,7 +21,16 @@ router.post('/razorpay/create-order', paymentController.createRazorpayOrder);
 router.post('/razorpay/verify', paymentController.verifyRazorpayPayment);
 
 // Account activation routes (for gym owners)
-router.post('/razorpay/verify-activation', restrictTo('gym-owner'), paymentController.verifyActivationPayment);
+router.post('/razorpay/verify-activation', 
+  (req, res, next) => {
+    console.log('🔍 Payment verification middleware - Request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 Content-Type:', req.headers['content-type']);
+    console.log('🔍 Request method:', req.method);
+    next();
+  },
+  restrictTo('gym-owner'), 
+  paymentController.verifyActivationPayment
+);
 router.post('/test-activation', restrictTo('gym-owner'), paymentController.testModeActivation);
 
 // Routes restricted to super admin
