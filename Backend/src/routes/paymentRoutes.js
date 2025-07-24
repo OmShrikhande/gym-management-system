@@ -4,6 +4,19 @@ import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+// Test endpoint without authentication for debugging
+router.post('/test-verify', (req, res) => {
+  console.log('🧪 Test verify endpoint - Request body:', JSON.stringify(req.body, null, 2));
+  console.log('🧪 Test verify endpoint - Headers:', req.headers);
+  
+  res.json({
+    success: true,
+    message: 'Test endpoint working',
+    receivedData: req.body,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Protect all routes
 router.use(protect);
 

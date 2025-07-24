@@ -83,6 +83,8 @@ export const createRazorpayOrder = catchAsync(async (req, res, next) => {
 // Verify Razorpay payment and create gym owner
 export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
   console.log('🔍 Payment verification request body:', JSON.stringify(req.body, null, 2));
+  console.log('🔍 Request user:', req.user ? { id: req.user._id, role: req.user.role, email: req.user.email } : 'No user');
+  console.log('🔍 Request headers:', req.headers);
   
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, gymOwnerData } = req.body;
   
@@ -278,8 +280,11 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     const selectedPlan = plans.find(p => p.id === planId);
     
     if (!selectedPlan) {
+      console.error('❌ Invalid plan ID:', planId, 'Available plans:', plans.map(p => p.id));
       return next(new AppError('Invalid subscription plan selected', 400));
     }
+    
+    console.log('✅ Selected plan:', selectedPlan);
     
     // Calculate end date (1 month from now)
     const startDate = new Date();
@@ -289,48 +294,56 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     // Create or update subscription
     let subscription;
     try {
+      // Validate savedUser before proceeding
+      if (!savedUser || !savedUser._id) {
+        console.error('❌ Invalid savedUser:', savedUser);
+        throw new Error('User creation failed - no valid user ID');
+      }
+      
+      console.log('✅ Creating subscription for user:', { id: savedUser._id, email: savedUser.email });
+      
       // Check if a subscription already exists for this user
       const existingSubscription = await Subscription.findOne({ gymOwner: savedUser._id });
       
       if (existingSubscription) {
         console.log('Subscription already exists for this user, updating it:', existingSubscription);
         
-        // Update the existing subscription
-        existingSubscription.plan = selectedPlan.name;
-        existingSubscription.price = selectedPlan.price;
+        // Update the existing subscription with safety checks
+        existingSubscription.plan = selectedPlan.name || 'Basic';
+        existingSubscription.price = selectedPlan.price || 49;
         existingSubscription.startDate = startDate;
         existingSubscription.endDate = endDate;
         existingSubscription.isActive = true;
         existingSubscription.paymentStatus = 'Paid';
         
-        // Add new payment to history
+        // Add new payment to history with safety checks
         existingSubscription.paymentHistory.push({
-          amount: selectedPlan.price,
+          amount: selectedPlan.price || 49,
           date: startDate,
           method: 'razorpay',
           status: 'Success',
-          transactionId: razorpay_payment_id
+          transactionId: razorpay_payment_id || 'unknown'
         });
         
         subscription = await existingSubscription.save();
         console.log('Subscription updated successfully:', subscription);
       } else {
-        // Create a new subscription
+        // Create a new subscription with safety checks
         subscription = await Subscription.create({
           gymOwner: savedUser._id,
-          plan: selectedPlan.name,
-          price: selectedPlan.price,
+          plan: selectedPlan.name || 'Basic',
+          price: selectedPlan.price || 49,
           startDate,
           endDate,
           isActive: true,
           paymentStatus: 'Paid',
           paymentHistory: [
             {
-              amount: selectedPlan.price,
+              amount: selectedPlan.price || 49,
               date: startDate,
               method: 'razorpay',
               status: 'Success',
-              transactionId: razorpay_payment_id
+              transactionId: razorpay_payment_id || 'unknown'
             }
           ],
           autoRenew: true
@@ -344,7 +357,9 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
     }
     
     // Clear the pending gym owner data
-    delete req.session.pendingGymOwner;
+    if (req.session && req.session.pendingGymOwner) {
+      delete req.session.pendingGymOwner;
+    }
     
     res.status(200).json({
       status: 'success',
@@ -354,7 +369,25 @@ export const verifyRazorpayPayment = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error('Payment verification error:', error);
+    console.error('❌ Payment verification error in verifyRazorpayPayment:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error name:', error.name);
+    console.error('❌ Error message:', error.message);
+    
+    // Log the current state of variables for debugging
+    try {
+      console.error('❌ Debug info:', {
+        hasFormData: typeof formData !== 'undefined' && formData !== null,
+        formDataType: typeof formData,
+        hasPlanId: typeof planId !== 'undefined' && planId !== null,
+        planIdType: typeof planId,
+        requestBodyKeys: Object.keys(req.body || {}),
+        userExists: !!req.user
+      });
+    } catch (debugError) {
+      console.error('❌ Error in debug logging:', debugError.message);
+    }
+    
     return next(new AppError(`Failed to verify payment: ${error.message}`, 500));
   }
 });
