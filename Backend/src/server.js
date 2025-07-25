@@ -39,6 +39,7 @@ import expenseRoutes from './routes/expenseRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import enquiryRoutes from './routes/enquiryRoutes.js';
 import systemRoutes from './routes/systemRoutes.js';
+import accessRoutes from './routes/accessRoutes.js';
 import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 import { createIndexes } from './config/indexes.js';
@@ -178,6 +179,7 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/access', accessRoutes);
 
 
 

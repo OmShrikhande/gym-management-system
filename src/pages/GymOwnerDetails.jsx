@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   Clock
 } from "lucide-react";
+import GymEntryButton from "@/components/shared/GymEntryButton";
 
 const GymOwnerDetails = () => {
   const { id } = useParams();
@@ -146,15 +147,21 @@ const GymOwnerDetails = () => {
         {/* Header with back button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleGoBack}
-              className="mb-2"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
+            <div className="flex items-center gap-3 mb-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleGoBack}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <GymEntryButton 
+                size="sm" 
+                variant="outline"
+                className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+              />
+            </div>
             <h1 className="text-3xl font-bold text-white">{gymOwner.gymName || `${gymOwner.name}'s Gym`}</h1>
             <p className="text-gray-400 mt-1">Gym Owner Details</p>
           </div>

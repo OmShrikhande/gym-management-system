@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff, Shield } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useTranslation } from "@/contexts/TranslationContext.jsx";
@@ -15,6 +15,7 @@ import { applySettings as applyAppSettings, forceRefreshSettings } from "@/lib/s
 import { useRealTimeSettings } from "@/hooks/useRealTimeSettings";
 import settingsCache from "@/lib/settingsCache.js";
 import SettingsPerformanceMonitor from "@/components/SettingsPerformanceMonitor";
+import ErrorHandlingSettings from "@/components/ErrorHandlingSettings";
 
 const SystemSettings = () => {
   const { user, authFetch, isSuperAdmin, isGymOwner } = useAuth();
@@ -347,6 +348,7 @@ const SystemSettings = () => {
   const tabs = [
     { id: "global", label: t('globalSettings'), icon: Globe },
     { id: "branding", label: t('branding'), icon: Palette },
+    { id: "errorHandling", label: "Error Handling", icon: Shield },
   ];
 
   // Check if user has access to this page
@@ -835,6 +837,11 @@ const SystemSettings = () => {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Error Handling Settings */}
+            {activeTab === "errorHandling" && (
+              <ErrorHandlingSettings />
             )}
 
             {/* Add other tab contents as needed */}

@@ -1,4 +1,10 @@
 // Utility functions for Razorpay integration with improved authentication
+import { 
+  createSecureRazorpayOrder, 
+  verifySecureRazorpayPayment, 
+  getSecureRazorpayKey,
+  initializeRazorpaySecurity 
+} from './razorpaySecurityUtils.js';
 
 /**
  * Fetch Razorpay public key from backend using authenticated fetch
@@ -63,7 +69,7 @@ export const getRazorpayKey = async (authFetch) => {
 };
 
 /**
- * Load Razorpay checkout script
+ * Load Razorpay checkout script with enhanced error handling
  */
 export const loadRazorpayScript = () => {
   return new Promise((resolve) => {
@@ -77,14 +83,38 @@ export const loadRazorpayScript = () => {
     console.log('📥 Loading Razorpay checkout script...');
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    
+    // Add attributes to prevent some console warnings
+    script.setAttribute('crossorigin', 'anonymous');
+    script.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+    
     script.onload = () => {
       console.log('✅ Razorpay script loaded successfully');
+      
+      // Set up error suppression for Razorpay
+      if (window.Razorpay) {
+        // Override navigator.vibrate to prevent cross-origin iframe warnings
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          const originalVibrate = navigator.vibrate;
+          navigator.vibrate = function(...args) {
+            try {
+              return originalVibrate.apply(this, args);
+            } catch (error) {
+              // Silently ignore vibrate errors in cross-origin contexts
+              return false;
+            }
+          };
+        }
+      }
+      
       resolve(true);
     };
-    script.onerror = () => {
-      console.error('❌ Failed to load Razorpay script');
+    
+    script.onerror = (error) => {
+      console.error('❌ Failed to load Razorpay script:', error);
       resolve(false);
     };
+    
     document.body.appendChild(script);
   });
 };
@@ -319,4 +349,12 @@ export const checkRazorpayHealth = async (authFetch) => {
     console.error('❌ Error checking Razorpay health:', error);
     return null;
   }
+};
+
+// Export security-enhanced functions
+export {
+  createSecureRazorpayOrder,
+  verifySecureRazorpayPayment,
+  getSecureRazorpayKey,
+  initializeRazorpaySecurity
 };

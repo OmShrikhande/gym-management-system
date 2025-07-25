@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Plus, Users, User, Edit, Trash2, Calendar, X, Award, Dumbbell, Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import GymEntryButton from "@/components/shared/GymEntryButton";
 
 const Trainers = () => {
   const { users, fetchUsers, isGymOwner, createTrainer, authFetch } = useAuth();
@@ -243,7 +244,14 @@ const Trainers = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">Trainer Management</h1>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-bold text-white">Trainer Management</h1>
+              <GymEntryButton 
+                size="sm" 
+                variant="outline"
+                className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+              />
+            </div>
             <p className="text-gray-400">Manage gym trainers and their member assignments</p>
           </div>
           {isGymOwner && (

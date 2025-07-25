@@ -276,6 +276,82 @@ class FirestoreService {
   }
 
   /**
+   * Update staff entry status in Firestore (for gym owners and trainers)
+   * @param {string} staffId - Staff's MongoDB ID (trainer or gym owner)
+   * @param {string} gymOwnerId - Gym owner's MongoDB ID
+   * @param {Object} staffData - Staff data from verification
+   * @param {string} staffRole - 'trainer' or 'gym-owner'
+   */
+  async updateStaffEntryStatus(staffId, gymOwnerId, staffData, staffRole) {
+    try {
+      // Create a reference to the gym owner's document
+      const gymRef = doc(db, 'gym', gymOwnerId);
+      
+      // Create a staff subcollection under the gym owner's document
+      const staffCollectionRef = collection(gymRef, 'staff');
+      const staffRef = doc(staffCollectionRef, staffId);
+      
+      // Data to update/create in Firestore
+      const updateData = {
+        staffId: staffId,
+        staffName: staffData.name,
+        staffEmail: staffData.email,
+        staffRole: staffRole,
+        entryStatus: 'Active',
+        gymName: staffData.gymName || 'Main Gym',
+        lastEntry: serverTimestamp(),
+        lastAccessGranted: serverTimestamp(),
+        isActive: true,
+        status: true, // Set status as true as requested
+        updatedAt: serverTimestamp()
+      };
+
+      // Check if document exists
+      const docSnap = await getDoc(staffRef);
+      
+      if (docSnap.exists()) {
+        // Update existing document
+        await updateDoc(staffRef, updateData);
+        console.log(`✅ Firestore: Updated staff ${staffId} entry status to active in gym ${gymOwnerId}`);
+      } else {
+        // Create new document
+        await setDoc(staffRef, {
+          ...updateData,
+          createdAt: serverTimestamp()
+        });
+        console.log(`✅ Firestore: Created new staff ${staffId} with active entry status in gym ${gymOwnerId}`);
+      }
+
+      // Update the main gym owner document with active staff info
+      await setDoc(gymRef, {
+        lastActiveStaffId: staffId,
+        lastActiveStaffName: staffData.name,
+        lastActiveStaffRole: staffRole,
+        lastActiveStaffTimestamp: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // Update door status to true (open) for successful staff entry
+      await this.updateDoorStatus(gymOwnerId, true);
+
+      return {
+        success: true,
+        message: 'Staff entry status updated in Firestore',
+        data: {
+          staffId,
+          status: true,
+          entryStatus: 'Active',
+          timestamp: new Date().toISOString()
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Firestore Staff Entry Error:', error);
+      throw new Error(`Failed to update staff entry status in Firestore: ${error.message}`);
+    }
+  }
+
+  /**
    * Update member status to inactive (for membership expiry, etc.)
    * @param {string} memberId - Member's MongoDB ID
    * @param {string} gymOwnerId - Gym owner's MongoDB ID

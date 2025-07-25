@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Handling Test - GymFlow</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #3B82F6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2563EB;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #065f46;
+            border: 1px solid #10b981;
+        }
+        .error {
+            background-color: #7f1d1d;
+            border: 1px solid #ef4444;
+        }
+        .warning {
+            background-color: #78350f;
+            border: 1px solid #f59e0b;
+        }
+        pre {
+            background-color: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ GymFlow Error Handling Test</h1>
+        <p>This page tests the error handling utilities for the Razorpay integration console errors.</p>
+        
+        <div class="status success">
+            <strong>✅ Test Environment Ready</strong><br>
+            Open your browser's developer console (F12) to see the error handling in action.
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🧪 Error Tests</h2>
+        <p>Click the buttons below to test different types of errors:</p>
+        
+        <button onclick="testRazorpayErrors()">Test Razorpay Errors</button>
+        <button onclick="testSVGErrors()">Test SVG Errors</button>
+        <button onclick="testNetworkErrors()">Test Network Errors</button>
+        <button onclick="testCriticalErrors()">Test Critical Errors</button>
+        <button onclick="toggleErrorFiltering()">Toggle Error Filtering</button>
+        <button onclick="clearConsole()">Clear Console</button>
+    </div>
+
+    <div class="container">
+        <h2>📊 Test Results</h2>
+        <div id="testResults">
+            <p>Run tests to see results here...</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Expected Behavior</h2>
+        <div class="status warning">
+            <strong>⚠️ With Error Filtering Enabled:</strong>
+            <ul>
+                <li>Razorpay timeout and header errors should be suppressed</li>
+                <li>SVG attribute warnings should be suppressed</li>
+                <li>Navigator.vibrate warnings should be suppressed</li>
+                <li>Critical errors should ALWAYS be visible</li>
+            </ul>
+        </div>
+        <div class="status error">
+            <strong>🚨 With Error Filtering Disabled:</strong>
+            <ul>
+                <li>All errors should be visible in the console</li>
+                <li>This is useful for debugging</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Include the error handling utilities -->
+    <script type="module">
+        // Simulate the error handling utilities
+        const SUPPRESSED_ERROR_PATTERNS = [
+            /Request timed out.*gym-management-system/i,
+            /Refused to get unsafe header.*x-rtb-fingerprint-id/i,
+            /Blocked call to navigator\.vibrate.*cross-origin iframe/i,
+            /svg.*attribute.*width.*Expected length.*auto/i,
+            /v2-entry-app.*modern\.js.*Intervention/i,
+            /chromestatus\.com.*feature/i
+        ];
+
+        const CRITICAL_ERROR_PATTERNS = [
+            /authentication.*failed/i,
+            /payment.*failed/i,
+            /database.*error/i,
+            /undefined.*is.*not.*function/i,
+            /reference.*error/i
+        ];
+
+        let errorFilteringEnabled = localStorage.getItem('test_error_filtering') === 'true';
+        let originalConsoleError = console.error;
+        let originalConsoleWarn = console.warn;
+        let testResults = [];
+
+        const shouldSuppressError = (message) => {
+            const messageStr = String(message);
+            
+            const isCritical = CRITICAL_ERROR_PATTERNS.some(pattern => 
+                pattern.test(messageStr)
+            );
+            
+            if (isCritical) {
+                return false;
+            }
+            
+            const shouldSuppress = SUPPRESSED_ERROR_PATTERNS.some(pattern => 
+                pattern.test(messageStr)
+            );
+            
+            return shouldSuppress;
+        };
+
+        const filteredConsoleError = (...args) => {
+            const message = args.join(' ');
+            
+            if (!shouldSuppressError(message)) {
+                originalConsoleError.apply(console, args);
+                testResults.push({ type: 'error', message, suppressed: false });
+            } else {
+                console.log('%c[SUPPRESSED ERROR]', 'color: #888; font-style: italic;', ...args);
+                testResults.push({ type: 'error', message, suppressed: true });
+            }
+            updateTestResults();
+        };
+
+        const initializeErrorFiltering = () => {
+            if (errorFilteringEnabled) {
+                console.error = filteredConsoleError;
+                console.warn = filteredConsoleError;
+                console.log('%c🔇 Error filtering enabled', 'color: #4CAF50; font-weight: bold;');
+            } else {
+                console.error = originalConsoleError;
+                console.warn = originalConsoleWarn;
+                console.log('%c🔊 Error filtering disabled', 'color: #FF9800; font-weight: bold;');
+            }
+        };
+
+        const updateTestResults = () => {
+            const resultsDiv = document.getElementById('testResults');
+            const suppressedCount = testResults.filter(r => r.suppressed).length;
+            const totalCount = testResults.length;
+            
+            resultsDiv.innerHTML = `
+                <div class="status success">
+                    <strong>📊 Test Statistics:</strong><br>
+                    Total Errors: ${totalCount}<br>
+                    Suppressed: ${suppressedCount}<br>
+                    Visible: ${totalCount - suppressedCount}<br>
+                    Filtering: ${errorFilteringEnabled ? 'Enabled' : 'Disabled'}
+                </div>
+                <pre>${JSON.stringify(testResults.slice(-5), null, 2)}</pre>
+            `;
+        };
+
+        // Global functions for buttons
+        window.testRazorpayErrors = () => {
+            console.log('🧪 Testing Razorpay errors...');
+            console.error('Request timed out: https://gym-management-system-ckb0');
+            console.error('Refused to get unsafe header "x-rtb-fingerprint-id"');
+            console.warn('Blocked call to navigator.vibrate inside a cross-origin iframe because the frame has never been activated by the user: https://www.chromestatus.com/feature/5682658461876224');
+            console.error('v2-entry-app-4976853e.modern.js:1 [Intervention] Blocked call to navigator.vibrate');
+        };
+
+        window.testSVGErrors = () => {
+            console.log('🧪 Testing SVG errors...');
+            console.error('<svg> attribute width: Expected length, "auto".');
+            console.error('<svg> attribute height: Expected length, "auto".');
+            console.warn('SVG element has invalid width attribute');
+        };
+
+        window.testNetworkErrors = () => {
+            console.log('🧪 Testing network errors...');
+            console.error('fetch timeout error');
+            console.error('XMLHttpRequest timeout');
+            console.warn('Failed to load resource: favicon.ico');
+        };
+
+        window.testCriticalErrors = () => {
+            console.log('🧪 Testing critical errors (these should NEVER be suppressed)...');
+            console.error('Authentication failed - user not logged in');
+            console.error('Payment failed - insufficient funds');
+            console.error('Database error - connection lost');
+            console.error('ReferenceError: undefined is not a function');
+        };
+
+        window.toggleErrorFiltering = () => {
+            errorFilteringEnabled = !errorFilteringEnabled;
+            localStorage.setItem('test_error_filtering', errorFilteringEnabled.toString());
+            initializeErrorFiltering();
+            updateTestResults();
+        };
+
+        window.clearConsole = () => {
+            console.clear();
+            testResults = [];
+            updateTestResults();
+        };
+
+        // Initialize on load
+        initializeErrorFiltering();
+        updateTestResults();
+
+        console.log('🚀 Error handling test page loaded');
+        console.log('📝 Instructions:');
+        console.log('1. Open Developer Console (F12)');
+        console.log('2. Click test buttons to generate errors');
+        console.log('3. Toggle error filtering to see the difference');
+        console.log('4. Check that critical errors are never suppressed');
+    </script>
+</body>
+</html>
