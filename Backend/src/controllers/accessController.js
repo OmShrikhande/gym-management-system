@@ -1,6 +1,6 @@
-import User from '../models/User.js';
+import User from '../models/userModel.js';
 import firestoreService from '../services/firestoreService.js';
-import { catchAsync } from '../utils/catchAsync.js';
+import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 
 /**
@@ -24,7 +24,7 @@ export const staffEntry = catchAsync(async (req, res, next) => {
       gymOwnerId = staffId; // Gym owner's own ID
     } else if (staffRole === 'trainer') {
       // For trainers, get the gym owner they belong to
-      gymOwnerId = staff.gymOwnerId || staff.assignedGym;
+      gymOwnerId = staff.gymId;
       
       if (!gymOwnerId) {
         return next(new AppError('Trainer is not assigned to any gym owner', 400));
