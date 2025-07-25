@@ -10,6 +10,7 @@ import http from 'http';
 import helmet from 'helmet';
 import compression from 'compression';
 import webSocketService from './services/websocketService.js';
+import keepAliveService from './services/keepAliveService.js';
 
 // Import enhanced middleware
 import { generalLimiter, authLimiter, paymentLimiter, uploadLimiter } from './middleware/rateLimiter.js';
@@ -39,7 +40,6 @@ import expenseRoutes from './routes/expenseRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import enquiryRoutes from './routes/enquiryRoutes.js';
 import systemRoutes from './routes/systemRoutes.js';
-import accessRoutes from './routes/accessRoutes.js';
 import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 import { createIndexes } from './config/indexes.js';
@@ -179,7 +179,6 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/system', systemRoutes);
-app.use('/api/access', accessRoutes);
 
 
 
@@ -204,6 +203,19 @@ app.get('/ping', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// Keep-alive endpoint to prevent server from sleeping
+app.get('/keep-alive', (req, res) => {
+  console.log('Keep-alive ping received at:', new Date().toISOString());
+  res.json({
+    status: 'alive',
+    message: 'Server is awake and running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memoryUsage: process.memoryUsage(),
+    serverStatus: 'healthy'
   });
 });
 
@@ -332,6 +344,19 @@ app.get('/ws-status', (req, res) => {
   });
 });
 
+// Keep-alive service status endpoint
+app.get('/keep-alive-status', (req, res) => {
+  res.json({
+    status: 'success',
+    data: {
+      ...keepAliveService.getStatus(),
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      renderUrl: process.env.RENDER_EXTERNAL_URL || 'Not set'
+    }
+  });
+});
+
 // Cache management endpoints
 app.get('/api/cache/stats', getCacheStats);
 app.post('/api/cache/clear', clearCache);
@@ -378,6 +403,7 @@ process.on('uncaughtException', (err) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
+  keepAliveService.stop();
   if (server) {
     server.close(() => {
       console.log('Process terminated');
@@ -390,6 +416,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
+  keepAliveService.stop();
   if (server) {
     server.close(() => {
       console.log('Process terminated');
@@ -412,6 +439,9 @@ connectDB().then(async () => {
   
   // Start performance logging
   startPerformanceLogging(15); // Log every 15 minutes
+  
+  // Start keep-alive service to prevent server sleep
+  keepAliveService.start();
   
   // Create HTTP server
   server = http.createServer(app);

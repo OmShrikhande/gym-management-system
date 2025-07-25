@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "echo 'No build step required'",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "keep-alive": "node scripts/keepServerAlive.js",
+    "ping-server": "curl -s https://gym-management-system-ckb0.onrender.com/keep-alive || echo 'Ping failed'"
   },
   "engines": {
     "node": ">=18.0.0"

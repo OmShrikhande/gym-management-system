@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -5,6 +6,7 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n";
 import { AuthProvider } from "@/contexts/AuthContext.jsx";
 import { TranslationProvider } from "@/contexts/TranslationContext.jsx";
+import frontendKeepAliveService from "@/utils/keepAliveService.js";
 
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import SettingsInitializer from "@/components/SettingsInitializer.jsx";
@@ -37,7 +39,18 @@ import AccessControl from "./pages/AccessControl.jsx";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const App = () => {
+  // Start keep-alive service when app loads
+  useEffect(() => {
+    frontendKeepAliveService.start();
+    
+    // Cleanup on unmount
+    return () => {
+      frontendKeepAliveService.stop();
+    };
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <I18nextProvider i18n={i18n}>
       <AuthProvider>
@@ -196,6 +209,7 @@ const App = () => (
       </AuthProvider>
     </I18nextProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
