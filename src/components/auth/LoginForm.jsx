@@ -7,6 +7,7 @@ import { Dumbbell, Mail, Lock, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import logoImage from "@/assets/shakktiverse_logo.png";
 
 const LoginForm = () => {
   const [formData, setFormData] = useState({
@@ -55,7 +56,7 @@ const LoginForm = () => {
         <div className="text-center space-y-4">
           <div className="flex justify-center">
             <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
-              <img src="./../../../public/shakktiverse_logo.png" alt="Logo" className="h-12 w-auto" />
+              <img src={logoImage} alt="Logo" className="h-12 w-auto" />
             </div>
           </div>
           <h1 className="text-3xl font-bold text-white">ShaktiVerse</h1>
