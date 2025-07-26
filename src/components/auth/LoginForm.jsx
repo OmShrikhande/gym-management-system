@@ -55,11 +55,11 @@ const LoginForm = () => {
         <div className="text-center space-y-4">
           <div className="flex justify-center">
             <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
-              <Dumbbell className="h-12 w-12 text-white" />
+              <img src="./../../../public/shakktiverse_logo.png" alt="Logo" className="h-12 w-auto" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">GymFlow</h1>
-          <p className="text-gray-400">Comprehensive Gym Management Platform</p>
+          <h1 className="text-3xl font-bold text-white">ShaktiVerse</h1>
+          <p className="text-gray-400">शक्तिपथस्य आरम्भः</p>
         </div>
 
         {/* Login Form */}
