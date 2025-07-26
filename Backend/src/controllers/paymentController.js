@@ -1,5 +1,6 @@
 import User from '../models/userModel.js';
 import Subscription from '../models/subscriptionModel.js';
+import Payment from '../models/paymentModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import crypto from 'crypto';
@@ -829,5 +830,450 @@ export const testModeActivation = catchAsync(async (req, res, next) => {
   } catch (error) {
     console.error('Test mode activation error:', error);
     return next(new AppError(`Failed to activate account: ${error.message}`, 500));
+  }
+});
+
+// Member Payment Tracking Functions
+
+// Record a member payment
+export const recordMemberPayment = catchAsync(async (req, res, next) => {
+  const {
+    memberId,
+    amount,
+    planType,
+    duration,
+    paymentMethod,
+    transactionId,
+    notes,
+    membershipStartDate,
+    membershipEndDate
+  } = req.body;
+
+  // Validate required fields
+  if (!memberId || !amount || !planType || !duration) {
+    return next(new AppError('Missing required payment information', 400));
+  }
+
+  // Validate gym owner
+  if (!req.user || req.user.role !== 'gym-owner') {
+    return next(new AppError('Only gym owners can record member payments', 403));
+  }
+
+  try {
+    // Verify member belongs to this gym owner
+    const member = await User.findOne({
+      _id: memberId,
+      gymId: req.user._id,
+      role: 'member'
+    });
+
+    if (!member) {
+      return next(new AppError('Member not found or does not belong to your gym', 404));
+    }
+
+    // Calculate plan and trainer costs
+    const planCosts = {
+      'Basic': 500,
+      'Standard': 1000,
+      'Premium': 1500
+    };
+
+    const planCost = planCosts[planType] || planCosts['Basic'];
+    const trainerCost = member.assignedTrainer ? 500 : 0;
+    const totalAmount = (planCost + trainerCost) * parseInt(duration);
+
+    // Validate amount matches calculation
+    if (Math.abs(amount - totalAmount) > 1) { // Allow 1 rupee difference for rounding
+      console.warn(`Amount mismatch: provided ${amount}, calculated ${totalAmount}`);
+    }
+
+    // Calculate membership period
+    const startDate = membershipStartDate ? new Date(membershipStartDate) : new Date();
+    const endDate = membershipEndDate ? new Date(membershipEndDate) : new Date(startDate);
+    if (!membershipEndDate) {
+      endDate.setMonth(endDate.getMonth() + parseInt(duration));
+    }
+
+    // Create payment record
+    const payment = await Payment.create({
+      member: memberId,
+      gymOwner: req.user._id,
+      amount: amount,
+      planCost: planCost * parseInt(duration),
+      trainerCost: trainerCost * parseInt(duration),
+      planType,
+      duration: parseInt(duration),
+      paymentMethod: paymentMethod || 'Cash',
+      transactionId,
+      notes,
+      assignedTrainer: member.assignedTrainer,
+      membershipPeriod: {
+        startDate,
+        endDate
+      }
+    });
+
+    // Update member's membership information
+    await User.findByIdAndUpdate(memberId, {
+      membershipStatus: 'Active',
+      membershipStartDate: startDate,
+      membershipEndDate: endDate,
+      membershipDuration: duration.toString(),
+      membershipType: planType,
+      planType: planType
+    });
+
+    // Populate the payment with member details
+    const populatedPayment = await Payment.findById(payment._id)
+      .populate('member', 'name email phone')
+      .populate('assignedTrainer', 'name');
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Payment recorded successfully',
+      data: {
+        payment: populatedPayment
+      }
+    });
+
+  } catch (error) {
+    console.error('Error recording member payment:', error);
+    return next(new AppError(`Failed to record payment: ${error.message}`, 500));
+  }
+});
+
+// Get member payments for a gym owner
+export const getMemberPayments = catchAsync(async (req, res, next) => {
+  if (!req.user || req.user.role !== 'gym-owner') {
+    return next(new AppError('Only gym owners can view member payments', 403));
+  }
+
+  try {
+    const {
+      month = new Date().getMonth() + 1,
+      year = new Date().getFullYear(),
+      planType,
+      memberName,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    // Build filter object
+    const filters = {
+      gymOwner: req.user._id
+    };
+
+    // Add date filter
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+    filters.paymentDate = {
+      $gte: startDate,
+      $lte: endDate
+    };
+
+    // Add plan type filter
+    if (planType && planType !== '') {
+      filters.planType = planType;
+    }
+
+    // Build aggregation pipeline
+    const pipeline = [
+      { $match: filters },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'member',
+          foreignField: '_id',
+          as: 'memberDetails'
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'assignedTrainer',
+          foreignField: '_id',
+          as: 'trainerDetails'
+        }
+      },
+      {
+        $unwind: '$memberDetails'
+      },
+      {
+        $unwind: {
+          path: '$trainerDetails',
+          preserveNullAndEmptyArrays: true
+        }
+      }
+    ];
+
+    // Add member name filter if provided
+    if (memberName && memberName.trim() !== '') {
+      pipeline.push({
+        $match: {
+          'memberDetails.name': {
+            $regex: memberName.trim(),
+            $options: 'i'
+          }
+        }
+      });
+    }
+
+    // Add sorting
+    pipeline.push({
+      $sort: { paymentDate: -1 }
+    });
+
+    // Execute aggregation
+    const payments = await Payment.aggregate(pipeline);
+
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + parseInt(limit);
+    const paginatedPayments = payments.slice(startIndex, endIndex);
+
+    // Calculate statistics
+    const stats = {
+      totalAmount: payments.reduce((sum, payment) => sum + payment.amount, 0),
+      totalPayments: payments.length,
+      uniqueMembers: new Set(payments.map(payment => payment.member.toString())).size,
+      planBreakdown: {}
+    };
+
+    // Calculate plan breakdown
+    payments.forEach(payment => {
+      if (!stats.planBreakdown[payment.planType]) {
+        stats.planBreakdown[payment.planType] = {
+          count: 0,
+          amount: 0
+        };
+      }
+      stats.planBreakdown[payment.planType].count++;
+      stats.planBreakdown[payment.planType].amount += payment.amount;
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: paginatedPayments.length,
+      totalResults: payments.length,
+      data: {
+        payments: paginatedPayments,
+        stats,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(payments.length / limit),
+          hasNextPage: endIndex < payments.length,
+          hasPrevPage: page > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching member payments:', error);
+    return next(new AppError(`Failed to fetch payments: ${error.message}`, 500));
+  }
+});
+
+// Get payment statistics for dashboard
+export const getPaymentStats = catchAsync(async (req, res, next) => {
+  if (!req.user || req.user.role !== 'gym-owner') {
+    return next(new AppError('Only gym owners can view payment statistics', 403));
+  }
+
+  try {
+    const {
+      startDate,
+      endDate,
+      period = 'monthly'
+    } = req.query;
+
+    let dateFilter = {};
+    
+    if (startDate && endDate) {
+      dateFilter = {
+        paymentDate: {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate)
+        }
+      };
+    } else if (period === 'monthly') {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      dateFilter = {
+        paymentDate: {
+          $gte: firstDay,
+          $lte: lastDay
+        }
+      };
+    } else if (period === 'yearly') {
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), 0, 1);
+      const lastDay = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+      dateFilter = {
+        paymentDate: {
+          $gte: firstDay,
+          $lte: lastDay
+        }
+      };
+    }
+
+    // Get revenue statistics
+    const revenueStats = await Payment.getRevenueStats(req.user._id, dateFilter);
+
+    // Get monthly breakdown for the current year
+    const monthlyBreakdown = await Payment.aggregate([
+      {
+        $match: {
+          gymOwner: req.user._id,
+          paymentDate: {
+            $gte: new Date(new Date().getFullYear(), 0, 1),
+            $lte: new Date(new Date().getFullYear(), 11, 31, 23, 59, 59)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: '$paymentDate' },
+            year: { $year: '$paymentDate' }
+          },
+          totalRevenue: { $sum: '$amount' },
+          totalPayments: { $sum: 1 },
+          uniqueMembers: { $addToSet: '$member' }
+        }
+      },
+      {
+        $project: {
+          month: '$_id.month',
+          year: '$_id.year',
+          totalRevenue: 1,
+          totalPayments: 1,
+          uniqueMembers: { $size: '$uniqueMembers' }
+        }
+      },
+      {
+        $sort: { '_id.month': 1 }
+      }
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        revenueStats: revenueStats[0] || {
+          totalRevenue: 0,
+          totalPayments: 0,
+          uniqueMembers: 0,
+          avgPaymentAmount: 0
+        },
+        monthlyBreakdown
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching payment statistics:', error);
+    return next(new AppError(`Failed to fetch payment statistics: ${error.message}`, 500));
+  }
+});
+
+// Generate member payment report
+export const generatePaymentReport = catchAsync(async (req, res, next) => {
+  if (!req.user || req.user.role !== 'gym-owner') {
+    return next(new AppError('Only gym owners can generate payment reports', 403));
+  }
+
+  try {
+    const {
+      month = new Date().getMonth() + 1,
+      year = new Date().getFullYear(),
+      format = 'json'
+    } = req.query;
+
+    // Get payments for the specified period
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const payments = await Payment.find({
+      gymOwner: req.user._id,
+      paymentDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    })
+    .populate('member', 'name email phone membershipType')
+    .populate('assignedTrainer', 'name')
+    .sort({ paymentDate: -1 });
+
+    // Calculate summary statistics
+    const summary = {
+      totalRevenue: payments.reduce((sum, payment) => sum + payment.amount, 0),
+      totalPayments: payments.length,
+      uniqueMembers: new Set(payments.map(payment => payment.member._id.toString())).size,
+      planBreakdown: {},
+      paymentMethodBreakdown: {}
+    };
+
+    // Calculate breakdowns
+    payments.forEach(payment => {
+      // Plan breakdown
+      if (!summary.planBreakdown[payment.planType]) {
+        summary.planBreakdown[payment.planType] = { count: 0, amount: 0 };
+      }
+      summary.planBreakdown[payment.planType].count++;
+      summary.planBreakdown[payment.planType].amount += payment.amount;
+
+      // Payment method breakdown
+      if (!summary.paymentMethodBreakdown[payment.paymentMethod]) {
+        summary.paymentMethodBreakdown[payment.paymentMethod] = { count: 0, amount: 0 };
+      }
+      summary.paymentMethodBreakdown[payment.paymentMethod].count++;
+      summary.paymentMethodBreakdown[payment.paymentMethod].amount += payment.amount;
+    });
+
+    const reportData = {
+      period: {
+        month: parseInt(month),
+        year: parseInt(year),
+        monthName: new Date(year, month - 1).toLocaleString('default', { month: 'long' })
+      },
+      summary,
+      payments: payments.map(payment => ({
+        id: payment._id,
+        paymentId: payment.paymentId,
+        memberName: payment.member.name,
+        memberEmail: payment.member.email,
+        memberPhone: payment.member.phone,
+        amount: payment.amount,
+        planType: payment.planType,
+        duration: payment.duration,
+        paymentDate: payment.paymentDate,
+        paymentMethod: payment.paymentMethod,
+        transactionId: payment.transactionId,
+        referenceId: payment.referenceId,
+        trainerName: payment.assignedTrainer?.name || 'No Trainer'
+      }))
+    };
+
+    if (format === 'csv') {
+      // Generate CSV format
+      const csvHeader = 'Payment ID,Member Name,Member Email,Amount,Plan Type,Duration,Payment Date,Payment Method,Transaction ID,Trainer\n';
+      const csvRows = reportData.payments.map(payment => 
+        `${payment.paymentId},${payment.memberName},${payment.memberEmail},${payment.amount},${payment.planType},${payment.duration},${payment.paymentDate.toISOString().split('T')[0]},${payment.paymentMethod},${payment.transactionId || ''},${payment.trainerName}`
+      ).join('\n');
+      
+      const csvContent = csvHeader + csvRows;
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="payment-report-${year}-${month}.csv"`);
+      return res.send(csvContent);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: reportData
+    });
+
+  } catch (error) {
+    console.error('Error generating payment report:', error);
+    return next(new AppError(`Failed to generate payment report: ${error.message}`, 500));
   }
 });

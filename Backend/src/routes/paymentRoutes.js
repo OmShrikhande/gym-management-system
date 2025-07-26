@@ -54,6 +54,12 @@ router.post('/razorpay/verify-activation',
 );
 router.post('/test-activation', restrictTo('gym-owner'), paymentController.testModeActivation);
 
+// Member payment tracking routes (for gym owners)
+router.post('/member-payments', restrictTo('gym-owner'), paymentController.recordMemberPayment);
+router.get('/member-payments', restrictTo('gym-owner'), paymentController.getMemberPayments);
+router.get('/member-payments/stats', restrictTo('gym-owner'), paymentController.getPaymentStats);
+router.get('/member-payments/report', restrictTo('gym-owner'), paymentController.generatePaymentReport);
+
 // Routes restricted to super admin
 router.use(restrictTo('super-admin'));
 

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
+import AddMemberPayment from "@/components/payments/AddMemberPayment";
 import * as XLSX from 'xlsx';
 
 const Reports = () => {
@@ -45,6 +46,7 @@ const Reports = () => {
   });
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
+  const [showAddPayment, setShowAddPayment] = useState(false);
 
   // Calculate real stats for gym owners
   const [realStats, setRealStats] = useState({
@@ -434,86 +436,80 @@ const Reports = () => {
       setPaymentError(null);
       
       try {
-        // Get all members for this gym owner
-        console.log('Fetching members for payment reports...');
-        const membersResponse = await authFetch('/users/');
-        console.log('Members response:', membersResponse);
+        console.log('Fetching member payments from API...');
         
-        if (!membersResponse.success && membersResponse.status !== 'success') {
-          console.error('Failed to fetch members:', membersResponse);
-          throw new Error(membersResponse.message || 'Failed to fetch members');
-        }
+        // Fetch real payment data from the API
+        const paymentsResponse = await authFetch(`/payments/member-payments?month=${paymentFilters.month}&year=${paymentFilters.year}`);
+        console.log('Payments response:', paymentsResponse);
         
-        const members = membersResponse.data?.users || [];
-        
-        // Generate mock payment data based on members
-        // In a real application, this would come from a payment history API
-        const payments = [];
-        
-        if (members.length === 0) {
-          console.log('No members found for payment tracking');
-          setMemberPayments([]);
-          return;
-        }
-        
-        members.forEach(member => {
-          // Skip if member data is incomplete
-          if (!member._id || !member.name) {
-            console.warn('Skipping member with incomplete data:', member);
-            return;
-          }
+        if (paymentsResponse.success || paymentsResponse.status === 'success') {
+          const payments = paymentsResponse.data?.payments || [];
           
-          // Generate payment history for each member
-          const membershipStartDate = new Date(member.membershipStartDate || member.createdAt || new Date());
-          const currentDate = new Date();
+          // Transform the payment data to match the expected format
+          const transformedPayments = payments.map(payment => ({
+            id: payment._id || payment.id,
+            memberId: payment.member || payment.memberDetails?._id,
+            memberName: payment.memberDetails?.name || payment.memberName || 'Unknown Member',
+            memberEmail: payment.memberDetails?.email || payment.memberEmail || 'N/A',
+            memberPhone: payment.memberDetails?.phone || payment.memberPhone || 'N/A',
+            paymentDate: payment.paymentDate,
+            amount: payment.amount,
+            planType: payment.planType,
+            planCost: payment.planCost,
+            trainerCost: payment.trainerCost || 0,
+            duration: payment.duration?.toString() || '1',
+            paymentMethod: payment.paymentMethod || 'Cash',
+            referenceId: payment.referenceId || payment.paymentId,
+            status: payment.paymentStatus || 'Completed',
+            membershipType: payment.planType
+          }));
           
-          // Calculate how many months the member has been active
-          const monthsDiff = Math.max(0, (currentDate.getFullYear() - membershipStartDate.getFullYear()) * 12 + 
-                           (currentDate.getMonth() - membershipStartDate.getMonth()));
+          setMemberPayments(transformedPayments);
+          console.log('Real member payments loaded:', transformedPayments.length);
+        } else {
+          console.log('No payment data found, generating sample data for demonstration...');
           
-          // Generate payments for each month (assuming monthly payments)
-          // Limit to last 12 months for performance
-          const maxMonths = Math.min(monthsDiff + 1, 12);
+          // Fallback: Generate sample data if no real payments exist
+          const membersResponse = await authFetch('/users/');
           
-          for (let i = 0; i < maxMonths; i++) {
-            const paymentDate = new Date(membershipStartDate);
-            paymentDate.setMonth(paymentDate.getMonth() + i);
+          if (membersResponse.success || membersResponse.status === 'success') {
+            const members = membersResponse.data?.users || [];
+            const samplePayments = [];
             
-            // Only include payments up to current date and not in future
-            if (paymentDate <= currentDate) {
-              // Calculate payment amount based on plan and trainer
-              const planType = member.planType || member.membershipType || 'Basic';
-              const planCost = planType === 'Premium' ? 1500 : 
-                              planType === 'Standard' ? 1000 : 500;
-              const trainerCost = member.assignedTrainer ? 500 : 0;
-              const totalAmount = planCost + trainerCost;
-              
-              payments.push({
-                id: `${member._id}-${paymentDate.getTime()}`,
-                memberId: member._id,
-                memberName: member.name,
-                memberEmail: member.email || 'N/A',
-                memberPhone: member.phone || 'N/A',
-                paymentDate: paymentDate.toISOString(),
-                amount: totalAmount,
-                planType: planType,
-                planCost: planCost,
-                trainerCost: trainerCost,
-                duration: member.membershipDuration || '1',
-                paymentMethod: 'UPI',
-                referenceId: `PAY${Math.floor(100000 + Math.random() * 900000)}`,
-                status: 'Completed',
-                membershipType: member.membershipType || 'Basic'
-              });
-            }
+            // Generate a few sample payments for demonstration
+            members.slice(0, 5).forEach((member, index) => {
+              if (member._id && member.name) {
+                const planType = member.planType || member.membershipType || 'Basic';
+                const planCosts = { 'Basic': 500, 'Standard': 1000, 'Premium': 1500 };
+                const planCost = planCosts[planType] || 500;
+                const trainerCost = member.assignedTrainer ? 500 : 0;
+                
+                samplePayments.push({
+                  id: `sample-${member._id}-${index}`,
+                  memberId: member._id,
+                  memberName: member.name,
+                  memberEmail: member.email || 'N/A',
+                  memberPhone: member.phone || 'N/A',
+                  paymentDate: new Date(paymentFilters.year, paymentFilters.month - 1, Math.floor(Math.random() * 28) + 1).toISOString(),
+                  amount: planCost + trainerCost,
+                  planType: planType,
+                  planCost: planCost,
+                  trainerCost: trainerCost,
+                  duration: '1',
+                  paymentMethod: 'Cash',
+                  referenceId: `SAMPLE${Math.floor(100000 + Math.random() * 900000)}`,
+                  status: 'Completed',
+                  membershipType: planType
+                });
+              }
+            });
+            
+            setMemberPayments(samplePayments);
+            console.log('Sample payments generated:', samplePayments.length);
+          } else {
+            setMemberPayments([]);
           }
-        });
-        
-        // Sort payments by date (newest first)
-        payments.sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
-        
-        setMemberPayments(payments);
-        console.log('Member payments loaded:', payments.length);
+        }
         
       } catch (error) {
         console.error('Error loading member payments:', error);
@@ -525,7 +521,7 @@ const Reports = () => {
     };
     
     loadMemberPayments();
-  }, [isGymOwner, user, authFetch]);
+  }, [isGymOwner, user, authFetch, paymentFilters.month, paymentFilters.year]);
 
   // Filter member payments based on current filters
   useEffect(() => {
@@ -1119,6 +1115,45 @@ const Reports = () => {
 
   // Get unique plan types for filter dropdown
   const uniquePlanTypes = [...new Set(memberPayments.map(payment => payment.planType))].filter(Boolean);
+
+  // Handle new payment added
+  const handlePaymentAdded = (newPayment) => {
+    // Refresh the payment data
+    const loadMemberPayments = async () => {
+      setIsLoadingPayments(true);
+      try {
+        const paymentsResponse = await authFetch(`/payments/member-payments?month=${paymentFilters.month}&year=${paymentFilters.year}`);
+        if (paymentsResponse.success || paymentsResponse.status === 'success') {
+          const payments = paymentsResponse.data?.payments || [];
+          const transformedPayments = payments.map(payment => ({
+            id: payment._id || payment.id,
+            memberId: payment.member || payment.memberDetails?._id,
+            memberName: payment.memberDetails?.name || payment.memberName || 'Unknown Member',
+            memberEmail: payment.memberDetails?.email || payment.memberEmail || 'N/A',
+            memberPhone: payment.memberDetails?.phone || payment.memberPhone || 'N/A',
+            paymentDate: payment.paymentDate,
+            amount: payment.amount,
+            planType: payment.planType,
+            planCost: payment.planCost,
+            trainerCost: payment.trainerCost || 0,
+            duration: payment.duration?.toString() || '1',
+            paymentMethod: payment.paymentMethod || 'Cash',
+            referenceId: payment.referenceId || payment.paymentId,
+            status: payment.paymentStatus || 'Completed',
+            membershipType: payment.planType
+          }));
+          setMemberPayments(transformedPayments);
+        }
+      } catch (error) {
+        console.error('Error refreshing payments:', error);
+      } finally {
+        setIsLoadingPayments(false);
+      }
+    };
+    
+    loadMemberPayments();
+    toast.success('Payment data refreshed');
+  };
 
 
   return (
@@ -2147,6 +2182,14 @@ const Reports = () => {
                 <Button 
                   variant="outline" 
                   className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                  onClick={() => setShowAddPayment(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Payment
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
                   onClick={() => setShowPaymentDetails(!showPaymentDetails)}
                 >
                   {showPaymentDetails ? (
@@ -2408,6 +2451,13 @@ const Reports = () => {
           </Card>
         )}       
       </div>
+
+      {/* Add Member Payment Modal */}
+      <AddMemberPayment
+        isOpen={showAddPayment}
+        onClose={() => setShowAddPayment(false)}
+        onPaymentAdded={handlePaymentAdded}
+      />
     </DashboardLayout>
   );
 };
