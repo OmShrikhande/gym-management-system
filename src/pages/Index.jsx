@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan } from "lucide-react";
+import { Users, Dumbbell, UtensilsCrossed, MessageSquare, CreditCard, BarChart3, Settings, Plus, Calendar, Target, TrendingUp, Loader2, AlertCircle, User, Scan, Shield } from "lucide-react";
 import LoginForm from "@/components/auth/LoginForm.jsx";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import QRCodeGenerator from "@/components/qr/QRCodeGenerator";
@@ -1103,6 +1103,7 @@ const Index = () => {
               icon: Plus, 
               action: () => navigate("/members") 
             },
+            { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
             { label: "View Reports", icon: BarChart3, action: () => navigate("/reports") },
             { label: "Manage Trainers", icon: Users, action: () => navigate("/trainers") },
             { 
@@ -1116,10 +1117,12 @@ const Index = () => {
         return [
           { label: "Create Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Create Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
-                    { label: "View Members", icon: Users, action: () => navigate("/my-members") }
+          { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
+          { label: "View Members", icon: Users, action: () => navigate("/my-members") }
         ];
       case 'member':
         return [
+          { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
           { label: "Today's Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
           { label: "My Profile", icon: User, action: () => navigate("/profile") },

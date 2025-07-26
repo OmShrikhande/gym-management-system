@@ -12,7 +12,8 @@ import {
   UserCheck,
   HelpCircle,
   Package,
-  Palette
+  Palette,
+  Shield
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext"; // ✅ CORRECT
 import { useTranslation } from "@/contexts/TranslationContext";
@@ -57,25 +58,27 @@ export function AppSidebar() {
           ...baseItems,
           { label: t('members'), icon: Users, href: "/members" },
           { label: t('trainers'), icon: UserCheck, href: "/trainers" },
+          { label: 'Access Control', icon: Shield, href: "/access-control" },
           { label: t('membershipPlans'), icon: Package, href: "/membership-plans" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
           { label: t('enquiries'), icon: HelpCircle, href: "/enquiries" },
           { label: t('messages'), icon: MessageSquare, href: "/messages" },
           { label: t('reports'), icon: BarChart3, href: "/reports" },
-
           { label: t('settings'), icon: Settings, href: "/settings" }
         ];
       case 'trainer':
         return [
           ...baseItems,
           { label: t('members'), icon: Users, href: "/my-members" },
+          { label: 'Access Control', icon: Shield, href: "/access-control" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       case 'member':
         return [
           ...baseItems,
+          { label: 'Access Control', icon: Shield, href: "/access-control" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
