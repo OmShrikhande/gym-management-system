@@ -674,36 +674,51 @@ export const ownerGateAccess = catchAsync(async (req, res, next) => {
   }
 
   // Check if the requesting user is the gym owner
-  if (userId.toString() !== gymOwnerId) {
-    console.log('User ID mismatch:', { requestUserId: userId.toString(), gymOwnerId });
+  if (userId.toString() !== gymOwnerId.toString()) {
+    console.log('User ID mismatch:', { requestUserId: userId.toString(), gymOwnerId: gymOwnerId.toString() });
     return next(new AppError('You can only open your own gym gate', 403));
   }
 
   // Find the gym owner
   const gymOwner = await User.findById(gymOwnerId);
-  if (!gymOwner || gymOwner.role !== 'gym-owner') {
+  console.log('Found gym owner:', gymOwner ? { id: gymOwner._id, name: gymOwner.name, role: gymOwner.role } : 'Not found');
+  
+  if (!gymOwner) {
+    console.log('Gym owner not found in database');
     return res.status(404).json({
       status: 'error',
-      message: 'Invalid gym owner or gym not found'
+      message: 'Gym owner not found'
+    });
+  }
+  
+  if (gymOwner.role !== 'gym-owner') {
+    console.log('User is not a gym owner, role:', gymOwner.role);
+    return res.status(403).json({
+      status: 'error',
+      message: 'Only gym owners can use direct gate access'
     });
   }
 
   // Success - gym owner accessing their own gym
   try {
-    // Update Firestore with owner access
-    await firestoreService.updateDoorStatus(gymOwnerId, true);
+    console.log('Updating Firestore door status to OPEN for gym owner:', gymOwnerId);
     
-    // Log owner gate access
+    // Update Firestore with owner access - door should be OPEN (true)
+    const doorStatusResult = await firestoreService.updateDoorStatus(gymOwnerId, true);
+    console.log('Door status update result:', doorStatusResult);
+    
+    // Log owner gate access as successful
     await firestoreService.logQRScanAttempt(
       gymOwnerId, // Using gym owner ID as member ID for owner access
       gymOwnerId,
       'success',
-      'Gym owner direct access'
+      'Gym owner direct access - gate opened'
     );
 
-    console.log('✅ Firestore: Owner gate access logged successfully');
+    console.log('✅ Firestore: Owner gate access logged successfully with status=true');
   } catch (firestoreError) {
     console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    console.error('❌ Firestore Error details:', firestoreError);
     // Don't fail the request if Firestore fails - it's supplementary
   }
 
