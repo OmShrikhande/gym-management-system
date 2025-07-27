@@ -26,7 +26,7 @@ export const staffEntry = catchAsync(async (req, res, next) => {
       // For trainers, get the gym owner they belong to
       gymOwnerId = staff.gymId;
       
-      if (!gymOwnerId) {
+      if (!gymOwnerId || gymOwnerId === '' || gymOwnerId === null) {
         return next(new AppError('Trainer is not assigned to any gym owner', 400));
       }
     } else {

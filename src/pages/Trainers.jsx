@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Users, User, Edit, Trash2, Calendar, X, Award, Dumbbell, Loader2 } from "lucide-react";
+import { Search, Plus, Users, User, Edit, Trash2, Calendar, X, Award, Dumbbell, Loader2, Wrench } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import GymEntryButton from "@/components/shared/GymEntryButton";
+import TrainerGymAssignmentFix from "@/components/TrainerGymAssignmentFix";
 
 const Trainers = () => {
   const { users, fetchUsers, isGymOwner, createTrainer, authFetch } = useAuth();
@@ -39,6 +40,7 @@ const Trainers = () => {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [realTrainers, setRealTrainers] = useState([]);
   const [isRefreshingStats, setIsRefreshingStats] = useState(false);
+  const [showFixTool, setShowFixTool] = useState(false);
   
   // Fetch trainers when component mounts
   useEffect(() => {
@@ -281,6 +283,14 @@ const Trainers = () => {
                   </>
                 )}
               </Button>
+              <Button 
+                variant="outline"
+                className="border-orange-600 text-orange-300 hover:bg-orange-700"
+                onClick={() => setShowFixTool(!showFixTool)}
+              >
+                <Wrench className="h-4 w-4 mr-2" />
+                {showFixTool ? 'Hide Fix Tool' : 'Fix Gym Assignments'}
+              </Button>
             </div>
           )}
         </div>
@@ -300,6 +310,11 @@ const Trainers = () => {
               {message.text}
             </p>
           </div>
+        )}
+
+        {/* Trainer Gym Assignment Fix Tool */}
+        {showFixTool && isGymOwner && (
+          <TrainerGymAssignmentFix />
         )}
 
         {/* Trainer Detail View */}

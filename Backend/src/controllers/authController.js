@@ -40,6 +40,18 @@ const createUserWithRole = async (req, res, role) => {
     if ((role === 'trainer' || role === 'member') && req.user.role === 'gym-owner') {
       userData.gymId = req.user._id;
       console.log(`Creating ${role} with gym owner ID: ${req.user._id}`);
+      console.log(`Gym owner details: ${req.user.name} (${req.user.email})`);
+      
+      // Additional validation for trainer creation
+      if (role === 'trainer') {
+        console.log(`TRAINER CREATION: Assigning trainer ${userData.name} to gym owner ${req.user.name} (ID: ${req.user._id})`);
+        
+        // Ensure gymId is properly set
+        if (!userData.gymId) {
+          console.error('CRITICAL ERROR: gymId not set for trainer creation');
+          throw new Error('Failed to assign trainer to gym owner');
+        }
+      }
     }
     
     // Add additional fields for member
@@ -98,6 +110,25 @@ const createUserWithRole = async (req, res, role) => {
     // Verify user exists in database immediately after creation
     const verifyUser = await User.findById(newUser._id);
     console.log('Verification - User exists in DB:', verifyUser ? 'Yes' : 'No');
+    
+    // Additional verification for trainer gymId assignment
+    if (role === 'trainer') {
+      console.log(`TRAINER VERIFICATION: Checking gymId assignment...`);
+      console.log(`Created trainer gymId: ${newUser.gymId}`);
+      console.log(`Expected gymId: ${req.user._id}`);
+      
+      if (!newUser.gymId) {
+        console.error('CRITICAL ERROR: Trainer created without gymId!');
+        // Try to fix it immediately
+        await User.findByIdAndUpdate(newUser._id, { gymId: req.user._id });
+        console.log('FIXED: Added gymId to trainer after creation');
+      } else if (newUser.gymId.toString() !== req.user._id.toString()) {
+        console.error('WARNING: Trainer gymId mismatch!');
+        console.log(`Trainer gymId: ${newUser.gymId}, Expected: ${req.user._id}`);
+      } else {
+        console.log('✅ Trainer gymId assignment verified successfully');
+      }
+    }
     
     // If this is a member with an assigned trainer, update the trainer's member count
     if (role === 'member' && newUser.assignedTrainer) {

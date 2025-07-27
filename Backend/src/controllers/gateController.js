@@ -54,7 +54,7 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
       // For trainers, find their gym owner using gymId field
-      if (!user.gymId) {
+      if (!user.gymId || user.gymId === '' || user.gymId === null) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
@@ -209,7 +209,7 @@ export const getGateStatus = catchAsync(async (req, res, next) => {
       gymId = user._id.toString();
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
-      if (!user.gymId) {
+      if (!user.gymId || user.gymId === '' || user.gymId === null) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
@@ -274,7 +274,7 @@ export const emergencyGateControl = catchAsync(async (req, res, next) => {
       gymId = user._id.toString();
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
-      if (!user.gymId) {
+      if (!user.gymId || user.gymId === '' || user.gymId === null) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
