@@ -23,7 +23,7 @@ const LoadingIndicator = () => (
 );
 
 const Index = () => {
-  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus, updateCurrentUser } = useAuth();
+  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus, updateCurrentUser, token } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [gymOwnerCount, setGymOwnerCount] = useState(0);
@@ -755,12 +755,12 @@ const Index = () => {
 
   // Handle gate opening for gym owners
   const handleOpenGate = async () => {
-    if (!user || !user.token) {
+    if (!user || !token) {
       toast.error('Please log in to open the gate');
       return;
     }
 
-    const result = await openGate(user, user.token);
+    const result = await openGate(user, token);
     
     if (result.success) {
       // Refresh attendance stats after gate opening

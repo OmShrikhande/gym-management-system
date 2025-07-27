@@ -655,3 +655,73 @@ export const getGymAttendanceStats = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Gym owner direct gate access - bypasses member verification
+export const ownerGateAccess = catchAsync(async (req, res, next) => {
+  console.log('Owner gate access request received');
+  console.log('Request body:', req.body);
+  console.log('Request user:', req.user);
+  
+  const { gymOwnerId, timestamp } = req.body;
+  const userId = req.user?.id || req.user?._id;
+
+  console.log('Extracted values:', { gymOwnerId, userId, timestamp });
+
+  // Validate input
+  if (!gymOwnerId) {
+    console.log('Validation failed - missing gymOwnerId');
+    return next(new AppError('Gym owner ID is required', 400));
+  }
+
+  // Check if the requesting user is the gym owner
+  if (userId.toString() !== gymOwnerId) {
+    console.log('User ID mismatch:', { requestUserId: userId.toString(), gymOwnerId });
+    return next(new AppError('You can only open your own gym gate', 403));
+  }
+
+  // Find the gym owner
+  const gymOwner = await User.findById(gymOwnerId);
+  if (!gymOwner || gymOwner.role !== 'gym-owner') {
+    return res.status(404).json({
+      status: 'error',
+      message: 'Invalid gym owner or gym not found'
+    });
+  }
+
+  // Success - gym owner accessing their own gym
+  try {
+    // Update Firestore with owner access
+    await firestoreService.updateDoorStatus(gymOwnerId, true);
+    
+    // Log owner gate access
+    await firestoreService.logQRScanAttempt(
+      gymOwnerId, // Using gym owner ID as member ID for owner access
+      gymOwnerId,
+      'success',
+      'Gym owner direct access'
+    );
+
+    console.log('✅ Firestore: Owner gate access logged successfully');
+  } catch (firestoreError) {
+    console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    // Don't fail the request if Firestore fails - it's supplementary
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: `✅ Welcome to your gym, ${gymOwner.name}!`,
+    nodeMcuResponse: 'allow', // Send "allow" to NodeMCU to open gate
+    data: {
+      owner: { 
+        name: gymOwner.name,
+        email: gymOwner.email,
+        accessType: 'owner_direct'
+      },
+      gym: {
+        id: gymOwner._id,
+        name: gymOwner.gymName || gymOwner.name + "'s Gym",
+        owner: gymOwner.name
+      }
+    }
+  });
+});

@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect } from '../controllers/authController.js';
-import { verifyMembership, markAttendance, verifyMemberQRScan, joinGym, getAttendanceData, getGymAttendanceStats } from '../controllers/memberController.js';
+import { verifyMembership, markAttendance, verifyMemberQRScan, joinGym, getAttendanceData, getGymAttendanceStats, ownerGateAccess } from '../controllers/memberController.js';
 
 const router = express.Router();
 
@@ -9,6 +9,9 @@ const router = express.Router();
 // Attendance routes
 router.post('/verify', verifyMembership);
 router.post('/mark', protect, markAttendance);
+
+// Gym owner direct gate access
+router.post('/owner-gate-access', protect, ownerGateAccess);
 
 // Member QR scan route (requires authentication)
 router.post('/member-scan', protect, verifyMemberQRScan);
