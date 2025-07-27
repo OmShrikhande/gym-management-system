@@ -34,7 +34,7 @@ import Schedule from "./pages/Schedule.jsx";
 import Profile from "./pages/Profile.jsx";
 import Enquiries from "./pages/Enquiries.jsx";
 import Attendance from "./pages/Attendance.jsx";
-import AccessControl from "./pages/AccessControl.jsx";
+
 
 
 const queryClient = new QueryClient();
@@ -162,12 +162,7 @@ const App = () => {
             </ProtectedRoute>
           } />
           
-          {/* Access Control Route */}
-          <Route path="/access-control" element={
-            <ProtectedRoute allowedRoles={['super-admin', 'gym-owner', 'trainer', 'member']}>
-              <AccessControl />
-            </ProtectedRoute>
-          } />
+
           
           {/* Trainer Routes */}
           <Route path="/my-members" element={

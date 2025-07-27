@@ -58,7 +58,7 @@ export function AppSidebar() {
           ...baseItems,
           { label: t('members'), icon: Users, href: "/members" },
           { label: t('trainers'), icon: UserCheck, href: "/trainers" },
-          { label: 'Access Control', icon: Shield, href: "/access-control" },
+
           { label: t('membershipPlans'), icon: Package, href: "/membership-plans" },
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" },
@@ -71,14 +71,14 @@ export function AppSidebar() {
         return [
           ...baseItems,
           { label: t('members'), icon: Users, href: "/my-members" },
-          { label: 'Access Control', icon: Shield, href: "/access-control" },
+
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];
       case 'member':
         return [
           ...baseItems,
-          { label: 'Access Control', icon: Shield, href: "/access-control" },
+
           { label: t('workouts'), icon: Dumbbell, href: "/workouts" },
           { label: t('dietPlans'), icon: UtensilsCrossed, href: "/diet-plans" }
         ];

@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { extractId } from "@/utils/idUtils";
+import { openGate } from "@/utils/gateControl";
 
 // Loading indicator component
 const LoadingIndicator = () => (
@@ -752,6 +753,23 @@ const Index = () => {
     }
   };
 
+  // Handle gate opening for gym owners
+  const handleOpenGate = async () => {
+    if (!user || !user.token) {
+      toast.error('Please log in to open the gate');
+      return;
+    }
+
+    const result = await openGate(user, user.token);
+    
+    if (result.success) {
+      // Refresh attendance stats after gate opening
+      if (userRole === 'gym-owner') {
+        fetchAttendanceStats();
+      }
+    }
+  };
+
   // Add an event listener to refresh trainer stats when a member is assigned to a trainer
   useEffect(() => {
     // Only add the event listener if the user is a trainer
@@ -1103,7 +1121,7 @@ const Index = () => {
               icon: Plus, 
               action: () => navigate("/members") 
             },
-            { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
+            { label: "Open Gate", icon: Shield, action: handleOpenGate },
             { label: "View Reports", icon: BarChart3, action: () => navigate("/reports") },
             { label: "Manage Trainers", icon: Users, action: () => navigate("/trainers") },
             { 
@@ -1117,12 +1135,12 @@ const Index = () => {
         return [
           { label: "Create Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Create Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
-          { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
+          { label: "Scan QR", icon: Scan, action: () => setShowQRScanner(true) },
           { label: "View Members", icon: Users, action: () => navigate("/my-members") }
         ];
       case 'member':
         return [
-          { label: "Gate Entry", icon: Shield, action: () => navigate("/access-control") },
+          { label: "Scan QR", icon: Scan, action: () => setShowQRScanner(true) },
           { label: "Today's Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
           { label: "My Profile", icon: User, action: () => navigate("/profile") },
