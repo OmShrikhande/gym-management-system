@@ -38,6 +38,13 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
       return next(new AppError('User not found', 404));
     }
 
+    console.log('User found:', { 
+      id: user._id, 
+      role: user.role, 
+      name: user.name,
+      gymId: user.gymId 
+    });
+
     let gymId;
     let gymOwnerId;
 
@@ -46,13 +53,13 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
       gymId = user._id.toString();
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
-      // For trainers, find their gym owner
-      if (!user.gymOwner) {
+      // For trainers, find their gym owner using gymId field
+      if (!user.gymId) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
       // Get gym owner details
-      const gymOwner = await User.findById(user.gymOwner);
+      const gymOwner = await User.findById(user.gymId);
       if (!gymOwner || gymOwner.role !== 'gym-owner') {
         return next(new AppError('Invalid gym owner or gym not found', 404));
       }
@@ -202,11 +209,11 @@ export const getGateStatus = catchAsync(async (req, res, next) => {
       gymId = user._id.toString();
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
-      if (!user.gymOwner) {
+      if (!user.gymId) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
-      const gymOwner = await User.findById(user.gymOwner);
+      const gymOwner = await User.findById(user.gymId);
       if (!gymOwner || gymOwner.role !== 'gym-owner') {
         return next(new AppError('Invalid gym owner or gym not found', 404));
       }
@@ -267,11 +274,11 @@ export const emergencyGateControl = catchAsync(async (req, res, next) => {
       gymId = user._id.toString();
       gymOwnerId = user._id.toString();
     } else if (userRole === 'trainer') {
-      if (!user.gymOwner) {
+      if (!user.gymId) {
         return next(new AppError('Trainer is not assigned to any gym', 400));
       }
       
-      const gymOwner = await User.findById(user.gymOwner);
+      const gymOwner = await User.findById(user.gymId);
       if (!gymOwner || gymOwner.role !== 'gym-owner') {
         return next(new AppError('Invalid gym owner or gym not found', 404));
       }
