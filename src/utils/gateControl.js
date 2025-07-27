@@ -23,44 +23,22 @@ export const openGate = async (user, token) => {
     // Show loading state
     toast.loading('Opening gate...', { id: 'gate-opening' });
 
-    // For gym owners, we'll create a special direct access endpoint
-    // that bypasses member verification and directly opens the gate
+    // Use the regular verify endpoint with gym owner accessing their own gym
+    // This mimics the QR scanning process but for gym owner direct access
     const requestData = {
       gymOwnerId: user._id,
-      ownerAccess: true, // Flag to indicate this is gym owner direct access
-      timestamp: new Date().toISOString()
+      memberId: user._id, // Gym owner accessing their own gym
+      ownerDirectAccess: true // Flag to indicate this is owner direct access
     };
 
     console.log('Opening gate with data:', requestData);
 
-    // Try to use a direct gate opening endpoint first
-    let response;
-    try {
-      response = await axios.post(`${API_URL}/attendance/owner-gate-access`, requestData, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-    } catch (endpointError) {
-      // If the specific endpoint doesn't exist, fall back to the regular verify endpoint
-      // but with gym owner accessing their own gym
-      console.log('Owner gate access endpoint not available, using regular verify endpoint');
-      
-      const fallbackData = {
-        gymOwnerId: user._id,
-        memberId: user._id, // Gym owner accessing their own gym
-        directAccess: true,
-        timestamp: new Date().toISOString()
-      };
-
-      response = await axios.post(`${API_URL}/attendance/verify`, fallbackData, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
+    const response = await axios.post(`${API_URL}/attendance/verify`, requestData, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
 
     console.log('Gate opening response:', response.data);
     

@@ -78,7 +78,10 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   }
 
   // Check if member is associated with this gym
-  if (!member.createdBy || member.createdBy.toString() !== gymOwnerId) {
+  // Special case: if the member IS the gym owner, they always have access to their own gym
+  const isGymOwnerAccessingOwnGym = (member.role === 'gym-owner' && member._id.toString() === gymOwnerId);
+  
+  if (!isGymOwnerAccessingOwnGym && (!member.createdBy || member.createdBy.toString() !== gymOwnerId)) {
     // Update door status to false (closed) for non-member
     try {
       await firestoreService.updateDoorStatus(gymOwnerId, false);
@@ -107,7 +110,8 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   }
 
   // Check membership status
-  if (member.membershipStatus !== 'Active') {
+  // Gym owners always have "Active" status for their own gym
+  if (!isGymOwnerAccessingOwnGym && member.membershipStatus !== 'Active') {
     // Update door status to false (closed) for inactive membership
     try {
       await firestoreService.updateDoorStatus(gymOwnerId, false);
@@ -140,46 +144,49 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   }
 
   // Check if member has already scanned today (daily limit check)
-  try {
-    const dailyScanCheck = await firestoreService.hasScannedToday(memberId, gymOwnerId);
-    
-    if (dailyScanCheck.hasScanned) {
-      // Update door status to false (closed) for daily limit exceeded
-      await firestoreService.updateDoorStatus(gymOwnerId, false);
-      await firestoreService.logQRScanAttempt(
-        memberId,
-        gymOwnerId,
-        'failed',
-        'Daily scan limit exceeded'
-      );
+  // Skip daily limit check for gym owners accessing their own gym
+  if (!isGymOwnerAccessingOwnGym) {
+    try {
+      const dailyScanCheck = await firestoreService.hasScannedToday(memberId, gymOwnerId);
+      
+      if (dailyScanCheck.hasScanned) {
+        // Update door status to false (closed) for daily limit exceeded
+        await firestoreService.updateDoorStatus(gymOwnerId, false);
+        await firestoreService.logQRScanAttempt(
+          memberId,
+          gymOwnerId,
+          'failed',
+          'Daily scan limit exceeded'
+        );
 
-      const lastScanTime = dailyScanCheck.lastScanTime;
-      const timeString = lastScanTime ? 
-        (lastScanTime instanceof Date ? lastScanTime.toLocaleTimeString() : new Date(lastScanTime).toLocaleTimeString()) 
-        : 'earlier today';
+        const lastScanTime = dailyScanCheck.lastScanTime;
+        const timeString = lastScanTime ? 
+          (lastScanTime instanceof Date ? lastScanTime.toLocaleTimeString() : new Date(lastScanTime).toLocaleTimeString()) 
+          : 'earlier today';
 
-      return res.status(429).json({
-        status: 'error',
-        message: `⚠️ Daily scan limit reached! You already scanned at ${timeString}. Please try again tomorrow.`,
-        data: {
-          member: { 
-            membershipStatus: 'Active',
-            name: member.name,
-            email: member.email,
-            dailyLimitReached: true,
-            lastScanTime: lastScanTime
-          },
-          gym: {
-            id: gymOwner._id,
-            name: gymOwner.gymName || gymOwner.name + "'s Gym",
-            owner: gymOwner.name
+        return res.status(429).json({
+          status: 'error',
+          message: `⚠️ Daily scan limit reached! You already scanned at ${timeString}. Please try again tomorrow.`,
+          data: {
+            member: { 
+              membershipStatus: 'Active',
+              name: member.name,
+              email: member.email,
+              dailyLimitReached: true,
+              lastScanTime: lastScanTime
+            },
+            gym: {
+              id: gymOwner._id,
+              name: gymOwner.gymName || gymOwner.name + "'s Gym",
+              owner: gymOwner.name
+            }
           }
-        }
-      });
+        });
+      }
+    } catch (firestoreError) {
+      console.error('❌ Firestore Daily Check Error (non-critical):', firestoreError.message);
+      // Continue with scan if daily check fails (fail-safe approach)
     }
-  } catch (firestoreError) {
-    console.error('❌ Firestore Daily Check Error (non-critical):', firestoreError.message);
-    // Continue with scan if daily check fails (fail-safe approach)
   }
 
   // Success - member is active
