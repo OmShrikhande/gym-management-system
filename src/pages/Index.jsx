@@ -753,19 +753,28 @@ const Index = () => {
     }
   };
 
-  // Handle gate opening for gym owners
+  // Handle gate opening for gym owners and trainers
   const handleOpenGate = async () => {
     if (!user || !token) {
       toast.error('Please log in to open the gate');
       return;
     }
 
+    if (!['gym-owner', 'trainer'].includes(userRole)) {
+      toast.error('Only gym owners and trainers can control the gate');
+      return;
+    }
+
     const result = await openGate(user, token);
     
     if (result.success) {
-      // Refresh attendance stats after gate opening
+      // Refresh attendance stats after gate opening for gym owners
       if (userRole === 'gym-owner') {
         fetchAttendanceStats();
+      }
+      // For trainers, we could refresh their stats if needed
+      if (userRole === 'trainer') {
+        fetchTrainerStats();
       }
     }
   };
@@ -1135,6 +1144,7 @@ const Index = () => {
         return [
           { label: "Create Workout", icon: Dumbbell, action: () => navigate("/workouts") },
           { label: "Create Diet Plan", icon: UtensilsCrossed, action: () => navigate("/diet-plans") },
+          { label: "Open Gate", icon: Shield, action: handleOpenGate },
           { label: "Scan QR", icon: Scan, action: () => setShowQRScanner(true) },
           { label: "View Members", icon: Users, action: () => navigate("/my-members") }
         ];
