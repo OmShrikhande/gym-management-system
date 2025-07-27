@@ -34,7 +34,7 @@ import gymOwnerPlanRoutes from './routes/gymOwnerPlanRoutes.js';
 
 
 import attendanceRoutes from './routes/attendanceRoutes.js';
-
+import gateRoutes from './routes/gateRoutes.js';
 
 import expenseRoutes from './routes/expenseRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
@@ -173,7 +173,7 @@ app.use('/api/gym', (req, res, next) => {
 
 
 app.use('/api/attendance', attendanceRoutes);
-
+app.use('/api/gate', gateRoutes);
 
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/stats', statsRoutes);
