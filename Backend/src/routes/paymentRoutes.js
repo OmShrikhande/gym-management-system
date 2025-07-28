@@ -4,19 +4,6 @@ import { protect, restrictTo } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Test endpoint without authentication for debugging
-router.post('/test-verify', (req, res) => {
-  console.log('🧪 Test verify endpoint - Request body:', JSON.stringify(req.body, null, 2));
-  console.log('🧪 Test verify endpoint - Headers:', req.headers);
-  
-  res.json({
-    success: true,
-    message: 'Test endpoint working',
-    receivedData: req.body,
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Protect all routes
 router.use(protect);
 
@@ -59,11 +46,5 @@ router.post('/member-payments', restrictTo('gym-owner'), paymentController.recor
 router.get('/member-payments', restrictTo('gym-owner'), paymentController.getMemberPayments);
 router.get('/member-payments/stats', restrictTo('gym-owner'), paymentController.getPaymentStats);
 router.get('/member-payments/report', restrictTo('gym-owner'), paymentController.generatePaymentReport);
-
-// Routes restricted to super admin
-router.use(restrictTo('super-admin'));
-
-// Generate QR code for payment
-router.post('/razorpay/generate-qr', paymentController.generatePaymentQR);
 
 export default router;
