@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAppSettings, forceRefreshSettings } from '@/lib/settings';
+import { validateAndSecureUrl } from '@/utils/urlValidator';
 
 /**
  * Custom hook for managing gym branding and app settings
@@ -126,7 +127,7 @@ export const useGymBranding = () => {
   // Get app logo URL from settings
   const getAppLogo = () => {
     if (gymSettings?.branding?.logoUrl) {
-      return gymSettings.branding.logoUrl;
+      return validateAndSecureUrl(gymSettings.branding.logoUrl);
     }
     
     // Try to get from localStorage as fallback
@@ -138,7 +139,7 @@ export const useGymBranding = () => {
         try {
           const parsedSettings = JSON.parse(cached);
           if (parsedSettings?.branding?.logoUrl) {
-            return parsedSettings.branding.logoUrl;
+            return validateAndSecureUrl(parsedSettings.branding.logoUrl);
           }
         } catch (e) {
           console.error('Error parsing cached settings:', e);
@@ -152,7 +153,7 @@ export const useGymBranding = () => {
   // Get app favicon URL from settings
   const getFavicon = () => {
     if (gymSettings?.branding?.faviconUrl) {
-      return gymSettings.branding.faviconUrl;
+      return validateAndSecureUrl(gymSettings.branding.faviconUrl);
     }
     return null; // Will use default favicon
   };

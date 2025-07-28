@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff, Shield } from "lucide-react";
+import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff, Shield, AlertTriangle } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useTranslation } from "@/contexts/TranslationContext.jsx";
@@ -16,6 +16,7 @@ import { useRealTimeSettings } from "@/hooks/useRealTimeSettings";
 import settingsCache from "@/lib/settingsCache.js";
 import SettingsPerformanceMonitor from "@/components/SettingsPerformanceMonitor";
 import ErrorHandlingSettings from "@/components/ErrorHandlingSettings";
+import { validateSettingsUrls, getInsecureUrls, isSecureUrl } from "@/utils/urlValidator";
 
 const SystemSettings = () => {
   const { user, authFetch, isSuperAdmin, isGymOwner } = useAuth();
@@ -194,6 +195,16 @@ const SystemSettings = () => {
     }
     
     try {
+      // Validate and secure URLs before saving
+      const validatedSettings = validateSettingsUrls(settings);
+      const insecureUrls = getInsecureUrls(settings);
+      
+      // Warn about insecure URLs that were converted
+      if (insecureUrls.length > 0) {
+        const urlList = insecureUrls.map(item => `${item.type}: ${item.url}`).join(', ');
+        toast.warning(`Converted insecure HTTP URLs to HTTPS: ${urlList}`, { duration: 5000 });
+      }
+      
       // Determine the appropriate endpoint based on user role
       let endpoint;
       
@@ -210,8 +221,8 @@ const SystemSettings = () => {
       
       console.log(`Saving settings to endpoint: ${endpoint}`);
       
-      // Prepare request body based on user role
-      const requestBody = { settings };
+      // Prepare request body based on user role with validated settings
+      const requestBody = { settings: validatedSettings };
       
       // For gym owners, include the applyToUsers flag
       if (isGymOwner) {
@@ -802,25 +813,53 @@ const SystemSettings = () => {
 
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="logoUrl" className="text-gray-300">Logo URL</Label>
+                      <Label htmlFor="logoUrl" className="text-gray-300 flex items-center gap-2">
+                        Logo URL
+                        {settings.branding.logoUrl && !isSecureUrl(settings.branding.logoUrl) && (
+                          <AlertTriangle className="h-4 w-4 text-yellow-500" title="Insecure HTTP URL will be converted to HTTPS" />
+                        )}
+                      </Label>
                       <Input
                         id="logoUrl"
                         value={settings.branding.logoUrl}
                         onChange={(e) => handleSettingChange("branding", "logoUrl", e.target.value)}
                         placeholder="https://example.com/logo.png"
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className={`bg-gray-700 border-gray-600 text-white ${
+                          settings.branding.logoUrl && !isSecureUrl(settings.branding.logoUrl) 
+                            ? 'border-yellow-500' 
+                            : ''
+                        }`}
                       />
+                      {settings.branding.logoUrl && !isSecureUrl(settings.branding.logoUrl) && (
+                        <p className="text-xs text-yellow-400 mt-1">
+                          ⚠️ HTTP URL will be automatically converted to HTTPS for security
+                        </p>
+                      )}
                     </div>
                     
                     <div>
-                      <Label htmlFor="faviconUrl" className="text-gray-300">Favicon URL</Label>
+                      <Label htmlFor="faviconUrl" className="text-gray-300 flex items-center gap-2">
+                        Favicon URL
+                        {settings.branding.faviconUrl && !isSecureUrl(settings.branding.faviconUrl) && (
+                          <AlertTriangle className="h-4 w-4 text-yellow-500" title="Insecure HTTP URL will be converted to HTTPS" />
+                        )}
+                      </Label>
                       <Input
                         id="faviconUrl"
                         value={settings.branding.faviconUrl}
                         onChange={(e) => handleSettingChange("branding", "faviconUrl", e.target.value)}
                         placeholder="https://example.com/favicon.ico"
-                        className="bg-gray-700 border-gray-600 text-white"
+                        className={`bg-gray-700 border-gray-600 text-white ${
+                          settings.branding.faviconUrl && !isSecureUrl(settings.branding.faviconUrl) 
+                            ? 'border-yellow-500' 
+                            : ''
+                        }`}
                       />
+                      {settings.branding.faviconUrl && !isSecureUrl(settings.branding.faviconUrl) && (
+                        <p className="text-xs text-yellow-400 mt-1">
+                          ⚠️ HTTP URL will be automatically converted to HTTPS for security
+                        </p>
+                      )}
                     </div>
                     
                     <div>

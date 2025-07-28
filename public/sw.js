@@ -109,49 +109,89 @@ function isSettingsEndpoint(pathname) {
 // Helper function to fetch and update cache
 async function fetchAndUpdateCache(request, cache) {
   try {
-    const response = await fetch(request);
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch(request, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    clearTimeout(timeoutId);
     
     if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
       // Clone response for caching
       const responseClone = response.clone();
       
-      // Cache the response with a timestamp
-      const cacheResponse = new Response(
-        JSON.stringify({
-          data: await response.clone().json(),
-          timestamp: Date.now(),
-          url: request.url
-        }),
-        {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
-        }
-      );
-      
-      cache.put(request, cacheResponse);
-      console.log('Settings cached for:', request.url);
+      try {
+        const responseData = await response.clone().json();
+        
+        // Cache the response with a timestamp
+        const cacheResponse = new Response(
+          JSON.stringify({
+            data: responseData,
+            timestamp: Date.now(),
+            url: request.url
+          }),
+          {
+            status: response.status,
+            statusText: response.statusText,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'max-age=30'
+            }
+          }
+        );
+        
+        await cache.put(request, cacheResponse);
+        console.log('Settings cached for:', request.url);
+      } catch (jsonError) {
+        console.warn('Failed to parse JSON response, returning original response:', jsonError);
+      }
     }
     
     return response;
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    console.error('Error fetching settings:', error.name, error.message);
     
-    // Try to return cached response as fallback
-    const cachedResponse = await cache.match(request);
-    if (cachedResponse) {
-      console.log('Returning cached settings as fallback');
-      return cachedResponse;
+    // Handle different types of errors
+    if (error.name === 'AbortError') {
+      console.warn('Request timed out for:', request.url);
+    } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      console.warn('Network error or CORS issue for:', request.url);
     }
     
-    // Return error response
+    // Try to return cached response as fallback
+    try {
+      const cachedResponse = await cache.match(request);
+      if (cachedResponse) {
+        console.log('Returning cached settings as fallback for:', request.url);
+        return cachedResponse;
+      }
+    } catch (cacheError) {
+      console.error('Error accessing cache:', cacheError);
+    }
+    
+    // Return error response with more specific error information
+    const errorMessage = error.name === 'AbortError' 
+      ? 'Request timeout - please check your connection'
+      : error.name === 'TypeError' 
+        ? 'Network error - unable to reach server'
+        : 'Unknown error occurred';
+    
     return new Response(
       JSON.stringify({
         success: false,
-        message: 'Network error and no cached data available'
+        message: errorMessage,
+        error: error.name,
+        timestamp: Date.now()
       }),
       {
-        status: 503,
+        status: error.name === 'AbortError' ? 408 : 503,
         headers: { 'Content-Type': 'application/json' }
       }
     );
