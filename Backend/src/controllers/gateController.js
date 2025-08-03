@@ -2,11 +2,11 @@
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import User from '../models/userModel.js';
-import firestoreService from '../services/firestoreService.js';
+import realtimeDatabaseService from '../services/realtimeDatabaseService.js';
 
 /**
  * Toggle gate status for gym owners and trainers
- * Updates Firebase: /gym/{gymId}/status:(boolean)
+ * Updates Realtime Database: gym/{gymId}/status:(boolean)
  */
 export const toggleGateStatus = catchAsync(async (req, res, next) => {
   console.log('🚪 Gate toggle request received');
@@ -70,13 +70,13 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
 
     console.log('Gate control details:', { gymId, gymOwnerId, status });
 
-    // First try: Update Firebase with gym ID
-    let firestoreResult;
+    // First try: Update Realtime Database with gym ID
+    let realtimeDbResult;
     try {
-      await firestoreService.updateDoorStatus(gymId, status);
+      await realtimeDatabaseService.updateDoorStatus(gymId, status);
       
       // Log the gate control action
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.logQRScanAttempt(
         userId,
         gymOwnerId,
         'success',
@@ -85,7 +85,7 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
 
       // Update staff entry status if opening gate
       if (status) {
-        await firestoreService.updateStaffEntryStatus(
+        await realtimeDatabaseService.updateStaffEntryStatus(
           userId,
           gymOwnerId,
           user,
@@ -93,23 +93,23 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
         );
       }
 
-      firestoreResult = {
+      realtimeDbResult = {
         success: true,
         method: 'gym-id',
-        path: `/gym/${gymId}/status`
+        path: `gym/${gymId}/status`
       };
       
-      console.log(`✅ Firestore: Gate status updated to ${status ? 'OPEN' : 'CLOSED'} for gym ${gymId}`);
+      console.log(`✅ Realtime DB: Gate status updated to ${status ? 'OPEN' : 'CLOSED'} for gym ${gymId}`);
       
-    } catch (firestoreError) {
-      console.error('❌ Firestore Error with gym ID, trying gym owner ID:', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Error with gym ID, trying gym owner ID:', realtimeDbError.message);
       
-      // Second try: Update Firebase with gym owner ID (fallback)
+      // Second try: Update Realtime Database with gym owner ID (fallback)
       try {
-        await firestoreService.updateDoorStatus(gymOwnerId, status);
+        await realtimeDatabaseService.updateDoorStatus(gymOwnerId, status);
         
         // Log the gate control action
-        await firestoreService.logQRScanAttempt(
+        await realtimeDatabaseService.logQRScanAttempt(
           userId,
           gymOwnerId,
           'success',
@@ -118,7 +118,7 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
 
         // Update staff entry status if opening gate
         if (status) {
-          await firestoreService.updateStaffEntryStatus(
+          await realtimeDatabaseService.updateStaffEntryStatus(
             userId,
             gymOwnerId,
             user,
@@ -126,18 +126,18 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
           );
         }
 
-        firestoreResult = {
+        realtimeDbResult = {
           success: true,
           method: 'gym-owner-id',
-          path: `/gym/${gymOwnerId}/status`
+          path: `gym/${gymOwnerId}/status`
         };
         
-        console.log(`✅ Firestore: Gate status updated to ${status ? 'OPEN' : 'CLOSED'} for gym owner ${gymOwnerId} (fallback)`);
+        console.log(`✅ Realtime DB: Gate status updated to ${status ? 'OPEN' : 'CLOSED'} for gym owner ${gymOwnerId} (fallback)`);
         
       } catch (fallbackError) {
-        console.error('❌ Firestore Error with both methods:', fallbackError.message);
+        console.error('❌ Realtime DB Error with both methods:', fallbackError.message);
         // Don't fail the request completely, but log the error
-        firestoreResult = {
+        realtimeDbResult = {
           success: false,
           error: fallbackError.message,
           methods_tried: ['gym-id', 'gym-owner-id']
@@ -165,7 +165,7 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
         timestamp: new Date().toISOString(),
         controlledBy: userRole
       },
-      firebase: firestoreResult
+      realtimeDatabase: realtimeDbResult
     };
 
     // Send success response
@@ -183,7 +183,7 @@ export const toggleGateStatus = catchAsync(async (req, res, next) => {
 });
 
 /**
- * Get current gate status from Firebase
+ * Get current gate status from Realtime Database
  */
 export const getGateStatus = catchAsync(async (req, res, next) => {
   console.log('🔍 Gate status check request received');
@@ -222,23 +222,44 @@ export const getGateStatus = catchAsync(async (req, res, next) => {
       gymOwnerId = gymOwner._id.toString();
     }
 
-    // Try to get status from Firebase (implementation would depend on your Firebase setup)
-    // For now, we'll return a default response
-    res.status(200).json({
-      status: 'success',
-      message: 'Gate status retrieved successfully',
-      data: {
-        gym: {
-          id: gymId,
-          ownerId: gymOwnerId
-        },
-        gate: {
-          // This would be retrieved from Firebase in a real implementation
-          status: false, // Default to closed
-          lastUpdated: new Date().toISOString()
+    // Get status from Realtime Database
+    try {
+      const doorStatusResult = await realtimeDatabaseService.getDoorStatus(gymOwnerId);
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Gate status retrieved successfully',
+        data: {
+          gym: {
+            id: gymId,
+            ownerId: gymOwnerId
+          },
+          gate: {
+            status: doorStatusResult.status,
+            path: doorStatusResult.path,
+            lastUpdated: new Date().toISOString()
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      // Fallback to default closed status if retrieval fails
+      res.status(200).json({
+        status: 'success',
+        message: 'Gate status retrieved (default)',
+        data: {
+          gym: {
+            id: gymId,
+            ownerId: gymOwnerId
+          },
+          gate: {
+            status: false, // Default to closed
+            path: `gym/${gymOwnerId}/status`,
+            lastUpdated: new Date().toISOString(),
+            error: error.message
+          }
+        }
+      });
+    }
 
   } catch (error) {
     console.error('❌ Gate status check error:', error);
@@ -289,10 +310,10 @@ export const emergencyGateControl = catchAsync(async (req, res, next) => {
 
     // Force open the gate
     try {
-      await firestoreService.updateDoorStatus(gymId, true);
+      await realtimeDatabaseService.updateDoorStatus(gymId, true);
       
       // Log emergency access
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.logQRScanAttempt(
         userId,
         gymOwnerId,
         'success',
@@ -301,11 +322,11 @@ export const emergencyGateControl = catchAsync(async (req, res, next) => {
 
       console.log(`🚨 Emergency gate access granted for gym ${gymId}`);
       
-    } catch (firestoreError) {
+    } catch (realtimeDbError) {
       // Try fallback method
-      await firestoreService.updateDoorStatus(gymOwnerId, true);
+      await realtimeDatabaseService.updateDoorStatus(gymOwnerId, true);
       
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.logQRScanAttempt(
         userId,
         gymOwnerId,
         'success',

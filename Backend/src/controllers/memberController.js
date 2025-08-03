@@ -2,7 +2,7 @@
 import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
-import firestoreService from '../services/firestoreService.js';
+import realtimeDatabaseService from '../services/realtimeDatabaseService.js';
 
 // Verify membership and subscription status for QR code scanning
 // When successful, sends "allow" response to NodeMCU for access control
@@ -32,15 +32,15 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   if (!gymOwner || gymOwner.role !== 'gym-owner') {
     // Update door status to false (closed) for invalid gym
     try {
-      await firestoreService.updateDoorStatus(gymOwnerId, false);
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.updateDoorStatus(gymOwnerId, false);
+      await realtimeDatabaseService.logQRScanAttempt(
         memberId,
         gymOwnerId,
         'failed',
         'Invalid gym owner'
       );
-    } catch (firestoreError) {
-      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
     }
 
     return res.status(404).json({
@@ -57,15 +57,15 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   if (!member || member.role !== 'member') {
     // Update door status to false (closed) for invalid member
     try {
-      await firestoreService.updateDoorStatus(gymOwnerId, false);
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.updateDoorStatus(gymOwnerId, false);
+      await realtimeDatabaseService.logQRScanAttempt(
         memberId,
         gymOwnerId,
         'failed',
         'Invalid member'
       );
-    } catch (firestoreError) {
-      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
     }
 
     return res.status(404).json({
@@ -84,15 +84,15 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   if (!isGymOwnerAccessingOwnGym && (!member.createdBy || member.createdBy.toString() !== gymOwnerId)) {
     // Update door status to false (closed) for non-member
     try {
-      await firestoreService.updateDoorStatus(gymOwnerId, false);
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.updateDoorStatus(gymOwnerId, false);
+      await realtimeDatabaseService.logQRScanAttempt(
         memberId,
         gymOwnerId,
         'failed',
         'Not a member of this gym'
       );
-    } catch (firestoreError) {
-      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
     }
 
     return res.status(403).json({
@@ -114,15 +114,15 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   if (!isGymOwnerAccessingOwnGym && member.membershipStatus !== 'Active') {
     // Update door status to false (closed) for inactive membership
     try {
-      await firestoreService.updateDoorStatus(gymOwnerId, false);
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.updateDoorStatus(gymOwnerId, false);
+      await realtimeDatabaseService.logQRScanAttempt(
         memberId,
         gymOwnerId,
         'failed',
         'Inactive membership'
       );
-    } catch (firestoreError) {
-      console.error('❌ Firestore Error (non-critical):', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
     }
 
     return res.status(200).json({
@@ -147,12 +147,12 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   // Skip daily limit check for gym owners accessing their own gym
   if (!isGymOwnerAccessingOwnGym) {
     try {
-      const dailyScanCheck = await firestoreService.hasScannedToday(memberId, gymOwnerId);
+      const dailyScanCheck = await realtimeDatabaseService.hasScannedToday(memberId, gymOwnerId);
       
       if (dailyScanCheck.hasScanned) {
         // Update door status to false (closed) for daily limit exceeded
-        await firestoreService.updateDoorStatus(gymOwnerId, false);
-        await firestoreService.logQRScanAttempt(
+        await realtimeDatabaseService.updateDoorStatus(gymOwnerId, false);
+        await realtimeDatabaseService.logQRScanAttempt(
           memberId,
           gymOwnerId,
           'failed',
@@ -183,16 +183,16 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
           }
         });
       }
-    } catch (firestoreError) {
-      console.error('❌ Firestore Daily Check Error (non-critical):', firestoreError.message);
+    } catch (realtimeDbError) {
+      console.error('❌ Realtime DB Daily Check Error (non-critical):', realtimeDbError.message);
       // Continue with scan if daily check fails (fail-safe approach)
     }
   }
 
   // Success - member is active
   try {
-    // Update Firestore with active status
-    await firestoreService.updateMemberStatusToActive(
+    // Update Realtime Database with active status
+    await realtimeDatabaseService.updateMemberStatusToActive(
       memberId,
       gymOwnerId,
       {
@@ -207,17 +207,17 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
     );
 
     // Log successful QR scan
-    await firestoreService.logQRScanAttempt(
+    await realtimeDatabaseService.logQRScanAttempt(
       memberId,
       gymOwnerId,
       'success',
       'Active membership verified'
     );
 
-    console.log('✅ Firestore: Member status updated to active successfully');
-  } catch (firestoreError) {
-    console.error('❌ Firestore Error (non-critical):', firestoreError.message);
-    // Don't fail the request if Firestore fails - it's supplementary
+    console.log('✅ Realtime DB: Member status updated to active successfully');
+  } catch (realtimeDbError) {
+    console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
+    // Don't fail the request if Realtime DB fails - it's supplementary
   }
 
   res.status(200).json({
@@ -342,11 +342,11 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
 
   // Check if member has already scanned today (daily limit check)
   try {
-    const dailyScanCheck = await firestoreService.hasScannedToday(memberId, gymOwnerId);
+    const dailyScanCheck = await realtimeDatabaseService.hasScannedToday(memberId, gymOwnerId);
     
     if (dailyScanCheck.hasScanned) {
       // Log failed attempt due to daily limit
-      await firestoreService.logQRScanAttempt(
+      await realtimeDatabaseService.logQRScanAttempt(
         memberId,
         gymOwnerId,
         'failed',
@@ -378,15 +378,15 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
         }
       });
     }
-  } catch (firestoreError) {
-    console.error('❌ Firestore Daily Check Error (non-critical):', firestoreError.message);
+  } catch (realtimeDbError) {
+    console.error('❌ Realtime DB Daily Check Error (non-critical):', realtimeDbError.message);
     // Continue with scan if daily check fails (fail-safe approach)
   }
 
   // Success - member is active, allow access
   try {
-    // Update Firestore with active status
-    await firestoreService.updateMemberStatusToActive(
+    // Update Realtime Database with active status
+    await realtimeDatabaseService.updateMemberStatusToActive(
       memberId,
       gymOwnerId,
       {
@@ -401,17 +401,17 @@ export const verifyMemberQRScan = catchAsync(async (req, res, next) => {
     );
 
     // Log successful QR scan
-    await firestoreService.logQRScanAttempt(
+    await realtimeDatabaseService.logQRScanAttempt(
       memberId,
       gymOwnerId,
       'success',
       'QR scan verification successful'
     );
 
-    console.log('✅ Firestore: Member QR scan logged and status updated successfully');
-  } catch (firestoreError) {
-    console.error('❌ Firestore Error (non-critical):', firestoreError.message);
-    // Don't fail the request if Firestore fails - it's supplementary
+    console.log('✅ Realtime DB: Member QR scan logged and status updated successfully');
+  } catch (realtimeDbError) {
+    console.error('❌ Realtime DB Error (non-critical):', realtimeDbError.message);
+    // Don't fail the request if Realtime DB fails - it's supplementary
   }
 
   res.status(200).json({
