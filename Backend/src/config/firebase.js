@@ -1,6 +1,7 @@
 // config/firebase.js
 import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
+import { getFirestore } from 'firebase/firestore';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -22,5 +23,8 @@ const app = initializeApp(firebaseConfig);
 // Initialize Realtime Database
 const database = getDatabase(app);
 
-export { database };
+// Initialize Firestore
+const db = getFirestore(app);
+
+export { database, db };
 export default app;

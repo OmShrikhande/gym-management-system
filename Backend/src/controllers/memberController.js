@@ -3,6 +3,7 @@ import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import realtimeDatabaseService from '../services/realtimeDatabaseService.js';
+import firestoreService from '../services/firestoreService.js';
 
 // Verify membership and subscription status for QR code scanning
 // When successful, sends "allow" response to NodeMCU for access control

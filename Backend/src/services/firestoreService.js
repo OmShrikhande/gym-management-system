@@ -1,6 +1,7 @@
 // services/firestoreService.js
-import { db } from '../config/firebase.js';
+import { db, database } from '../config/firebase.js';
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp, query, collection, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { ref, set, update, push, get, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 
 class FirestoreService {
   
@@ -61,9 +62,49 @@ class FirestoreService {
       // Update door status to true (open) for successful QR scan
       await this.updateDoorStatus(gymOwnerId, true);
 
+      // ✅ SYNC TO REALTIME DATABASE - Add the same data structure to Realtime DB
+      try {
+        // Create member node in Realtime Database: gym/{gymOwnerId}/members/{memberId}
+        const rtdbMemberRef = ref(database, `gym/${gymOwnerId}/members/${memberId}`);
+        const rtdbMemberData = {
+          memberId: memberId,
+          memberName: memberData.name,
+          memberEmail: memberData.email,
+          membershipStatus: 'Active',
+          gymName: gymData.name,
+          gymOwner: gymData.owner,
+          lastQRScan: rtdbServerTimestamp(),
+          lastAccessGranted: rtdbServerTimestamp(),
+          isActive: true,
+          updatedAt: rtdbServerTimestamp()
+        };
+
+        // Check if member exists in Realtime DB, if not add createdAt
+        const rtdbMemberSnapshot = await get(rtdbMemberRef);
+        if (!rtdbMemberSnapshot.exists()) {
+          rtdbMemberData.createdAt = rtdbServerTimestamp();
+        }
+
+        await set(rtdbMemberRef, rtdbMemberData);
+
+        // Update main gym document in Realtime Database: gym/{gymOwnerId}
+        const rtdbGymRef = ref(database, `gym/${gymOwnerId}`);
+        await update(rtdbGymRef, {
+          lastActiveMemberId: memberId,
+          lastActiveMemberName: memberData.name,
+          lastActiveTimestamp: rtdbServerTimestamp(),
+          updatedAt: rtdbServerTimestamp()
+        });
+
+        console.log(`✅ Realtime DB: Synced member ${memberId} data to gym/${gymOwnerId}/members/${memberId}`);
+      } catch (rtdbError) {
+        console.error('❌ Realtime DB Sync Error (non-critical):', rtdbError.message);
+        // Don't fail the main operation if Realtime DB sync fails
+      }
+
       return {
         success: true,
-        message: 'Member status updated to active in Firestore',
+        message: 'Member status updated to active in Firestore and synced to Realtime DB',
         data: {
           memberId,
           status: 'Active',
@@ -109,10 +150,41 @@ class FirestoreService {
         lastScanReason: reason,
         lastScanTimestamp: serverTimestamp()
       }, { merge: true });
+
+      // ✅ SYNC TO REALTIME DATABASE - Add the same scan log data to Realtime DB
+      try {
+        // Create scan log in Realtime Database: gym/{gymOwnerId}/scan_logs/{auto-generated-key}
+        const rtdbScanLogsRef = ref(database, `gym/${gymOwnerId}/scan_logs`);
+        const rtdbLogData = {
+          memberId,
+          status,
+          reason,
+          timestamp: rtdbServerTimestamp(),
+          createdAt: rtdbServerTimestamp()
+        };
+
+        // Push creates a new child with auto-generated key (same as existing Realtime DB structure)
+        const newRtdbLogRef = push(rtdbScanLogsRef);
+        await set(newRtdbLogRef, rtdbLogData);
+
+        // Update main gym document in Realtime Database with latest scan info
+        const rtdbGymRef = ref(database, `gym/${gymOwnerId}`);
+        await update(rtdbGymRef, {
+          lastScanMemberId: memberId,
+          lastScanStatus: status,
+          lastScanReason: reason,
+          lastScanTimestamp: rtdbServerTimestamp()
+        });
+
+        console.log(`📋 Realtime DB: Synced QR scan log - ${status} for member ${memberId} in gym/${gymOwnerId}/scan_logs`);
+      } catch (rtdbError) {
+        console.error('❌ Realtime DB Scan Log Sync Error (non-critical):', rtdbError.message);
+        // Don't fail the main operation if Realtime DB sync fails
+      }
       
       return {
         success: true,
-        message: 'QR scan logged in Firestore'
+        message: 'QR scan logged in Firestore and synced to Realtime DB'
       };
 
     } catch (error) {
@@ -263,10 +335,26 @@ class FirestoreService {
       }, { merge: true });
 
       console.log(`🚪 Firestore: Door status updated to ${status ? 'OPEN' : 'CLOSED'} for gym ${gymOwnerId}`);
+
+      // ✅ SYNC TO REALTIME DATABASE - Add the same door status to Realtime DB
+      try {
+        // Update door status in Realtime Database: gym/{gymOwnerId}
+        const rtdbGymRef = ref(database, `gym/${gymOwnerId}`);
+        await update(rtdbGymRef, {
+          status: status, // true for open, false = closed
+          lastUpdated: rtdbServerTimestamp(),
+          updatedAt: rtdbServerTimestamp()
+        });
+
+        console.log(`🚪 Realtime DB: Synced door status to ${status ? 'OPEN' : 'CLOSED'} for gym ${gymOwnerId}`);
+      } catch (rtdbError) {
+        console.error('❌ Realtime DB Door Status Sync Error (non-critical):', rtdbError.message);
+        // Don't fail the main operation if Realtime DB sync fails
+      }
       
       return {
         success: true,
-        message: `Door status updated to ${status ? 'open' : 'closed'}`
+        message: `Door status updated to ${status ? 'open' : 'closed'} in Firestore and synced to Realtime DB`
       };
 
     } catch (error) {
@@ -334,9 +422,51 @@ class FirestoreService {
       // Update door status to true (open) for successful staff entry
       await this.updateDoorStatus(gymOwnerId, true);
 
+      // ✅ SYNC TO REALTIME DATABASE - Add the same staff data to Realtime DB
+      try {
+        // Create staff node in Realtime Database: gym/{gymOwnerId}/staff/{staffId}
+        const rtdbStaffRef = ref(database, `gym/${gymOwnerId}/staff/${staffId}`);
+        const rtdbStaffData = {
+          staffId: staffId,
+          staffName: staffData.name,
+          staffEmail: staffData.email,
+          staffRole: staffRole,
+          entryStatus: 'Active',
+          gymName: staffData.gymName || 'Main Gym',
+          lastEntry: rtdbServerTimestamp(),
+          lastAccessGranted: rtdbServerTimestamp(),
+          isActive: true,
+          status: true,
+          updatedAt: rtdbServerTimestamp()
+        };
+
+        // Check if staff exists in Realtime DB, if not add createdAt
+        const rtdbStaffSnapshot = await get(rtdbStaffRef);
+        if (!rtdbStaffSnapshot.exists()) {
+          rtdbStaffData.createdAt = rtdbServerTimestamp();
+        }
+
+        await set(rtdbStaffRef, rtdbStaffData);
+
+        // Update main gym document in Realtime Database with active staff info
+        const rtdbGymRef = ref(database, `gym/${gymOwnerId}`);
+        await update(rtdbGymRef, {
+          lastActiveStaffId: staffId,
+          lastActiveStaffName: staffData.name,
+          lastActiveStaffRole: staffRole,
+          lastActiveStaffTimestamp: rtdbServerTimestamp(),
+          updatedAt: rtdbServerTimestamp()
+        });
+
+        console.log(`✅ Realtime DB: Synced staff ${staffId} data to gym/${gymOwnerId}/staff/${staffId}`);
+      } catch (rtdbError) {
+        console.error('❌ Realtime DB Staff Sync Error (non-critical):', rtdbError.message);
+        // Don't fail the main operation if Realtime DB sync fails
+      }
+
       return {
         success: true,
-        message: 'Staff entry status updated in Firestore',
+        message: 'Staff entry status updated in Firestore and synced to Realtime DB',
         data: {
           staffId,
           status: true,
@@ -388,10 +518,54 @@ class FirestoreService {
           lastInactiveTimestamp: serverTimestamp(),
           updatedAt: serverTimestamp()
         }, { merge: true });
+
+        // ✅ SYNC TO REALTIME DATABASE - Update member status to inactive in Realtime DB
+        try {
+          // Update member node in Realtime Database: gym/{gymOwnerId}/members/{memberId}
+          const rtdbMemberRef = ref(database, `gym/${gymOwnerId}/members/${memberId}`);
+          
+          // Check if member exists in Realtime DB
+          const rtdbMemberSnapshot = await get(rtdbMemberRef);
+          if (rtdbMemberSnapshot.exists()) {
+            // Update existing member
+            await update(rtdbMemberRef, {
+              membershipStatus: 'Inactive',
+              isActive: false,
+              deactivationReason: reason,
+              deactivatedAt: rtdbServerTimestamp(),
+              updatedAt: rtdbServerTimestamp()
+            });
+          } else {
+            // Create new inactive record
+            await set(rtdbMemberRef, {
+              memberId: memberId,
+              membershipStatus: 'Inactive',
+              isActive: false,
+              deactivationReason: reason,
+              deactivatedAt: rtdbServerTimestamp(),
+              createdAt: rtdbServerTimestamp(),
+              updatedAt: rtdbServerTimestamp()
+            });
+          }
+
+          // Update main gym document in Realtime Database with inactive member info
+          const rtdbGymRef = ref(database, `gym/${gymOwnerId}`);
+          await update(rtdbGymRef, {
+            lastInactiveMemberId: memberId,
+            lastInactiveReason: reason,
+            lastInactiveTimestamp: rtdbServerTimestamp(),
+            updatedAt: rtdbServerTimestamp()
+          });
+
+          console.log(`⚠️ Realtime DB: Synced member ${memberId} status to inactive in gym/${gymOwnerId}/members/${memberId}`);
+        } catch (rtdbError) {
+          console.error('❌ Realtime DB Inactive Member Sync Error (non-critical):', rtdbError.message);
+          // Don't fail the main operation if Realtime DB sync fails
+        }
         
         return {
           success: true,
-          message: 'Member status updated to inactive in Firestore'
+          message: 'Member status updated to inactive in Firestore and synced to Realtime DB'
         };
       } else {
         console.log(`⚠️ Firestore: Member ${memberId} not found in gym ${gymOwnerId}`);
