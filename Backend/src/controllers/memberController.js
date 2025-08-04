@@ -491,8 +491,11 @@ export const markAttendance = catchAsync(async (req, res, next) => {
     return next(new AppError('Gym owner ID and member ID are required', 400));
   }
 
-  // Check if the requesting user is the member
-  if (req.user._id.toString() !== memberId) {
+  // Check if the requesting user has permission to mark attendance
+  // Members can only mark attendance for themselves
+  // Gym owners can mark attendance for their members
+  // Trainers can mark attendance for their assigned members
+  if (req.user.role === 'member' && req.user._id.toString() !== memberId) {
     return next(new AppError('You can only mark attendance for yourself', 403));
   }
 
@@ -514,6 +517,19 @@ export const markAttendance = catchAsync(async (req, res, next) => {
       status: 'error',
       message: 'You are not a member of this gym'
     });
+  }
+
+  // Additional permission checks for gym owners and trainers
+  if (req.user.role === 'gym-owner') {
+    // Gym owners can only mark attendance for their own members
+    if (member.createdBy.toString() !== req.user._id.toString()) {
+      return next(new AppError('You can only mark attendance for your own gym members', 403));
+    }
+  } else if (req.user.role === 'trainer') {
+    // Trainers can only mark attendance for members in their gym
+    if (req.user.gymId && req.user.gymId.toString() !== gymOwnerId) {
+      return next(new AppError('You can only mark attendance for members in your assigned gym', 403));
+    }
   }
 
   // Check membership status
