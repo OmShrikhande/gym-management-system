@@ -99,32 +99,36 @@ const Reports = () => {
           const updatedStats = {...backendStats};
           
           // Update expenses from the current expenses array
-          if (updatedStats.monthlyStats) {
+          if (updatedStats.monthlyStats && Array.isArray(expenses) && expenses.length > 0) {
             // Calculate expenses per month from expenses array
-            expenses.forEach(expense => {
-              const expenseDate = new Date(expense.date);
-              if (expenseDate.getFullYear() === currentYear) {
-                const month = expenseDate.getMonth() + 1;
-                
-                if (!updatedStats.monthlyStats[month]) {
-                  updatedStats.monthlyStats[month] = {
-                    newMembers: 0,
-                    revenue: 0,
-                    expenses: 0,
-                    profit: 0
-                  };
+            expenses.forEach((expense, index) => {
+              try {
+                const expenseDate = new Date(expense.date);
+                if (expenseDate.getFullYear() === currentYear) {
+                  const month = expenseDate.getMonth() + 1;
+                  
+                  if (!updatedStats.monthlyStats[month]) {
+                    updatedStats.monthlyStats[month] = {
+                      newMembers: 0,
+                      revenue: 0,
+                      expenses: 0,
+                      profit: 0
+                    };
+                  }
+                  
+                  // Reset expenses to recalculate
+                  if (index === 0) {
+                    updatedStats.monthlyStats[month].expenses = 0;
+                  }
+                  
+                  updatedStats.monthlyStats[month].expenses += parseFloat(expense.amount || 0);
+                  
+                  // Recalculate profit
+                  updatedStats.monthlyStats[month].profit = 
+                    updatedStats.monthlyStats[month].revenue - updatedStats.monthlyStats[month].expenses;
                 }
-                
-                // Reset expenses to recalculate
-                if (expense === expenses[0]) {
-                  updatedStats.monthlyStats[month].expenses = 0;
-                }
-                
-                updatedStats.monthlyStats[month].expenses += parseFloat(expense.amount);
-                
-                // Recalculate profit
-                updatedStats.monthlyStats[month].profit = 
-                  updatedStats.monthlyStats[month].revenue - updatedStats.monthlyStats[month].expenses;
+              } catch (error) {
+                console.warn('Error processing expense in stats calculation:', error);
               }
             });
           }
@@ -198,13 +202,19 @@ const Reports = () => {
         }
         
         // Calculate expenses per month from expenses array
-        expenses.forEach(expense => {
-          const expenseDate = new Date(expense.date);
-          if (expenseDate.getFullYear() === currentYear) {
-            const month = expenseDate.getMonth() + 1;
-            monthlyStats[month].expenses += parseFloat(expense.amount);
-          }
-        });
+        if (Array.isArray(expenses) && expenses.length > 0) {
+          expenses.forEach(expense => {
+            try {
+              const expenseDate = new Date(expense.date);
+              if (expenseDate.getFullYear() === currentYear) {
+                const month = expenseDate.getMonth() + 1;
+                monthlyStats[month].expenses += parseFloat(expense.amount || 0);
+              }
+            } catch (error) {
+              console.warn('Error processing expense in monthly stats:', error);
+            }
+          });
+        }
         
         // Calculate profit for each month
         for (let month = 1; month <= 12; month++) {

@@ -8,6 +8,8 @@ import { initializeSettings } from './lib/settings.jsx'; // Import initializeSet
 import { initializeConsoleErrorFiltering } from './utils/consoleErrorHandler.js';
 import { initializeSVGErrorHandling } from './utils/svgErrorHandler.js';
 import { initializeRazorpaySafely } from './utils/razorpayErrorHandler.js';
+import './utils/variableInitializationHandler.js'; // Import variable initialization handler
+import './utils/xmlSecurityHandler.js'; // Import XML security handler
 
 // Initialize error handling systems
 console.log('🚀 Initializing GymFlow error handling systems...');

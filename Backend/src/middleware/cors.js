@@ -65,7 +65,8 @@ const corsOptions = {
     'Accept', 
     'Origin',
     'Cache-Control',
-    'X-Requested-With'
+    'X-Keep-Alive',
+    'User-Agent'
   ],
   exposedHeaders: ['Authorization'],
   optionsSuccessStatus: 200, // Some legacy browsers choke on 204
@@ -88,7 +89,7 @@ const additionalCorsHeaders = (req, res, next) => {
   
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, X-Keep-Alive, User-Agent');
   res.header('Access-Control-Expose-Headers', 'Authorization');
   
   next();
@@ -112,7 +113,7 @@ const preflightHandler = (req, res) => {
   }
   
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, X-Keep-Alive, User-Agent');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Max-Age', '86400');
   res.header('Vary', 'Origin');

@@ -41,6 +41,7 @@ import expenseRoutes from './routes/expenseRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import enquiryRoutes from './routes/enquiryRoutes.js';
 import systemRoutes from './routes/systemRoutes.js';
+import systemStatusRoutes from './routes/systemStatusRoutes.js';
 import connectDB from './config/database.js';
 import setupSuperAdmin from './config/setupAdmin.js';
 import { createIndexes } from './config/indexes.js';
@@ -102,7 +103,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || 'https://gentle-gingersnap-9fde09.netlify.app');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Cache-Control, X-Keep-Alive, User-Agent');
   res.header('Access-Control-Expose-Headers', 'Authorization');
   res.header('Vary', 'Origin');
   
@@ -181,6 +182,7 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/system-status', systemStatusRoutes);
 
 
 

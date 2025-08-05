@@ -20,6 +20,16 @@ const expenseSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Expense category is required'],
     enum: [
+      'equipment',
+      'rent',
+      'utilities',
+      'staff-salary',
+      'marketing',
+      'maintenance',
+      'insurance',
+      'supplies',
+      'other',
+      // Also allow capitalized versions for backward compatibility
       'Equipment',
       'Rent',
       'Utilities',
@@ -30,7 +40,7 @@ const expenseSchema = new mongoose.Schema({
       'Supplies',
       'Other'
     ],
-    default: 'Other'
+    default: 'other'
   },
   date: {
     type: Date,

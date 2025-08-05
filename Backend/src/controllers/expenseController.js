@@ -92,18 +92,45 @@ export const createExpense = catchAsync(async (req, res, next) => {
     return next(new AppError('Access denied. Only gym owners can create expenses.', 403));
   }
 
+  // Validate required fields
+  const { description, amount, category, date } = req.body;
+  
+  if (!description || !amount || !category) {
+    return next(new AppError('Description, amount, and category are required fields.', 400));
+  }
+
+  // Validate amount is a positive number
+  if (isNaN(amount) || parseFloat(amount) < 0) {
+    return next(new AppError('Amount must be a positive number.', 400));
+  }
+
+  // Validate date format
+  if (date && isNaN(new Date(date).getTime())) {
+    return next(new AppError('Invalid date format.', 400));
+  }
+
   const expenseData = {
     ...req.body,
+    amount: parseFloat(amount), // Ensure amount is a number
     gymOwner: req.user.role === 'super-admin' ? req.body.gymOwner : req.user._id
   };
 
-  const expense = await Expense.create(expenseData);
+  try {
+    const expense = await Expense.create(expenseData);
 
-  res.status(201).json({
-    success: true,
-    data: { expense },
-    message: 'Expense created successfully'
-  });
+    res.status(201).json({
+      success: true,
+      data: { expense },
+      message: 'Expense created successfully'
+    });
+  } catch (error) {
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return next(new AppError(`Validation Error: ${validationErrors.join(', ')}`, 400));
+    }
+    throw error;
+  }
 });
 
 /**

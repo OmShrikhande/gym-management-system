@@ -11,6 +11,7 @@ import frontendKeepAliveService from "@/utils/keepAliveService.js";
 import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import SettingsInitializer from "@/components/SettingsInitializer.jsx";
 import BrandingManager from "@/components/BrandingManager.jsx";
+import ErrorMonitor from "@/components/ErrorMonitor.jsx";
 import Index from "./pages/Index.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import GymManagement from "./pages/GymManagement.jsx";
@@ -58,6 +59,7 @@ const App = () => {
             <Toaster position="top-center" richColors />
             <SettingsInitializer />
             <BrandingManager />
+            <ErrorMonitor />
             <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
