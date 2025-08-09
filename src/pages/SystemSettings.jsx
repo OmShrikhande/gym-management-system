@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff, Shield, AlertTriangle } from "lucide-react";
+import { Settings, Palette, Bell, Mail, MessageSquare, Globe, Save, Loader2, Wifi, WifiOff, Shield, AlertTriangle, Sparkles, Check } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useTranslation } from "@/contexts/TranslationContext.jsx";
@@ -17,6 +17,7 @@ import settingsCache from "@/lib/settingsCache.js";
 import SettingsPerformanceMonitor from "@/components/SettingsPerformanceMonitor";
 import ErrorHandlingSettings from "@/components/ErrorHandlingSettings";
 import { validateSettingsUrls, getInsecureUrls, isSecureUrl } from "@/utils/urlValidator";
+import { predefinedThemes, getDefaultTheme } from "@/utils/predefinedThemes";
 
 const SystemSettings = () => {
   const { user, authFetch, isSuperAdmin, isGymOwner } = useAuth();
@@ -44,9 +45,19 @@ const SystemSettings = () => {
     branding: {
       primaryColor: "#3B82F6",
       secondaryColor: "#8B5CF6",
+      backgroundColor: "#0F172A",
+      cardColor: "#1E293B",
+      sidebarColor: "#1E293B",
+      textColor: "#F8FAFC",
+      darkMode: true,
       logoUrl: "",
       faviconUrl: "",
-      customCss: ""
+      customCss: "",
+      futuristicBackground: {
+        enabled: true,
+        theme: "blue",
+        intensity: "medium"
+      }
     },
     notifications: {
       emailNotifications: true,
@@ -158,6 +169,42 @@ const SystemSettings = () => {
           position: 'bottom-right'
         });
       }
+    }
+  };
+
+  // Apply predefined theme
+  const applyPredefinedTheme = (themeKey) => {
+    const theme = predefinedThemes[themeKey];
+    if (!theme) return;
+
+    const updatedSettings = {
+      ...settings,
+      branding: {
+        ...settings.branding,
+        ...theme.settings
+      }
+    };
+
+    setSettings(updatedSettings);
+
+    // Store settings in user-specific storage key
+    const storageKey = `gym_settings_user_${user?._id}`;
+    localStorage.setItem(storageKey, JSON.stringify(updatedSettings));
+
+    // Apply settings immediately for visual changes
+    applySettings(updatedSettings);
+
+    toast.success(`Applied ${theme.name} theme`, {
+      duration: 3000,
+      position: 'bottom-right'
+    });
+
+    // Show toast message about settings scope
+    if (!isSuperAdmin) {
+      toast.info('These settings will only apply to your dashboard', { 
+        duration: 3000,
+        position: 'bottom-right'
+      });
     }
   };
   
