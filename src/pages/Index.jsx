@@ -76,10 +76,18 @@ const Index = () => {
           console.warn('Corrupted user data found, clearing localStorage');
           localStorage.removeItem('gymflow_user');
           localStorage.removeItem('gymflow_token');
+          // Force page reload to clear any cached state
+          window.location.reload();
         }
       }
     } catch (error) {
       console.error('Error checking localStorage:', error);
+      // Clear all gym-related localStorage items
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('gymflow_')) {
+          localStorage.removeItem(key);
+        }
+      });
     }
   }, []);
   

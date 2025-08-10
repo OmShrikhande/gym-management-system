@@ -62,6 +62,7 @@ const App = () => {
             <BrandingManager />
             <ErrorMonitor />
             <BrowserRouter>
+              <ErrorBoundary>
         <Routes>
           <Route path="/" element={<Index />} />
           
@@ -202,6 +203,7 @@ const App = () => {
           {/* Catch-all route */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+              </ErrorBoundary>
       </BrowserRouter>
           </TranslationProvider>
       </AuthProvider>
