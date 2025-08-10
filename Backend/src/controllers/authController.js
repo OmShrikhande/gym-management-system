@@ -3,7 +3,33 @@ import User from '../models/userModel.js';
 import catchAsync from '../utils/catchAsync.js';
 import AppError from '../utils/appError.js';
 import { promisify } from 'util';
+import crypto from 'crypto';
 
+const signAccessToken = id => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not defined in environment variables');
+  }
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m', // Short-lived access token
+  });
+};
+
+const signRefreshToken = id => {
+  if (!process.env.JWT_REFRESH_SECRET) {
+    throw new Error('JWT_REFRESH_SECRET is not defined in environment variables');
+  }
+  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d', // Long-lived refresh token
+  });
+};
+
+const generateTokens = (userId) => {
+  const accessToken = signAccessToken(userId);
+  const refreshToken = signRefreshToken(userId);
+  return { accessToken, refreshToken };
+};
+
+// Legacy function for backward compatibility
 const signToken = id => {
   if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined in environment variables');
@@ -243,9 +269,16 @@ export const login = async (req, res) => {
       });
     }
 
-    console.log('Generating JWT token...');
-    const token = signToken(user._id);
-    console.log('JWT token generated successfully');
+    console.log('Generating JWT tokens...');
+    const { accessToken, refreshToken } = generateTokens(user._id);
+    console.log('JWT tokens generated successfully');
+
+    // Store refresh token hash in user document
+    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    await User.findByIdAndUpdate(user._id, { 
+      refreshTokenHash,
+      lastLogin: new Date()
+    });
 
     user.password = undefined; // Remove password from output
 
@@ -253,7 +286,10 @@ export const login = async (req, res) => {
     
     res.status(200).json({
       status: 'success',
-      token,
+      accessToken,
+      refreshToken,
+      // Legacy token for backward compatibility
+      token: accessToken,
       data: { user },
     });
   } catch (err) {
@@ -314,6 +350,68 @@ export const verifyToken = (req, res) => {
     }
   });
 };
+
+// Refresh access token using refresh token
+export const refreshToken = catchAsync(async (req, res, next) => {
+  // 1) Get refresh token from request
+  const { refreshToken } = req.body;
+  
+  if (!refreshToken) {
+    return next(new AppError('Refresh token is required', 400));
+  }
+
+  if (!process.env.JWT_REFRESH_SECRET) {
+    return next(new AppError('Server configuration error', 500));
+  }
+
+  // 2) Verify refresh token
+  const decoded = await promisify(jwt.verify)(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+  // 3) Check if user still exists and refresh token is valid
+  const user = await User.findById(decoded.id).select('+refreshTokenHash');
+  if (!user) {
+    return next(new AppError('The user belonging to this token no longer exists', 401));
+  }
+
+  // 4) Check if refresh token matches the stored hash
+  const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  if (user.refreshTokenHash !== refreshTokenHash) {
+    return next(new AppError('Invalid refresh token', 401));
+  }
+
+  // 5) Generate new tokens
+  const { accessToken, refreshToken: newRefreshToken } = generateTokens(user._id);
+
+  // 6) Update refresh token hash in database
+  const newRefreshTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+  await User.findByIdAndUpdate(user._id, { 
+    refreshTokenHash: newRefreshTokenHash,
+    lastActivity: new Date()
+  });
+
+  // 7) Send new tokens
+  res.status(200).json({
+    status: 'success',
+    accessToken,
+    refreshToken: newRefreshToken,
+    // Legacy token for backward compatibility
+    token: accessToken
+  });
+});
+
+// Logout - invalidate refresh token
+export const logout = catchAsync(async (req, res, next) => {
+  // Clear refresh token hash from database
+  await User.findByIdAndUpdate(req.user._id, { 
+    $unset: { refreshTokenHash: 1 },
+    lastActivity: new Date()
+  });
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Logged out successfully'
+  });
+});
 
 // Get current user data
 export const getMe = (req, res) => {

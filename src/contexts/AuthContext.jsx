@@ -1,27 +1,42 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { getStorageItem, setStorageItem, removeStorageItem } from "@/lib/storage.js";
+import apiClient from "@/lib/apiClient.js";
 
 // Local storage keys
 const USER_STORAGE_KEY = 'gymflow_user';
 const TOKEN_STORAGE_KEY = 'gymflow_token';
+const ACCESS_TOKEN_KEY = 'gymflow_access_token';
+const REFRESH_TOKEN_KEY = 'gymflow_refresh_token';
 
 // Debug function to check localStorage status
 const debugLocalStorage = () => {
   try {
     const token = getStorageItem(TOKEN_STORAGE_KEY, null);
+    const accessToken = getStorageItem(ACCESS_TOKEN_KEY, null);
+    const refreshToken = getStorageItem(REFRESH_TOKEN_KEY, null);
     const user = getStorageItem(USER_STORAGE_KEY, null);
+    
     console.log('LocalStorage Debug:', {
-      hasToken: !!token,
+      hasLegacyToken: !!token,
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
       tokenLength: token ? token.length : 0,
+      accessTokenLength: accessToken ? accessToken.length : 0,
       hasUser: !!user,
       userRole: user?.role,
       userId: user?._id,
       storageAvailable: typeof(Storage) !== "undefined"
     });
-    return { token, user };
+    
+    return { 
+      token: accessToken || token, // Prefer access token over legacy token
+      accessToken,
+      refreshToken,
+      user 
+    };
   } catch (error) {
     console.error('LocalStorage Debug Error:', error);
-    return { token: null, user: null };
+    return { token: null, accessToken: null, refreshToken: null, user: null };
   }
 };
 
@@ -52,7 +67,24 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     removeStorageItem(USER_STORAGE_KEY);
     removeStorageItem(TOKEN_STORAGE_KEY);
+    removeStorageItem(ACCESS_TOKEN_KEY);
+    removeStorageItem(REFRESH_TOKEN_KEY);
+    apiClient.clearTokens();
   }, []);
+
+  // Listen for authentication failures from API client
+  useEffect(() => {
+    const handleAuthFailure = () => {
+      console.log('Authentication failed, clearing auth data');
+      clearAuthData();
+    };
+
+    window.addEventListener('auth:failed', handleAuthFailure);
+    
+    return () => {
+      window.removeEventListener('auth:failed', handleAuthFailure);
+    };
+  }, [clearAuthData]);
 
   // Verify token and load user data on initial render
   useEffect(() => {

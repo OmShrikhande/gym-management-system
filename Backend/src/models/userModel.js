@@ -155,7 +155,19 @@ const userSchema = new mongoose.Schema({
       required: true
     },
     reason: String
-  }]
+  }],
+  
+  // Authentication fields
+  refreshTokenHash: {
+    type: String,
+    select: false
+  },
+  lastLogin: {
+    type: Date
+  },
+  lastActivity: {
+    type: Date
+  }
 });
 
 // Pre-save middleware to hash password
