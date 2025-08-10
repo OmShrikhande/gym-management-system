@@ -42,19 +42,35 @@ export const protect = async (req, res, next) => {
     req.user = currentUser;
     next();
   } catch (error) {
+    console.error('JWT Verification Error:', {
+      name: error.name,
+      message: error.message,
+      token: token ? `${token.substring(0, 20)}...` : 'No token',
+      jwtSecret: process.env.JWT_SECRET ? 'SET' : 'NOT SET',
+      userId: error.name === 'JsonWebTokenError' ? 'Invalid token' : 'Unknown'
+    });
+
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid token. Please log in again.'
+        message: 'Invalid token. Please log in again.',
+        code: 'INVALID_TOKEN'
       });
     }
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         status: 'error',
-        message: 'Your token has expired. Please log in again.'
+        message: 'Your token has expired. Please log in again.',
+        code: 'TOKEN_EXPIRED'
       });
     }
-    next(error);
+    
+    // General JWT error
+    return res.status(401).json({
+      status: 'error',
+      message: 'Authentication failed. Please log in again.',
+      code: 'AUTH_FAILED'
+    });
   }
 };
 

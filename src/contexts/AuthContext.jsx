@@ -966,11 +966,41 @@ export const AuthProvider = ({ children }) => {
         const errorData = error.response.data;
         
         if (statusCode === 401) {
-          console.error('Authentication failed:', errorData?.message);
+          console.error('🚨 401 Authentication Error:', errorData?.message);
+          console.log('Clearing all auth data and redirecting to login...');
+          
+          // Immediate cleanup of all authentication data
+          try {
+            // Clear API client tokens
+            apiClient.clearTokens();
+            
+            // Clear all localStorage auth data
+            const authKeys = ['gymflow_access_token', 'gymflow_refresh_token', 'gymflow_token', 'gymflow_user'];
+            authKeys.forEach(key => {
+              localStorage.removeItem(key);
+              console.log(`✅ Cleared ${key}`);
+            });
+            
+            // Clear context state
+            setToken(null);
+            setUser(null);
+            
+            // Force redirect to login after short delay
+            setTimeout(() => {
+              console.log('🔄 Redirecting to login page...');
+              window.location.href = '/login?expired=true&error=401';
+            }, 1000);
+            
+          } catch (clearError) {
+            console.error('❌ Error during auth cleanup:', clearError);
+            // Ultimate fallback - force page refresh
+            setTimeout(() => window.location.href = '/login', 1500);
+          }
+          
           return {
             success: false,
             status: 'error',
-            message: errorData?.message || 'Authentication expired. Please login again.',
+            message: 'Session expired. Redirecting to login...',
             data: null
           };
         }
