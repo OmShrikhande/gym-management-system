@@ -12,6 +12,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute.jsx";
 import SettingsInitializer from "@/components/SettingsInitializer.jsx";
 import BrandingManager from "@/components/BrandingManager.jsx";
 import ErrorMonitor from "@/components/ErrorMonitor.jsx";
+import ErrorBoundary from "@/components/shared/ErrorBoundary.jsx";
 import Index from "./pages/Index.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import GymManagement from "./pages/GymManagement.jsx";

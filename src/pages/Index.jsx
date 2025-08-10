@@ -23,7 +23,7 @@ const LoadingIndicator = () => (
 );
 
 const Index = () => {
-  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus, updateCurrentUser, token } = useAuth();
+  const { user, userRole, users, fetchUsers, authFetch, subscription, checkSubscriptionStatus, updateCurrentUser, token, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [gymOwnerCount, setGymOwnerCount] = useState(0);
@@ -61,6 +61,27 @@ const Index = () => {
   
   // Ref to prevent multiple simultaneous API calls
   const isLoadingActivitiesRef = useRef(false);
+
+  // Clear any corrupted localStorage data on component mount
+  useEffect(() => {
+    try {
+      // Check if stored data is valid
+      const storedUser = localStorage.getItem('gymflow_user');
+      const storedToken = localStorage.getItem('gymflow_token');
+      
+      if (storedUser && storedToken) {
+        try {
+          JSON.parse(storedUser);
+        } catch (e) {
+          console.warn('Corrupted user data found, clearing localStorage');
+          localStorage.removeItem('gymflow_user');
+          localStorage.removeItem('gymflow_token');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking localStorage:', error);
+    }
+  }, []);
   
   // We don't need these state variables anymore as we're using dedicated pages
 
@@ -1161,8 +1182,33 @@ const Index = () => {
     }
   };
 
-  const stats = getDashboardStats();
-  const quickActions = getQuickActions();
+  // Show loading state while authentication is being checked
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+        <LoadingIndicator />
+      </div>
+    );
+  }
+
+  // Show login form if user is not authenticated
+  if (!user) {
+    return <LoginForm />;
+  }
+
+  // Only call these functions after we confirm user exists
+  let stats = [];
+  let quickActions = [];
+  
+  try {
+    stats = getDashboardStats();
+    quickActions = getQuickActions();
+  } catch (error) {
+    console.error('Error getting dashboard data:', error);
+    // Provide fallback data
+    stats = [];
+    quickActions = [];
+  }
 
   return (
     <DashboardLayout>
@@ -1812,4 +1858,14 @@ const Index = () => {
   );
 };
 
-export default Index;
+// Wrapper component with error boundary
+const IndexWithErrorBoundary = () => {
+  try {
+    return <Index />;
+  } catch (error) {
+    console.error('Index component initialization error:', error);
+    return <LoginForm />;
+  }
+};
+
+export default IndexWithErrorBoundary;
