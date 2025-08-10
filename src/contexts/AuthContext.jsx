@@ -760,7 +760,15 @@ export const AuthProvider = ({ children }) => {
 
   const authFetch = async (url, options = {}) => {
     if (!token) {
+      console.error('AuthFetch called without token. Current token state:', !!token);
       throw new Error('Authentication required');
+    }
+    
+    // Validate token format
+    if (typeof token !== 'string' || token.length < 10) {
+      console.error('Invalid token format:', token);
+      clearAuthData();
+      throw new Error('Invalid authentication token. Please login again.');
     }
     
     const headers = {

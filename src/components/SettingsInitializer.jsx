@@ -21,6 +21,9 @@ const SettingsInitializer = () => {
         return;
       }
       
+      // Add a small delay to ensure authentication is fully established
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       try {
         // Check cache first
         const cachedSettings = settingsCache.get(user._id, user.role, user.gymId);
@@ -54,9 +57,30 @@ const SettingsInitializer = () => {
         }
         
         console.log(`Fetching settings from endpoint: ${endpoint}`);
-        const response = await authFetch(endpoint);
         
-        if (response.success && response.data?.settings) {
+        // Add retry logic for authentication issues
+        let retryCount = 0;
+        const maxRetries = 3;
+        let response;
+        
+        while (retryCount < maxRetries) {
+          try {
+            response = await authFetch(endpoint);
+            break; // Success, exit retry loop
+          } catch (error) {
+            retryCount++;
+            if (error.message.includes('Authentication expired') || error.message.includes('Authentication required')) {
+              if (retryCount < maxRetries) {
+                console.log(`Authentication error, retrying... (${retryCount}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+                continue;
+              }
+            }
+            throw error; // Re-throw if not auth error or max retries reached
+          }
+        }
+        
+        if (response && response.success && response.data?.settings) {
           // Cache the settings for faster access
           settingsCache.set(user._id, user.role, user.gymId, response.data.settings);
           
@@ -82,7 +106,14 @@ const SettingsInitializer = () => {
       }
     };
     
-    fetchAndApplySettings();
+    // Only fetch settings if we have both user and authFetch available
+    if (user && authFetch) {
+      fetchAndApplySettings();
+    } else if (!user) {
+      // Handle non-authenticated case
+      initializeSettings();
+      setIsInitialized(true);
+    }
   }, [user, authFetch, isSuperAdmin, isGymOwner, isTrainer, isMember]);
   
   // Listen for settings updates and force refresh
