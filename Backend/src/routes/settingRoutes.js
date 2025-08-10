@@ -12,8 +12,8 @@ import {
 
 const router = express.Router();
 
-// Global settings routes (Super Admin only)
-router.get('/', protect, restrictTo('super-admin'), getGlobalSettings);
+// Global settings routes (Accessible to all authenticated users)
+router.get('/', protect, restrictTo('super-admin', 'gym-owner', 'trainer', 'member'), getGlobalSettings);
 router.post('/', protect, restrictTo('super-admin'), updateGlobalSettings);
 
 // User-specific settings routes (All authenticated users)

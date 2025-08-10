@@ -10,13 +10,8 @@ import webSocketService from '../services/websocketService.js';
  * @access Private (Super Admin)
  */
 export const getGlobalSettings = catchAsync(async (req, res) => {
-  // Check if user is super admin
-  if (req.user.role !== 'super-admin' && req.user.role !== 'gym-owner') {
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Only super admins and gym owners can access settings.'
-    });
-  }
+  // Allow all authenticated users to read global settings
+  // (Access control is handled by the route middleware)
 
   // Find global settings or create default
   let settings = await Setting.findOne({ isGlobal: true });

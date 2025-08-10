@@ -100,7 +100,29 @@ const SystemSettings = () => {
         }
         
         console.log(`Loading settings from endpoint: ${endpoint}`);
-        const response = await authFetch(endpoint);
+        
+        let response;
+        try {
+          response = await authFetch(endpoint);
+          
+          // If global settings access is denied and we're a super admin, fallback to user-specific
+          if (isSuperAdmin && endpoint === '/settings' && response && !response.success && 
+              (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
+            console.log('Global settings access denied, falling back to user-specific settings');
+            endpoint = `/settings/user/${user._id}`;
+            response = await authFetch(endpoint);
+          }
+        } catch (error) {
+          // Handle permission errors for super admin trying to access global settings
+          if (isSuperAdmin && endpoint === '/settings' && 
+              (error.message.includes('Permission denied') || error.message.includes('Access denied') || error.message.includes('Unauthorized'))) {
+            console.log('Global settings access failed, trying user-specific settings');
+            endpoint = `/settings/user/${user._id}`;
+            response = await authFetch(endpoint);
+          } else {
+            throw error;
+          }
+        }
         
         if (response.success && response.data?.settings) {
           setSettings(prevSettings => ({
@@ -229,10 +251,37 @@ const SystemSettings = () => {
         requestBody.applyToUsers = applyToGymUsers;
       }
       
-      const response = await authFetch(endpoint, {
-        method: 'POST',
-        body: JSON.stringify(requestBody)
-      });
+      let response;
+      try {
+        response = await authFetch(endpoint, {
+          method: 'POST',
+          body: JSON.stringify(requestBody)
+        });
+        
+        // If global settings access is denied and we're a super admin, fallback to user-specific
+        if (isSuperAdmin && endpoint === '/settings' && response && !response.success && 
+            (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
+          console.log('Global settings save access denied, falling back to user-specific settings');
+          endpoint = `/settings/user/${user._id}`;
+          response = await authFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(requestBody)
+          });
+        }
+      } catch (error) {
+        // Handle permission errors for super admin trying to save global settings
+        if (isSuperAdmin && endpoint === '/settings' && 
+            (error.message.includes('Permission denied') || error.message.includes('Access denied') || error.message.includes('Unauthorized'))) {
+          console.log('Global settings save failed, trying user-specific settings');
+          endpoint = `/settings/user/${user._id}`;
+          response = await authFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(requestBody)
+          });
+        } else {
+          throw error;
+        }
+      }
       
       if (response.success) {
         toast.success(t('settingsSaved'));

@@ -390,7 +390,29 @@ export const getSettingsForUser = async (userId, userRole, gymId, authFetch) => 
       endpoint = `/settings/user/${userId}`;
     }
     
-    const response = await authFetch(endpoint);
+    let response;
+    try {
+      response = await authFetch(endpoint);
+      
+      // If global settings access is denied and we're a super admin, fallback to user-specific
+      if (userRole === 'super-admin' && endpoint === '/settings' && response && !response.success && 
+          (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
+        console.log('Global settings access denied, falling back to user-specific settings');
+        endpoint = `/settings/user/${userId}`;
+        response = await authFetch(endpoint);
+      }
+    } catch (error) {
+      // Handle permission errors for super admin trying to access global settings
+      if (userRole === 'super-admin' && endpoint === '/settings' && 
+          (error.message.includes('Permission denied') || error.message.includes('Access denied') || error.message.includes('Unauthorized'))) {
+        console.log('Global settings access failed, trying user-specific settings');
+        endpoint = `/settings/user/${userId}`;
+        response = await authFetch(endpoint);
+      } else {
+        throw error;
+      }
+    }
+    
     const endTime = performance.now();
     
     // Dispatch performance event
@@ -501,8 +523,31 @@ export const forceRefreshSettings = async (userId, userRole, gymId, authFetch) =
     // Add cache-busting parameter
     const cacheBustingUrl = `${endpoint}?_cb=${Date.now()}`;
     
-    // Fetch fresh settings
-    const response = await authFetch(cacheBustingUrl);
+    // Fetch fresh settings with fallback for super admin
+    let response;
+    try {
+      response = await authFetch(cacheBustingUrl);
+      
+      // If global settings access is denied and we're a super admin, fallback to user-specific
+      if (userRole === 'super-admin' && endpoint === '/settings' && response && !response.success && 
+          (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
+        console.log('Global settings access denied, falling back to user-specific settings');
+        endpoint = `/settings/user/${userId}`;
+        const fallbackUrl = `${endpoint}?_cb=${Date.now()}`;
+        response = await authFetch(fallbackUrl);
+      }
+    } catch (error) {
+      // Handle permission errors for super admin trying to access global settings
+      if (userRole === 'super-admin' && endpoint === '/settings' && 
+          (error.message.includes('Permission denied') || error.message.includes('Access denied') || error.message.includes('Unauthorized'))) {
+        console.log('Global settings access failed, trying user-specific settings');
+        endpoint = `/settings/user/${userId}`;
+        const fallbackUrl = `${endpoint}?_cb=${Date.now()}`;
+        response = await authFetch(fallbackUrl);
+      } else {
+        throw error;
+      }
+    }
     
     if (response.success && response.data?.settings) {
       // Apply fresh settings

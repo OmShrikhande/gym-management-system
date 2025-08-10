@@ -43,7 +43,7 @@ const SettingsInitializer = () => {
         
         // Determine the appropriate endpoint based on user role
         if (isSuperAdmin) {
-          // Super admins get global settings
+          // Try global settings first, fallback to user-specific if access denied
           endpoint = '/settings';
         } else if (isGymOwner) {
           // Gym owners get their gym-specific settings
@@ -66,10 +66,35 @@ const SettingsInitializer = () => {
         while (retryCount < maxRetries) {
           try {
             response = await authFetch(endpoint);
+            
+            // Check if we got a permission denied error (403) or unauthorized (401)
+            if (response && !response.success && (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
+              // If this was a super admin trying to access global settings, fallback to user-specific
+              if (isSuperAdmin && endpoint === '/settings') {
+                console.log('Global settings access denied, falling back to user-specific settings');
+                endpoint = `/settings/user/${user._id}`;
+                response = await authFetch(endpoint);
+              }
+            }
+            
             break; // Success, exit retry loop
           } catch (error) {
             retryCount++;
-            if (error.message.includes('Authentication expired') || error.message.includes('Authentication required')) {
+            
+            // Handle permission/authentication errors
+            if (error.message.includes('Authentication expired') || 
+                error.message.includes('Authentication required') ||
+                error.message.includes('Permission denied') ||
+                error.message.includes('Access denied')) {
+              
+              // Special handling for super admin global settings access
+              if (isSuperAdmin && endpoint === '/settings' && retryCount === 1) {
+                console.log('Global settings access failed, trying user-specific settings');
+                endpoint = `/settings/user/${user._id}`;
+                retryCount--; // Don't count this as a retry
+                continue;
+              }
+              
               if (retryCount < maxRetries) {
                 console.log(`Authentication error, retrying... (${retryCount}/${maxRetries})`);
                 await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
