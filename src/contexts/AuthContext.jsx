@@ -5,6 +5,26 @@ import { getStorageItem, setStorageItem, removeStorageItem } from "@/lib/storage
 const USER_STORAGE_KEY = 'gymflow_user';
 const TOKEN_STORAGE_KEY = 'gymflow_token';
 
+// Debug function to check localStorage status
+const debugLocalStorage = () => {
+  try {
+    const token = getStorageItem(TOKEN_STORAGE_KEY, null);
+    const user = getStorageItem(USER_STORAGE_KEY, null);
+    console.log('LocalStorage Debug:', {
+      hasToken: !!token,
+      tokenLength: token ? token.length : 0,
+      hasUser: !!user,
+      userRole: user?.role,
+      userId: user?._id,
+      storageAvailable: typeof(Storage) !== "undefined"
+    });
+    return { token, user };
+  } catch (error) {
+    console.error('LocalStorage Debug Error:', error);
+    return { token: null, user: null };
+  }
+};
+
 // API URL - Use environment variable or fallback to production
 const API_URL = import.meta.env.VITE_API_URL || 'https://gym-management-system-ckb0.onrender.com/api';
 
@@ -40,14 +60,18 @@ export const AuthProvider = ({ children }) => {
     
     const initializeAuth = async () => {
       try {
-        const storedToken = getStorageItem(TOKEN_STORAGE_KEY, null);
+        // Debug localStorage status
+        const { token: storedToken, user: storedUser } = debugLocalStorage();
         
         if (!storedToken) {
+          console.log('No stored token found, user needs to login');
           if (isMounted) {
             setIsLoading(false);
           }
           return;
         }
+        
+        console.log('Found stored token, attempting verification...');
         
         if (isMounted) {
           setToken(storedToken);
@@ -55,48 +79,100 @@ export const AuthProvider = ({ children }) => {
         
         // Verify token with backend
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
           const response = await fetch(`${API_URL}/auth/verify-token`, {
             headers: {
               'Authorization': `Bearer ${storedToken}`
-            }
+            },
+            signal: controller.signal
           });
           
+          clearTimeout(timeoutId);
+          
           if (response.ok && isMounted) {
-            // Fetch complete user profile
-            const profileResponse = await fetch(`${API_URL}/users/me`, {
-              headers: { 'Authorization': `Bearer ${storedToken}` }
-            });
-            if (profileResponse.ok) {
-              const profileData = await profileResponse.json();
-              let userData = profileData.data.user;
-              if (userData.role === 'gym-owner' && !userData.gymId) {
-                userData.gymId = userData._id; // Fallback if backend doesn't provide gymId
-              }
-              setUser(userData);
-              setStorageItem(USER_STORAGE_KEY, userData);
-              
-              if (userData.role === 'gym-owner') {
-                try {
-                  await checkSubscriptionStatus(userData._id, storedToken);
-                } catch (subscriptionError) {
-                  console.error('Subscription check failed:', subscriptionError);
+            // Token is valid, fetch complete user profile
+            try {
+              const profileResponse = await fetch(`${API_URL}/users/me`, {
+                headers: { 'Authorization': `Bearer ${storedToken}` }
+              });
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json();
+                let userData = profileData.data.user;
+                if (userData.role === 'gym-owner' && !userData.gymId) {
+                  userData.gymId = userData._id; // Fallback if backend doesn't provide gymId
+                }
+                setUser(userData);
+                setStorageItem(USER_STORAGE_KEY, userData);
+                
+                if (userData.role === 'gym-owner') {
+                  try {
+                    await checkSubscriptionStatus(userData._id, storedToken);
+                  } catch (subscriptionError) {
+                    console.error('Subscription check failed:', subscriptionError);
+                  }
+                }
+              } else {
+                // Profile fetch failed, but token is valid, use stored user
+                const storedUser = getStorageItem(USER_STORAGE_KEY, null);
+                if (storedUser && isMounted) {
+                  setUser(storedUser);
                 }
               }
-            } else {
+            } catch (profileError) {
+              console.error('Profile fetch failed:', profileError);
+              // Use stored user data as fallback
               const storedUser = getStorageItem(USER_STORAGE_KEY, null);
-              if (storedUser) {
+              if (storedUser && isMounted) {
                 setUser(storedUser);
               }
             }
-          } else if (isMounted) {
+          } else if (response.status === 401 && isMounted) {
+            // Token is invalid/expired, clear auth data
+            console.log('Token expired or invalid, clearing auth data');
             clearAuthData();
+          } else if (isMounted) {
+            // Other error, but don't clear auth data immediately
+            // Try to use stored user data
+            const storedUser = getStorageItem(USER_STORAGE_KEY, null);
+            if (storedUser) {
+              console.log('Token verification failed, using stored user data');
+              setUser(storedUser);
+            } else {
+              clearAuthData();
+            }
           }
         } catch (err) {
           console.error('Token verification failed:', err);
           if (isMounted) {
+            // Network error or timeout - don't clear auth data immediately
+            // Try to use stored user data as fallback
             const storedUser = getStorageItem(USER_STORAGE_KEY, null);
             if (storedUser) {
+              console.log('Network error during token verification, using stored user data');
               setUser(storedUser);
+              
+              // Optionally, you can retry verification after a delay
+              setTimeout(async () => {
+                try {
+                  const retryResponse = await fetch(`${API_URL}/auth/verify-token`, {
+                    headers: {
+                      'Authorization': `Bearer ${storedToken}`
+                    }
+                  });
+                  
+                  if (!retryResponse.ok && retryResponse.status === 401) {
+                    console.log('Token verification retry failed - token is invalid');
+                    clearAuthData();
+                  }
+                } catch (retryError) {
+                  console.error('Token verification retry failed:', retryError);
+                  // Don't clear auth data on retry failure
+                }
+              }, 5000); // Retry after 5 seconds
+            } else {
+              clearAuthData();
             }
           }
         }
@@ -639,11 +715,38 @@ export const AuthProvider = ({ children }) => {
         userData.gymId = userData._id;
       }
       
+      // Verify token is present
+      if (!data.token) {
+        const errorMessage = 'No authentication token received from server';
+        setError(errorMessage);
+        return { success: false, message: errorMessage };
+      }
+      
+      // Set state first
       setUser(userData);
       setToken(data.token);
       
-      setStorageItem(USER_STORAGE_KEY, userData);
-      setStorageItem(TOKEN_STORAGE_KEY, data.token);
+      // Then store in localStorage with error handling
+      try {
+        setStorageItem(USER_STORAGE_KEY, userData);
+        setStorageItem(TOKEN_STORAGE_KEY, data.token);
+        
+        // Verify storage was successful
+        const storedToken = getStorageItem(TOKEN_STORAGE_KEY, null);
+        const storedUser = getStorageItem(USER_STORAGE_KEY, null);
+        
+        if (!storedToken || !storedUser) {
+          console.error('Failed to store authentication data in localStorage');
+          // Don't fail the login, but log the issue
+        } else {
+          console.log('Authentication data successfully stored');
+          // Debug the stored data
+          debugLocalStorage();
+        }
+      } catch (storageError) {
+        console.error('Error storing authentication data:', storageError);
+        // Don't fail the login, but log the issue
+      }
       
       if (userData.role === 'gym-owner') {
         try {
