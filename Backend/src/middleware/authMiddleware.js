@@ -17,10 +17,19 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    // 2) Verify token
+    // 2) Check if JWT_SECRET is available
+    if (!process.env.JWT_SECRET) {
+      console.error('CRITICAL ERROR: JWT_SECRET is not defined in environment variables');
+      return res.status(500).json({
+        status: 'error',
+        message: 'Server configuration error. Please contact administrator.'
+      });
+    }
+
+    // 3) Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3) Check if user still exists
+    // 4) Check if user still exists
     const currentUser = await User.findById(decoded.id);
     if (!currentUser) {
       return res.status(401).json({

@@ -2,6 +2,23 @@ import dotenv from 'dotenv';
 // Load environment variables FIRST
 dotenv.config();
 
+// Validate environment variables immediately after loading
+import { validateEnvironment, validateJWTSecrets, getEnvironmentStatus } from './utils/validateEnv.js';
+
+// Validate environment on startup
+const envValid = validateEnvironment();
+if (!envValid) {
+  console.error('🚨 Environment validation failed! Exiting...');
+  process.exit(1);
+}
+
+// Validate JWT secrets
+const jwtValid = validateJWTSecrets();
+if (!jwtValid) {
+  console.error('🚨 JWT secrets validation failed! Exiting...');
+  process.exit(1);
+}
+
 import express from 'express';
 import cors from 'cors';
 import { corsMiddleware, additionalCorsHeaders, preflightHandler } from './middleware/cors.js';
@@ -290,6 +307,15 @@ app.patch('/patch-test', (req, res) => {
     origin: req.headers.origin,
     method: req.method,
     timestamp: new Date().toISOString()
+  });
+});
+
+// Environment debug endpoint
+app.get('/api/env-status', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Environment status check',
+    data: getEnvironmentStatus()
   });
 });
 

@@ -93,7 +93,12 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       try {
         // Debug localStorage status
-        const { token: storedToken, user: storedUser } = debugLocalStorage();
+        const { token: storedToken, accessToken, refreshToken, user: storedUser } = debugLocalStorage();
+        
+        // Initialize API client with stored tokens
+        if (storedToken || accessToken) {
+          apiClient.setTokens(storedToken || accessToken, refreshToken);
+        }
         
         if (!storedToken) {
           console.log('No stored token found, user needs to login');
@@ -688,30 +693,11 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(true);
     
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: credentials.email,
-          password: credentials.password,
-        }),
+      // Use the new API client with refresh token support
+      const data = await apiClient.login({
+        email: credentials.email,
+        password: credentials.password,
       });
-      
-      if (!response.ok) {
-        let errorMessage = 'Invalid email or password';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (parseError) {
-          console.error('Error parsing response:', parseError);
-        }
-        setError(errorMessage);
-        return { success: false, message: errorMessage };
-      }
-      
-      const data = await response.json();
       
       if (!data || !data.data || !data.data.user) {
         const errorMessage = 'Invalid response from server';
@@ -747,8 +733,11 @@ export const AuthProvider = ({ children }) => {
         userData.gymId = userData._id;
       }
       
-      // Verify token is present
-      if (!data.token) {
+      // Verify tokens are present
+      const accessToken = data.accessToken || data.token;
+      const refreshToken = data.refreshToken;
+      
+      if (!accessToken) {
         const errorMessage = 'No authentication token received from server';
         setError(errorMessage);
         return { success: false, message: errorMessage };
@@ -756,12 +745,16 @@ export const AuthProvider = ({ children }) => {
       
       // Set state first
       setUser(userData);
-      setToken(data.token);
+      setToken(accessToken);
       
       // Then store in localStorage with error handling
       try {
         setStorageItem(USER_STORAGE_KEY, userData);
-        setStorageItem(TOKEN_STORAGE_KEY, data.token);
+        setStorageItem(TOKEN_STORAGE_KEY, accessToken); // Legacy token
+        setStorageItem(ACCESS_TOKEN_KEY, accessToken);
+        if (refreshToken) {
+          setStorageItem(REFRESH_TOKEN_KEY, refreshToken);
+        }
         
         // Verify storage was successful
         const storedToken = getStorageItem(TOKEN_STORAGE_KEY, null);
@@ -782,7 +775,7 @@ export const AuthProvider = ({ children }) => {
       
       if (userData.role === 'gym-owner') {
         try {
-          const subscriptionActive = await checkSubscriptionStatus(userData._id, data.token);
+          const subscriptionActive = await checkSubscriptionStatus(userData._id, accessToken);
           if (!subscriptionActive) {
             return { 
               success: true, 
@@ -807,8 +800,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    clearAuthData();
+  const logout = async () => {
+    try {
+      // Call server logout endpoint to invalidate refresh token
+      await apiClient.logout();
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      // Always clear local data regardless of server response
+      clearAuthData();
+    }
   };
 
   const userRole = user?.role || "";
@@ -894,119 +895,104 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const authFetch = async (url, options = {}) => {
-    if (!token) {
-      console.error('AuthFetch called without token. Current token state:', !!token);
-      throw new Error('Authentication required');
+    // Enhanced token checking and initialization
+    let currentToken = apiClient.getAccessToken();
+    
+    // If no token in API client, try to initialize from storage
+    if (!currentToken) {
+      console.log('No token in API client, checking storage...');
+      const { token: storedToken, accessToken, refreshToken } = debugLocalStorage();
+      
+      if (storedToken || accessToken) {
+        console.log('Found tokens in storage, initializing API client');
+        currentToken = storedToken || accessToken;
+        apiClient.setTokens(currentToken, refreshToken);
+      } else if (token) {
+        // Fallback to context token
+        console.log('Using context token as fallback');
+        currentToken = token;
+        apiClient.setTokens(token, null);
+      } else {
+        console.error('AuthFetch: No authentication token found');
+        console.error('Storage check:', { storedToken: !!storedToken, accessToken: !!accessToken });
+        console.error('Context state:', { contextToken: !!token, user: !!user });
+        throw new Error('Authentication required - please log in again');
+      }
     }
-    
-    // Validate token format
-    if (typeof token !== 'string' || token.length < 10) {
-      console.error('Invalid token format:', token);
-      clearAuthData();
-      throw new Error('Invalid authentication token. Please login again.');
-    }
-    
-    const headers = {
-      ...options.headers,
-      'Authorization': `Bearer ${token}`
-    };
-    
-    if ((options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH') && !headers['Content-Type']) {
-      headers['Content-Type'] = 'application/json';
-    }
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 15000);
-    
-    const authOptions = {
-      ...options,
-      headers,
-      signal: controller.signal
-    };
-    
-    const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
     
     try {
-      console.log(`Making ${options.method || 'GET'} request to: ${fullUrl}`);
-      console.log(`User role: ${userRole}, User ID: ${user?._id}`);
-      const response = await fetch(fullUrl, authOptions);
+      console.log(`Making ${options.method || 'GET'} request to: ${url}`);
+      console.log(`User role: ${user?.role}, User ID: ${user?._id}`);
       
-      clearTimeout(timeoutId);
+      // Use the API client which handles token refresh automatically
+      let response;
+      const { method = 'GET', body, ...restOptions } = options;
       
-      if (response.status === 401) {
-        clearAuthData();
-        throw new Error('Authentication expired. Please login again.');
+      // Remove the 'signal' and 'timeout' as API client handles these
+      const cleanOptions = { ...restOptions };
+      delete cleanOptions.signal;
+      delete cleanOptions.timeout;
+      
+      switch (method.toUpperCase()) {
+        case 'POST':
+          response = await apiClient.post(url, body ? JSON.parse(body) : undefined, cleanOptions);
+          break;
+        case 'PUT':
+          response = await apiClient.put(url, body ? JSON.parse(body) : undefined, cleanOptions);
+          break;
+        case 'PATCH':
+          response = await apiClient.patch(url, body ? JSON.parse(body) : undefined, cleanOptions);
+          break;
+        case 'DELETE':
+          response = await apiClient.delete(url, cleanOptions);
+          break;
+        default:
+          response = await apiClient.get(url, cleanOptions);
       }
       
-      if (response.status === 403) {
-        console.error('Permission denied for request:', fullUrl);
-        return {
-          success: false,
-          status: 'error',
-          message: 'Permission denied',
-          data: null
-        };
-      }
+      // Transform axios response to match expected format
+      const responseData = response.data;
       
-      if (response.status === 404) {
-        console.error('Resource not found:', fullUrl);
-        return {
-          success: false,
-          status: 'error',
-          message: 'Resource not found',
-          data: null
-        };
-      }
+      return {
+        success: responseData.status === 'success',
+        status: responseData.status || 'success',
+        message: responseData.message || 'Request completed successfully',
+        data: responseData.data || responseData
+      };
       
-      if (response.status === 500) {
-        console.error('Server error (500):', fullUrl);
-        try {
-          const errorData = await response.json();
-          console.error('Server error details:', errorData);
+    } catch (error) {
+      if (error.response) {
+        const statusCode = error.response.status;
+        const errorData = error.response.data;
+        
+        if (statusCode === 401) {
+          console.error('Authentication failed:', errorData?.message);
           return {
             success: false,
             status: 'error',
-            message: errorData.message || 'Internal server error',
-            data: null
-          };
-        } catch (parseError) {
-          console.error('Could not parse error response:', parseError);
-          return {
-            success: false,
-            status: 'error',
-            message: 'Internal server error',
+            message: errorData?.message || 'Authentication expired. Please login again.',
             data: null
           };
         }
-      }
-      
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        return data;
-      } else {
-        const text = await response.text();
-        console.error('Non-JSON response received:', text.substring(0, 100) + '...');
+        
+        if (statusCode === 403) {
+          console.error('Permission denied for request:', url);
+          return {
+            success: false,
+            status: 'error',
+          message: 'Permission denied',
+          data: null
+        };
+        
         return {
           success: false,
           status: 'error',
-          message: 'Invalid response format from server',
-          data: null
-        };
-      }
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error.name === 'AbortError') {
-        console.error('Request timed out:', fullUrl);
-        return {
-          success: false,
-          status: 'error',
-          message: 'Request timed out. Please try again.',
-          data: null
+          message: errorData?.message || 'Server error occurred',
+          data: errorData?.data || null
         };
       }
       
+      // Handle network or other errors
       console.error('Error in authFetch:', error.message);
       return {
         success: false,
