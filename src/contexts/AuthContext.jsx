@@ -1021,9 +1021,10 @@ export const AuthProvider = ({ children }) => {
           return {
             success: false,
             status: 'error',
-          message: 'Permission denied',
-          data: null
-        };
+            message: 'Permission denied',
+            data: null
+          };
+        }
         
         return {
           success: false,
