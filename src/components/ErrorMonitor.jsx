@@ -70,6 +70,13 @@ const ErrorMonitor = () => {
     setIsLoading(true);
     try {
       const response = await fetch('/api/system-status/status');
+      
+      // Check if response is HTML (error page) instead of JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned HTML instead of JSON - likely a routing or server error');
+      }
+      
       const data = await response.json();
       
       if (data.success) {
@@ -80,13 +87,19 @@ const ErrorMonitor = () => {
       }
     } catch (error) {
       console.error('Error fetching system status:', error);
-      toast.error('Failed to fetch system status');
       
-      // Dispatch custom error event
+      // Don't show toast for JSON parsing errors - they're usually server routing issues
+      if (!error.message.includes('Unexpected token')) {
+        toast.error('Failed to fetch system status');
+      }
+      
+      // Dispatch custom error event with better error handling
       window.dispatchEvent(new CustomEvent('custom-error', {
         detail: {
           type: 'api',
-          message: error.message,
+          message: error.message.includes('Unexpected token') 
+            ? 'Server routing error - endpoint not found' 
+            : error.message,
           source: 'ErrorMonitor',
           severity: 'warning'
         }

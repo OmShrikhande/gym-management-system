@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Login Test</h1>
+        <p>This page tests the login functionality without the problematic settings calls.</p>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit">Test Login</button>
+        </form>
+        
+        <div id="result"></div>
+        
+        <h3>Debug Info:</h3>
+        <div id="debugInfo"></div>
+        
+        <button onclick="clearStorage()">Clear All Storage</button>
+        <button onclick="checkTokens()">Check Stored Tokens</button>
+    </div>
+
+    <script>
+        const API_URL = 'https://gym-management-system-ckb0.onrender.com/api';
+        
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.innerHTML = '<div class="info">Testing login...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.data) {
+                    // Store tokens
+                    if (data.accessToken || data.token) {
+                        localStorage.setItem('gymflow_access_token', data.accessToken || data.token);
+                        localStorage.setItem('gymflow_token', data.accessToken || data.token);
+                    }
+                    if (data.refreshToken) {
+                        localStorage.setItem('gymflow_refresh_token', data.refreshToken);
+                    }
+                    if (data.data.user) {
+                        localStorage.setItem('gymflow_user', JSON.stringify(data.data.user));
+                    }
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <h4>Login Successful!</h4>
+                            <p>User: ${data.data.user.name} (${data.data.user.role})</p>
+                            <p>Token received: ${!!(data.accessToken || data.token)}</p>
+                            <p>Refresh token: ${!!data.refreshToken}</p>
+                        </div>
+                    `;
+                    
+                    // Test a simple API call
+                    setTimeout(testApiCall, 1000);
+                } else {
+                    resultDiv.innerHTML = `<div class="error">Login failed: ${data.message || 'Unknown error'}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Network error: ${error.message}</div>`;
+            }
+            
+            updateDebugInfo();
+        });
+        
+        async function testApiCall() {
+            const token = localStorage.getItem('gymflow_access_token') || localStorage.getItem('gymflow_token');
+            if (!token) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/verify-token`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const resultDiv = document.getElementById('result');
+                if (response.ok) {
+                    resultDiv.innerHTML += '<div class="success">Token verification successful!</div>';
+                } else {
+                    resultDiv.innerHTML += '<div class="error">Token verification failed: ' + response.status + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML += '<div class="error">Token verification error: ' + error.message + '</div>';
+            }
+        }
+        
+        function clearStorage() {
+            const keys = ['gymflow_access_token', 'gymflow_refresh_token', 'gymflow_token', 'gymflow_user'];
+            keys.forEach(key => localStorage.removeItem(key));
+            
+            // Clear gym settings
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('gym_settings_')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            document.getElementById('result').innerHTML = '<div class="info">Storage cleared!</div>';
+            updateDebugInfo();
+        }
+        
+        function checkTokens() {
+            updateDebugInfo();
+        }
+        
+        function updateDebugInfo() {
+            const debugDiv = document.getElementById('debugInfo');
+            const accessToken = localStorage.getItem('gymflow_access_token');
+            const refreshToken = localStorage.getItem('gymflow_refresh_token');
+            const legacyToken = localStorage.getItem('gymflow_token');
+            const user = localStorage.getItem('gymflow_user');
+            
+            debugDiv.innerHTML = `
+                <p><strong>Access Token:</strong> ${accessToken ? 'Present (' + accessToken.length + ' chars)' : 'None'}</p>
+                <p><strong>Refresh Token:</strong> ${refreshToken ? 'Present (' + refreshToken.length + ' chars)' : 'None'}</p>
+                <p><strong>Legacy Token:</strong> ${legacyToken ? 'Present (' + legacyToken.length + ' chars)' : 'None'}</p>
+                <p><strong>User Data:</strong> ${user ? 'Present' : 'None'}</p>
+                <p><strong>Storage Available:</strong> ${typeof(Storage) !== "undefined" ? 'Yes' : 'No'}</p>
+            `;
+        }
+        
+        // Initialize debug info
+        updateDebugInfo();
+    </script>
+</body>
+</html>

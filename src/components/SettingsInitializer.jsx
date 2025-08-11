@@ -133,7 +133,13 @@ const SettingsInitializer = () => {
     
     // Only fetch settings if we have both user and authFetch available
     if (user && authFetch) {
-      fetchAndApplySettings();
+      // TEMPORARY FIX: Skip API call to prevent 401 logout loop
+      console.log('Temporarily skipping settings API call to prevent logout loop');
+      initializeSettings(user._id, user.role, user.gymId);
+      setIsInitialized(true);
+      
+      // TODO: Re-enable this once backend settings endpoint is fixed
+      // fetchAndApplySettings();
     } else if (!user) {
       // Handle non-authenticated case
       initializeSettings();

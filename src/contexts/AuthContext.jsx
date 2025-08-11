@@ -978,6 +978,18 @@ export const AuthProvider = ({ children }) => {
         
         if (statusCode === 401) {
           console.error('🚨 401 Authentication Error:', errorData?.message);
+          
+          // Check if this is a settings-related request - don't logout for settings failures
+          if (error.config?.url?.includes('/settings')) {
+            console.log('Settings request failed with 401 - not logging out user');
+            return {
+              success: false,
+              status: 'error',
+              message: 'Settings access denied - using local settings',
+              data: null
+            };
+          }
+          
           console.log('Clearing all auth data and redirecting to login...');
           
           // Immediate cleanup of all authentication data
