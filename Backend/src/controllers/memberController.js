@@ -8,13 +8,23 @@ import firestoreService from '../services/firestoreService.js';
 // Verify membership and subscription status for QR code scanning
 // When successful, sends "allow" response to NodeMCU for access control
 export const verifyMembership = catchAsync(async (req, res, next) => {
-  console.log('Verify membership request received');
+  console.log('=== VERIFY MEMBERSHIP REQUEST START ===');
+  console.log('Request method:', req.method);
+  console.log('Request URL:', req.originalUrl);
+  console.log('Request headers:', req.headers);
   console.log('Request body:', req.body);
   console.log('Request user:', req.user || 'No authenticated user (device access)');
+  console.log('User role:', req.user?.role || 'No role');
+  console.log('User ID:', req.user?._id?.toString() || 'No user ID');
   
   const { gymOwnerId, memberId, timestamp } = req.body;
 
   console.log('Extracted values:', { gymOwnerId, memberId, timestamp });
+  console.log('Types:', { 
+    gymOwnerIdType: typeof gymOwnerId, 
+    memberIdType: typeof memberId, 
+    timestampType: typeof timestamp 
+  });
 
   // Validate input
   if (!gymOwnerId || !memberId) {
@@ -23,9 +33,33 @@ export const verifyMembership = catchAsync(async (req, res, next) => {
   }
 
   // Check if the requesting user is the member (skip for device access)
+  // Allow device access (no req.user) or members verifying their own membership
+  console.log('=== AUTHORIZATION CHECK ===');
+  console.log('Has authenticated user:', !!req.user);
+  console.log('User ID from token:', req.user?._id?.toString());
+  console.log('Member ID from request:', memberId);
+  console.log('IDs match:', req.user?._id?.toString() === memberId);
+  
   if (req.user && req.user._id.toString() !== memberId) {
-    console.log('User ID mismatch:', { requestUserId: req.user._id.toString(), memberId });
+    console.log('❌ AUTHORIZATION FAILED - User ID mismatch:', { 
+      requestUserId: req.user._id.toString(), 
+      memberId,
+      userRole: req.user.role,
+      comparison: `${req.user._id.toString()} !== ${memberId}`
+    });
     return next(new AppError('You can only verify your own membership', 403));
+  }
+  
+  // Log successful authorization
+  if (req.user) {
+    console.log('✅ AUTHORIZATION SUCCESS - Member authorized to verify own membership:', {
+      userId: req.user._id.toString(),
+      memberId,
+      userRole: req.user.role,
+      idsMatch: req.user._id.toString() === memberId
+    });
+  } else {
+    console.log('✅ DEVICE ACCESS - No authentication required');
   }
 
   // Find the gym owner
