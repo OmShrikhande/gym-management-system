@@ -24,6 +24,15 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// Message handler for clearing rate limits
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'CLEAR_RATE_LIMITS') {
+    console.log('🔄 Clearing rate limits as requested');
+    failedRequestTracker.clear();
+    event.ports[0]?.postMessage({ success: true });
+  }
+});
+
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   console.log('Service Worker activating');
@@ -101,13 +110,63 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+// Rate limiting for failed requests
+const failedRequestTracker = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_FAILURES_PER_WINDOW = 3;
+
 // Helper function to check if URL is a settings endpoint
 function isSettingsEndpoint(pathname) {
   return SETTINGS_ENDPOINTS.some(endpoint => pathname.startsWith(endpoint));
 }
 
+// Helper function to check if request should be rate limited
+function shouldRateLimit(url) {
+  const now = Date.now();
+  const failures = failedRequestTracker.get(url) || [];
+  
+  // Clean up old failures outside the window
+  const recentFailures = failures.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+  failedRequestTracker.set(url, recentFailures);
+  
+  return recentFailures.length >= MAX_FAILURES_PER_WINDOW;
+}
+
+// Helper function to record a failed request
+function recordFailure(url) {
+  const failures = failedRequestTracker.get(url) || [];
+  failures.push(Date.now());
+  failedRequestTracker.set(url, failures);
+}
+
 // Helper function to fetch and update cache
 async function fetchAndUpdateCache(request, cache) {
+  const url = request.url;
+  
+  // Check if this URL should be rate limited
+  if (shouldRateLimit(url)) {
+    console.log('🚫 Rate limited request to:', url);
+    // Return cached response if available
+    const cachedResponse = await cache.match(request);
+    if (cachedResponse) {
+      console.log('Returning cached response for rate-limited request');
+      return cachedResponse;
+    }
+    // If no cache, return a synthetic error response
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Request rate limited - too many recent failures',
+        cached: true
+      }),
+      {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+  
   try {
     // Add timeout to prevent hanging requests
     const controller = new AbortController();
@@ -157,6 +216,9 @@ async function fetchAndUpdateCache(request, cache) {
     return response;
   } catch (error) {
     console.error('Error fetching settings:', error.name, error.message);
+    
+    // Record this failure for rate limiting
+    recordFailure(url);
     
     // Handle different types of errors
     if (error.name === 'AbortError') {

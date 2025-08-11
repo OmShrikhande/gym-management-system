@@ -13,6 +13,12 @@ export const useGymBranding = () => {
   const [gymSettings, setGymSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastFetchAttempt, setLastFetchAttempt] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Prevent too frequent requests (minimum 30 seconds between attempts)
+  const MIN_FETCH_INTERVAL = 30000; // 30 seconds
+  const MAX_RETRIES = 3;
 
   // Get gym ID - for gym owners it's their user ID, for trainers/members it's their gymId or createdBy
   const getGymId = () => {
@@ -26,11 +32,40 @@ export const useGymBranding = () => {
   };
 
   // Fetch gym settings from server
-  const fetchGymSettings = async () => {
+  const fetchGymSettings = async (forceRefresh = false) => {
     if (!user || !authFetch) return;
+
+    // Rate limiting: prevent too frequent requests
+    const now = Date.now();
+    if (!forceRefresh && (now - lastFetchAttempt) < MIN_FETCH_INTERVAL) {
+      console.log('⏰ Rate limited: Too soon since last fetch attempt');
+      return;
+    }
+
+    // Retry limiting: prevent infinite retries
+    if (!forceRefresh && retryCount >= MAX_RETRIES) {
+      console.log('🚫 Max retries reached, using cached settings only');
+      // Try to load from cache one more time
+      const gymId = getGymId();
+      if (gymId) {
+        const storageKey = `gym_branding_${gymId}`;
+        const cachedSettings = localStorage.getItem(storageKey);
+        if (cachedSettings) {
+          try {
+            setGymSettings(JSON.parse(cachedSettings));
+            console.log('✅ Using cached settings after max retries');
+          } catch (e) {
+            console.error('Error parsing cached settings:', e);
+          }
+        }
+      }
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    setLastFetchAttempt(now);
 
     try {
       const gymId = getGymId();
@@ -41,12 +76,7 @@ export const useGymBranding = () => {
         return;
       }
       
-      console.log('Fetching gym settings for:', { gymId, userRole });
-      
-      // Debug authentication state before making requests
-      console.log('🔍 Auth state before settings request:');
-      debugAuthState();
-      checkTokenHealth();
+      console.log('Fetching gym settings for:', { gymId, userRole, attempt: retryCount + 1 });
 
       // Always try user-specific settings first as they're more reliable
       let primaryEndpoint = `/settings/user/${user._id}`;
@@ -124,6 +154,9 @@ export const useGymBranding = () => {
         console.log(`Settings loaded successfully from ${usedEndpoint}`);
         setGymSettings(response.data.settings);
         
+        // Reset retry count on successful fetch
+        setRetryCount(0);
+        
         // Store in localStorage for offline access
         const storageKey = `gym_branding_${gymId}`;
         localStorage.setItem(storageKey, JSON.stringify(response.data.settings));
@@ -151,23 +184,53 @@ export const useGymBranding = () => {
     } catch (err) {
       console.error('Error fetching gym settings:', err);
       
-      // Always try to use cached settings as final fallback
-      const gymId = getGymId();
-      if (gymId) {
-        const storageKey = `gym_branding_${gymId}`;
-        const cachedSettings = localStorage.getItem(storageKey);
-        if (cachedSettings) {
-          console.log('Using cached settings as final fallback');
-          setGymSettings(JSON.parse(cachedSettings));
-          setError(null); // Clear error if we found cached settings
-        } else {
-          // Only set error if we don't have cached settings and it's not an auth error
-          if (!err.message?.includes('Settings access denied') && 
-              !err.message?.includes('Authentication required') &&
-              !err.message?.includes('Session expired')) {
-            setError(err.message);
+      // Check if this is a timeout or network error
+      const isTimeoutError = err.message?.includes('timeout') || 
+                            err.message?.includes('408') || 
+                            err.message?.includes('AbortError') ||
+                            err.name === 'AbortError';
+      
+      const isNetworkError = err.message?.includes('Failed to fetch') || 
+                            err.message?.includes('Network') ||
+                            err.name === 'TypeError';
+      
+      if (isTimeoutError || isNetworkError) {
+        console.log(`🌐 ${isTimeoutError ? 'Timeout' : 'Network'} error detected, incrementing retry count`);
+        setRetryCount(prev => prev + 1);
+        
+        // Don't set error for timeout/network issues, just use cached settings
+        const gymId = getGymId();
+        if (gymId) {
+          const storageKey = `gym_branding_${gymId}`;
+          const cachedSettings = localStorage.getItem(storageKey);
+          if (cachedSettings) {
+            console.log('✅ Using cached settings due to network/timeout error');
+            setGymSettings(JSON.parse(cachedSettings));
+            setError(null);
           } else {
-            console.log('Auth error with no cached settings - using defaults');
+            console.log('⚠️ No cached settings available for network/timeout error');
+            setError('Network error - using default settings');
+          }
+        }
+      } else {
+        // Handle other types of errors
+        const gymId = getGymId();
+        if (gymId) {
+          const storageKey = `gym_branding_${gymId}`;
+          const cachedSettings = localStorage.getItem(storageKey);
+          if (cachedSettings) {
+            console.log('Using cached settings as final fallback');
+            setGymSettings(JSON.parse(cachedSettings));
+            setError(null);
+          } else {
+            // Only set error if we don't have cached settings and it's not an auth error
+            if (!err.message?.includes('Settings access denied') && 
+                !err.message?.includes('Authentication required') &&
+                !err.message?.includes('Session expired')) {
+              setError(err.message);
+            } else {
+              console.log('Auth error with no cached settings - using defaults');
+            }
           }
         }
       }
@@ -291,10 +354,10 @@ export const useGymBranding = () => {
 
   // Force refresh settings and clear all caches
   const forceRefresh = async () => {
-    const freshSettings = await forceRefreshSettings(user?._id, userRole, getGymId(), authFetch);
-    if (freshSettings) {
-      setGymSettings(freshSettings);
-    }
+    // Reset retry count and force a fresh fetch
+    setRetryCount(0);
+    setLastFetchAttempt(0);
+    await fetchGymSettings(true); // Force refresh
   };
 
   // Debug function for authentication issues
