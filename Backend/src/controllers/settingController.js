@@ -72,54 +72,25 @@ export const updateGlobalSettings = catchAsync(async (req, res) => {
 export const getGymSettings = catchAsync(async (req, res) => {
   const { gymId } = req.params;
 
-  // Enhanced debugging for authorization
-  console.log('getGymSettings authorization check:', {
-    userRole: req.user.role,
-    userId: req.user._id.toString(),
-    requestedGymId: gymId,
-    userGymId: req.user.gymId?.toString(),
-    userCreatedBy: req.user.createdBy?.toString(),
-    userIdMatchesGymId: req.user._id.toString() === gymId
-  });
-
   // Check if user is authorized
   let isAuthorized = false;
   
   if (req.user.role === 'super-admin') {
     isAuthorized = true;
-    console.log('Access granted: Super admin');
   } else if (req.user.role === 'gym-owner' && req.user._id.toString() === gymId) {
     isAuthorized = true;
-    console.log('Access granted: Gym owner accessing own settings');
   } else if (req.user.role === 'trainer' || req.user.role === 'member') {
     // For trainers and members, check both gymId and createdBy fields
     const userGymId = req.user.gymId?.toString() || req.user.createdBy?.toString();
     if (userGymId === gymId) {
       isAuthorized = true;
-      console.log('Access granted: Trainer/member accessing gym settings');
     }
   }
   
   if (!isAuthorized) {
-    console.log('Settings access denied:', {
-      userRole: req.user.role,
-      userId: req.user._id.toString(),
-      requestedGymId: gymId,
-      userGymId: req.user.gymId?.toString(),
-      userCreatedBy: req.user.createdBy?.toString(),
-      reason: req.user.role === 'gym-owner' ? 'User ID does not match requested gym ID' : 'User not associated with requested gym'
-    });
-    
     return res.status(403).json({
       success: false,
-      message: 'Access denied. You can only access settings for your gym.',
-      debug: {
-        userRole: req.user.role,
-        requestedGymId: gymId,
-        userGymId: req.user.gymId?.toString(),
-        userCreatedBy: req.user.createdBy?.toString(),
-        userIdMatchesGymId: req.user._id.toString() === gymId
-      }
+      message: 'Access denied. You can only access settings for your gym.'
     });
   }
 
@@ -262,22 +233,8 @@ export const updateGymSettings = catchAsync(async (req, res) => {
 export const getUserSettings = catchAsync(async (req, res) => {
   const { userId } = req.params;
 
-  // Enhanced debugging for user settings
-  console.log('getUserSettings authorization check:', {
-    userRole: req.user.role,
-    requestUserId: req.user._id.toString(),
-    requestedUserId: userId,
-    userIdMatches: req.user._id.toString() === userId
-  });
-
   // Users can only access their own settings (except super admin)
   if (req.user.role !== 'super-admin' && req.user._id.toString() !== userId) {
-    console.log('User settings access denied:', {
-      userRole: req.user.role,
-      requestUserId: req.user._id.toString(),
-      requestedUserId: userId
-    });
-    
     return res.status(403).json({
       success: false,
       message: 'Access denied. You can only access your own settings.'

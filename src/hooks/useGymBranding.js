@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAppSettings, forceRefreshSettings } from '@/lib/settings';
 import { validateAndSecureUrl } from '@/utils/urlValidator';
+import { debugAuthState, checkTokenHealth } from '@/utils/authDebug';
 
 /**
  * Custom hook for managing gym branding and app settings
@@ -41,74 +42,86 @@ export const useGymBranding = () => {
       }
       
       console.log('Fetching gym settings for:', { gymId, userRole });
-
-      let endpoint;
-      let fallbackEndpoint;
       
-      // For gym owners, try gym endpoint first, then user endpoint as fallback
-      if (isGymOwner) {
-        endpoint = `/settings/gym/${gymId}`;
-        fallbackEndpoint = `/settings/user/${user._id}`;
-      } 
-      // For trainers and members, get their gym's settings
-      else if (userRole === 'trainer' || userRole === 'member') {
-        endpoint = `/settings/gym/${gymId}`;
-        fallbackEndpoint = `/settings/user/${user._id}`;
-      }
-      // For super admin, get global settings
-      else if (userRole === 'super-admin') {
-        endpoint = '/settings';
-        fallbackEndpoint = `/settings/user/${user._id}`;
-      }
+      // Debug authentication state before making requests
+      console.log('🔍 Auth state before settings request:');
+      debugAuthState();
+      checkTokenHealth();
 
-      if (!endpoint) {
-        setError('Invalid user role');
-        setLoading(false);
-        return;
+      // Always try user-specific settings first as they're more reliable
+      let primaryEndpoint = `/settings/user/${user._id}`;
+      let fallbackEndpoint = null;
+      
+      // For gym owners, also try gym endpoint as fallback
+      if (isGymOwner) {
+        fallbackEndpoint = `/settings/gym/${gymId}`;
+      } 
+      // For trainers and members, try gym settings as fallback
+      else if (userRole === 'trainer' || userRole === 'member') {
+        fallbackEndpoint = `/settings/gym/${gymId}`;
+      }
+      // For super admin, try global settings as fallback
+      else if (userRole === 'super-admin') {
+        fallbackEndpoint = '/settings';
       }
 
       let response;
-      let usedEndpoint = endpoint;
+      let usedEndpoint = primaryEndpoint;
+      let authError = false;
       
       try {
-        console.log(`Attempting to fetch settings from: ${endpoint}`);
-        response = await authFetch(endpoint);
+        console.log(`Attempting to fetch settings from: ${primaryEndpoint}`);
+        response = await authFetch(primaryEndpoint);
         
-        // If the primary endpoint fails and we have a fallback, try it
-        if (!response.success && fallbackEndpoint) {
+        // If the primary endpoint fails with auth error, don't try fallback
+        if (!response.success && response.message?.includes('Settings access denied')) {
+          console.log('Settings access denied, using cached settings only');
+          authError = true;
+        }
+        // If primary endpoint fails for other reasons and we have a fallback, try it
+        else if (!response.success && fallbackEndpoint && !authError) {
           console.log(`Primary endpoint failed, trying fallback: ${fallbackEndpoint}`);
-          response = await authFetch(fallbackEndpoint);
-          usedEndpoint = fallbackEndpoint;
+          try {
+            response = await authFetch(fallbackEndpoint);
+            usedEndpoint = fallbackEndpoint;
+          } catch (fallbackError) {
+            console.log(`Fallback endpoint failed:`, fallbackError.message);
+            if (fallbackError.message?.includes('Settings access denied')) {
+              authError = true;
+            }
+          }
         }
         
-        // Special handling for super admin global settings access
-        if (userRole === 'super-admin' && endpoint === '/settings' && !response.success && 
-            (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
-          console.log('Global branding settings access denied, falling back to user-specific settings');
-          response = await authFetch(fallbackEndpoint);
-          usedEndpoint = fallbackEndpoint;
-        }
       } catch (error) {
-        console.log(`Error with ${endpoint}:`, error.message);
+        console.log(`Error with ${primaryEndpoint}:`, error.message);
         
-        // Try fallback endpoint if available
-        if (fallbackEndpoint) {
+        // Check if it's an auth error
+        if (error.message?.includes('Settings access denied') || 
+            error.message?.includes('Authentication required') ||
+            error.message?.includes('Session expired')) {
+          console.log('Authentication error detected, using cached settings');
+          authError = true;
+        } else if (fallbackEndpoint && !authError) {
           try {
             console.log(`Trying fallback endpoint: ${fallbackEndpoint}`);
             response = await authFetch(fallbackEndpoint);
             usedEndpoint = fallbackEndpoint;
           } catch (fallbackError) {
             console.log(`Fallback endpoint also failed:`, fallbackError.message);
-            throw fallbackError;
+            if (fallbackError.message?.includes('Settings access denied')) {
+              authError = true;
+            } else {
+              throw fallbackError;
+            }
           }
         } else {
           throw error;
         }
       }
       
-      console.log(`Settings response from ${usedEndpoint}:`, { success: response.success, hasSettings: !!response.data?.settings });
-      
-      if (response.success && response.data?.settings) {
+      // If we got a successful response, use it
+      if (response && response.success && response.data?.settings) {
+        console.log(`Settings loaded successfully from ${usedEndpoint}`);
         setGymSettings(response.data.settings);
         
         // Store in localStorage for offline access
@@ -116,35 +129,46 @@ export const useGymBranding = () => {
         localStorage.setItem(storageKey, JSON.stringify(response.data.settings));
         console.log(`Settings cached with key: ${storageKey}`);
       } else {
-        console.log('No settings in response, checking localStorage cache');
-        // Try to get from localStorage as fallback
+        // If no successful response or auth error, use cached settings
+        console.log('No successful response, checking localStorage cache');
         const storageKey = `gym_branding_${gymId}`;
         const cachedSettings = localStorage.getItem(storageKey);
         if (cachedSettings) {
           console.log('Using cached settings from localStorage');
           setGymSettings(JSON.parse(cachedSettings));
+          
+          // If it was an auth error, don't show error message
+          if (authError) {
+            console.log('Auth error occurred, but using cached settings successfully');
+          }
         } else {
           console.log('No cached settings found');
-          setError('No settings found');
+          if (!authError) {
+            setError('No settings found');
+          }
         }
       }
     } catch (err) {
       console.error('Error fetching gym settings:', err);
       
-      // Don't set error if it's a settings-related 401 (handled by authFetch)
-      if (!err.message?.includes('Settings access denied')) {
-        setError(err.message);
-      }
-      
-      // Try to get from localStorage as fallback
+      // Always try to use cached settings as final fallback
       const gymId = getGymId();
       if (gymId) {
         const storageKey = `gym_branding_${gymId}`;
         const cachedSettings = localStorage.getItem(storageKey);
         if (cachedSettings) {
-          console.log('Using cached settings as error fallback');
+          console.log('Using cached settings as final fallback');
           setGymSettings(JSON.parse(cachedSettings));
           setError(null); // Clear error if we found cached settings
+        } else {
+          // Only set error if we don't have cached settings and it's not an auth error
+          if (!err.message?.includes('Settings access denied') && 
+              !err.message?.includes('Authentication required') &&
+              !err.message?.includes('Session expired')) {
+            setError(err.message);
+          } else {
+            console.log('Auth error with no cached settings - using defaults');
+          }
         }
       }
     } finally {
@@ -273,6 +297,15 @@ export const useGymBranding = () => {
     }
   };
 
+  // Debug function for authentication issues
+  const debugAuth = () => {
+    console.log('🔍 Gym Branding Hook Debug:');
+    debugAuthState();
+    checkTokenHealth();
+    console.log('Current gym settings:', gymSettings);
+    console.log('Hook state:', { loading, error, user: !!user, authFetch: !!authFetch });
+  };
+
   return {
     gymSettings,
     loading,
@@ -285,6 +318,7 @@ export const useGymBranding = () => {
     getSecondaryColor,
     hasBranding,
     refetch: fetchGymSettings,
-    forceRefresh
+    forceRefresh,
+    debugAuth
   };
 };
