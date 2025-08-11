@@ -32,9 +32,20 @@ export const protect = async (req, res, next) => {
     // 4) Check if user still exists
     const currentUser = await User.findById(decoded.id);
     if (!currentUser) {
+      console.log('User not found for token:', { decodedId: decoded.id });
       return res.status(401).json({
         status: 'error',
         message: 'The user belonging to this token no longer exists.'
+      });
+    }
+
+    // Enhanced debugging for settings requests
+    if (req.path.includes('/settings')) {
+      console.log('Settings request authenticated:', {
+        userId: currentUser._id.toString(),
+        userRole: currentUser.role,
+        requestPath: req.path,
+        requestMethod: req.method
       });
     }
 
@@ -77,8 +88,24 @@ export const protect = async (req, res, next) => {
 // Restrict to certain roles
 export const restrictTo = (...roles) => {
   return (req, res, next) => {
+    // Enhanced debugging for settings requests
+    if (req.path.includes('/settings')) {
+      console.log('Role restriction check:', {
+        userRole: req.user.role,
+        allowedRoles: roles,
+        hasPermission: roles.includes(req.user.role),
+        requestPath: req.path
+      });
+    }
+    
     // roles is an array ['admin', 'gym-owner', etc]
     if (!roles.includes(req.user.role)) {
+      console.log('Role restriction failed:', {
+        userRole: req.user.role,
+        allowedRoles: roles,
+        requestPath: req.path
+      });
+      
       return res.status(403).json({
         status: 'error',
         message: 'You do not have permission to perform this action'

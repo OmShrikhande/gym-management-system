@@ -28,11 +28,6 @@ export const useGymBranding = () => {
   const fetchGymSettings = async () => {
     if (!user || !authFetch) return;
 
-    // TEMPORARY: Skip branding settings fetch to prevent 401 errors
-    console.log('Temporarily skipping branding settings fetch to prevent logout loop');
-    setLoading(false);
-    return;
-
     setLoading(true);
     setError(null);
 
@@ -48,17 +43,22 @@ export const useGymBranding = () => {
       console.log('Fetching gym settings for:', { gymId, userRole });
 
       let endpoint;
-      // For gym owners, get their own settings
+      let fallbackEndpoint;
+      
+      // For gym owners, try gym endpoint first, then user endpoint as fallback
       if (isGymOwner) {
         endpoint = `/settings/gym/${gymId}`;
+        fallbackEndpoint = `/settings/user/${user._id}`;
       } 
       // For trainers and members, get their gym's settings
       else if (userRole === 'trainer' || userRole === 'member') {
         endpoint = `/settings/gym/${gymId}`;
+        fallbackEndpoint = `/settings/user/${user._id}`;
       }
       // For super admin, get global settings
       else if (userRole === 'super-admin') {
         endpoint = '/settings';
+        fallbackEndpoint = `/settings/user/${user._id}`;
       }
 
       if (!endpoint) {
@@ -68,27 +68,45 @@ export const useGymBranding = () => {
       }
 
       let response;
+      let usedEndpoint = endpoint;
+      
       try {
+        console.log(`Attempting to fetch settings from: ${endpoint}`);
         response = await authFetch(endpoint);
         
-        // If global settings access is denied and we're a super admin, fallback to user-specific
-        if (userRole === 'super-admin' && endpoint === '/settings' && response && !response.success && 
+        // If the primary endpoint fails and we have a fallback, try it
+        if (!response.success && fallbackEndpoint) {
+          console.log(`Primary endpoint failed, trying fallback: ${fallbackEndpoint}`);
+          response = await authFetch(fallbackEndpoint);
+          usedEndpoint = fallbackEndpoint;
+        }
+        
+        // Special handling for super admin global settings access
+        if (userRole === 'super-admin' && endpoint === '/settings' && !response.success && 
             (response.message?.includes('Access denied') || response.message?.includes('Permission denied'))) {
           console.log('Global branding settings access denied, falling back to user-specific settings');
-          endpoint = `/settings/user/${user._id}`;
-          response = await authFetch(endpoint);
+          response = await authFetch(fallbackEndpoint);
+          usedEndpoint = fallbackEndpoint;
         }
       } catch (error) {
-        // Handle permission errors for super admin trying to access global settings
-        if (userRole === 'super-admin' && endpoint === '/settings' && 
-            (error.message.includes('Permission denied') || error.message.includes('Access denied') || error.message.includes('Unauthorized'))) {
-          console.log('Global branding settings access failed, trying user-specific settings');
-          endpoint = `/settings/user/${user._id}`;
-          response = await authFetch(endpoint);
+        console.log(`Error with ${endpoint}:`, error.message);
+        
+        // Try fallback endpoint if available
+        if (fallbackEndpoint) {
+          try {
+            console.log(`Trying fallback endpoint: ${fallbackEndpoint}`);
+            response = await authFetch(fallbackEndpoint);
+            usedEndpoint = fallbackEndpoint;
+          } catch (fallbackError) {
+            console.log(`Fallback endpoint also failed:`, fallbackError.message);
+            throw fallbackError;
+          }
         } else {
           throw error;
         }
       }
+      
+      console.log(`Settings response from ${usedEndpoint}:`, { success: response.success, hasSettings: !!response.data?.settings });
       
       if (response.success && response.data?.settings) {
         setGymSettings(response.data.settings);
@@ -96,19 +114,27 @@ export const useGymBranding = () => {
         // Store in localStorage for offline access
         const storageKey = `gym_branding_${gymId}`;
         localStorage.setItem(storageKey, JSON.stringify(response.data.settings));
+        console.log(`Settings cached with key: ${storageKey}`);
       } else {
+        console.log('No settings in response, checking localStorage cache');
         // Try to get from localStorage as fallback
         const storageKey = `gym_branding_${gymId}`;
         const cachedSettings = localStorage.getItem(storageKey);
         if (cachedSettings) {
+          console.log('Using cached settings from localStorage');
           setGymSettings(JSON.parse(cachedSettings));
         } else {
+          console.log('No cached settings found');
           setError('No settings found');
         }
       }
     } catch (err) {
       console.error('Error fetching gym settings:', err);
-      setError(err.message);
+      
+      // Don't set error if it's a settings-related 401 (handled by authFetch)
+      if (!err.message?.includes('Settings access denied')) {
+        setError(err.message);
+      }
       
       // Try to get from localStorage as fallback
       const gymId = getGymId();
@@ -116,7 +142,9 @@ export const useGymBranding = () => {
         const storageKey = `gym_branding_${gymId}`;
         const cachedSettings = localStorage.getItem(storageKey);
         if (cachedSettings) {
+          console.log('Using cached settings as error fallback');
           setGymSettings(JSON.parse(cachedSettings));
+          setError(null); // Clear error if we found cached settings
         }
       }
     } finally {
