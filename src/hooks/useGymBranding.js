@@ -28,6 +28,11 @@ export const useGymBranding = () => {
   const fetchGymSettings = async () => {
     if (!user || !authFetch) return;
 
+    // TEMPORARY: Skip branding settings fetch to prevent 401 errors
+    console.log('Temporarily skipping branding settings fetch to prevent logout loop');
+    setLoading(false);
+    return;
+
     setLoading(true);
     setError(null);
 
