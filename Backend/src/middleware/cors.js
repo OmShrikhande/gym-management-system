@@ -6,10 +6,14 @@ const allowedOrigins = [
   'http://localhost:5174', // Added for Vite dev server
   'http://localhost:3000',
   'http://localhost:5000',
+  'http://localhost:8080', // Added for local testing
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8080',
   'https://gentle-gingersnap-9fde09.netlify.app',
   'https://gentle-gingersnap-9fde09.netlify.app/',
-  process.env.FRONTEND_URL
-].filter(Boolean);
+  process.env.FRONTEND_URL,
+  null // Allow file:// protocol for local testing
+].filter(origin => origin !== undefined);
 
 // Add wildcard for development
 if (process.env.NODE_ENV === 'development') {
