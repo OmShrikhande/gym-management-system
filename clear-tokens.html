@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Authentication Tokens</title>
+</head>
+<body>
+    <h1>Clear Authentication Tokens</h1>
+    <button onclick="clearTokens()">Clear All Tokens</button>
+    <div id="result"></div>
+
+    <script>
+        function clearTokens() {
+            const authKeys = [
+                'gymflow_access_token', 
+                'gymflow_refresh_token', 
+                'gymflow_token', 
+                'gymflow_user',
+                'gym_settings',
+                'gym_id'
+            ];
+            
+            let cleared = [];
+            authKeys.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    localStorage.removeItem(key);
+                    cleared.push(key);
+                }
+            });
+            
+            // Clear all gym settings
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('gym_settings_')) {
+                    localStorage.removeItem(key);
+                    cleared.push(key);
+                }
+            });
+            
+            document.getElementById('result').innerHTML = 
+                '<h3>Cleared tokens:</h3><ul>' + 
+                cleared.map(key => '<li>' + key + '</li>').join('') + 
+                '</ul><p><strong>Please refresh your main application and log in again.</strong></p>';
+        }
+    </script>
+</body>
+</html>

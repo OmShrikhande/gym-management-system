@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { getStorageItem, setStorageItem, removeStorageItem } from "@/lib/storage.js";
 import apiClient from "@/lib/apiClient.js";
+import { validateStoredTokens, handleJWTSecretChange } from "@/utils/tokenValidator.js";
 
 // Local storage keys
 const USER_STORAGE_KEY = 'gymflow_user';
@@ -92,6 +93,16 @@ export const AuthProvider = ({ children }) => {
     
     const initializeAuth = async () => {
       try {
+        // First, validate stored tokens and handle JWT secret changes
+        const tokensCleared = handleJWTSecretChange();
+        if (tokensCleared) {
+          console.log('Tokens were cleared due to JWT secret change');
+          if (isMounted) {
+            setIsLoading(false);
+          }
+          return;
+        }
+        
         // Debug localStorage status
         const { token: storedToken, accessToken, refreshToken, user: storedUser } = debugLocalStorage();
         

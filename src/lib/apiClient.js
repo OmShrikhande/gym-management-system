@@ -108,6 +108,7 @@ class ApiClient {
     const refreshToken = this.getRefreshToken();
     
     if (!refreshToken) {
+      console.error('Error in authFetch: No refresh token available');
       throw new Error('No refresh token available');
     }
 
@@ -124,6 +125,26 @@ class ApiClient {
       return accessToken;
     } catch (error) {
       console.error('Token refresh failed:', error);
+      
+      // If refresh fails due to invalid refresh token (common after JWT secret change)
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        console.error('Refresh token is invalid or expired. This commonly happens after JWT secrets are changed on the server.');
+        console.error('Please clear your browser storage and log in again.');
+        
+        // Clear all tokens since they're invalid
+        this.clearTokens();
+        
+        // Show user-friendly message
+        if (typeof window !== 'undefined') {
+          const message = 'Your session has expired due to server updates. Please refresh the page and log in again.';
+          if (window.alert) {
+            window.alert(message);
+          } else {
+            console.error(message);
+          }
+        }
+      }
+      
       throw error;
     }
   }
